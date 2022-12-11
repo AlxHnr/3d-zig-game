@@ -36,10 +36,10 @@ const Character = struct {
 };
 
 pub fn main() !void {
-    const screenWidth = 800;
-    const screenHeight = 450;
+    const screen_width = 800;
+    const screen_height = 450;
 
-    rl.InitWindow(screenWidth, screenHeight, "3D Zig Game");
+    rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
     var camera = std.mem.zeroes(rl.Camera);
