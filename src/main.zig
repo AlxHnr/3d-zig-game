@@ -41,6 +41,19 @@ const Character = struct {
         };
     }
 
+    // Interpolate between this characters state and another characters state based on the given
+    // interval from 0.0 to 1.0.
+    fn lerp(self: Character, other: Character, interval: f32) Character {
+        const i = std.math.clamp(interval, 0.0, 1.0);
+        return Character{
+            .position = rm.Vector3Lerp(self.position, other.position, i),
+            .looking_direction = rm.Vector3Lerp(self.looking_direction, other.looking_direction, i),
+            .acceleration_direction = rm.Vector3Lerp(self.acceleration_direction, other.acceleration_direction, i),
+            .velocity = rm.Vector3Lerp(self.velocity, other.velocity, i),
+            .dimensions = rm.Vector3Lerp(self.dimensions, other.dimensions, i),
+        };
+    }
+
     fn getRightFromLookingDirection(self: Character) rl.Vector3 {
         return rm.Vector3CrossProduct(self.looking_direction, Constants.up);
     }
@@ -126,7 +139,8 @@ pub fn main() !void {
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
-    var character = Character.create(0.0, 0.0, 0.0, 1.0, rl.Vector3{ .x = 0.6, .y = 1.8, .z = 0.25 });
+    var character_at_previous_tick = Character.create(0.0, 0.0, 0.0, 1.0, rl.Vector3{ .x = 0.6, .y = 1.8, .z = 0.25 });
+    var character_at_next_tick = character_at_previous_tick;
 
     var camera = std.mem.zeroes(rl.Camera);
     camera.up = Constants.up;
@@ -136,36 +150,38 @@ pub fn main() !void {
     var tick_timer = try TickTimer.start(60);
 
     while (!rl.WindowShouldClose()) {
-        var acceleration_direction = std.mem.zeroes(rl.Vector3);
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT)) {
-            acceleration_direction = rm.Vector3Subtract(acceleration_direction, character.getRightFromLookingDirection());
-        }
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT)) {
-            acceleration_direction = rm.Vector3Add(acceleration_direction, character.getRightFromLookingDirection());
-        }
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_UP)) {
-            acceleration_direction = rm.Vector3Add(acceleration_direction, character.looking_direction);
-        }
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_DOWN)) {
-            acceleration_direction = rm.Vector3Subtract(acceleration_direction, character.looking_direction);
-        }
-        character.setAcceleration(acceleration_direction.x, acceleration_direction.z);
-
         const lap_result = tick_timer.lap();
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
-            character.update();
+            character_at_previous_tick = character_at_next_tick;
+            character_at_next_tick.update();
         }
+        const character_to_render = character_at_previous_tick.lerp(character_at_next_tick, lap_result.next_tick_progress);
 
-        camera.target = character.position;
-        camera.position = getCameraPositionBehindCharacter(character);
+        var acceleration_direction = std.mem.zeroes(rl.Vector3);
+        if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT)) {
+            acceleration_direction = rm.Vector3Subtract(acceleration_direction, character_to_render.getRightFromLookingDirection());
+        }
+        if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT)) {
+            acceleration_direction = rm.Vector3Add(acceleration_direction, character_to_render.getRightFromLookingDirection());
+        }
+        if (rl.IsKeyDown(rl.KeyboardKey.KEY_UP)) {
+            acceleration_direction = rm.Vector3Add(acceleration_direction, character_to_render.looking_direction);
+        }
+        if (rl.IsKeyDown(rl.KeyboardKey.KEY_DOWN)) {
+            acceleration_direction = rm.Vector3Subtract(acceleration_direction, character_to_render.looking_direction);
+        }
+        character_at_next_tick.setAcceleration(acceleration_direction.x, acceleration_direction.z);
+
+        camera.target = character_to_render.position;
+        camera.position = getCameraPositionBehindCharacter(character_to_render);
 
         rl.BeginDrawing();
         rl.ClearBackground(rl.WHITE);
 
         rl.BeginMode3D(camera);
 
-        character.draw();
+        character_to_render.draw();
         rl.DrawGrid(20, 1.0);
 
         rl.EndMode3D();
