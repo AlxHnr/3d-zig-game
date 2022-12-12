@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const rl = @import("raylib");
+const rm = @import("raylib-math");
 
 fn drawFpsCounter() void {
     var string_buffer: [16]u8 = undefined;
@@ -11,27 +12,27 @@ fn drawFpsCounter() void {
     }
 }
 
-// The characters position on the map is stored as 2d coordinates. Jumping or climbing is not needed.
 const Character = struct {
-    position: rl.Vector2,
-    direction: rl.Vector2,
+    position: rl.Vector3,
+    direction: rl.Vector3,
+    dimensions: rl.Vector3,
 
-    const character_dimensions = rl.Vector3{ .x = 0.6, .y = 1.8, .z = 0.25 };
-
-    fn to3dCoordinates(self: Character) rl.Vector3 {
-        return rl.Vector3{
-            .x = self.position.x,
-            .y = character_dimensions.y / 2.0,
-            .z = self.position.y,
+    fn create(position_x: f32, position_z: f32, direction_x: f32, direction_z: f32, dimensions: rl.Vector3) Character {
+        return Character{
+            .position = rl.Vector3{ .x = position_x, .y = dimensions.y / 2.0, .z = position_z },
+            .direction = rl.Vector3{ .x = direction_x, .y = 0.0, .z = direction_z },
+            .dimensions = dimensions,
         };
     }
 
     fn draw(self: Character) void {
         const body_color = rl.Color{ .r = 142.0, .g = 223.0, .b = 255.0, .a = 100.0 };
         const frame_color = rl.Color{ .r = 0.0, .g = 48.0, .b = 143.0, .a = 255.0 };
-        const render_position = self.to3dCoordinates();
-        rl.DrawCubeV(render_position, character_dimensions, body_color);
-        rl.DrawCubeWiresV(render_position, character_dimensions, frame_color);
+        rl.DrawCubeV(self.position, self.dimensions, body_color);
+        rl.DrawCubeWiresV(self.position, self.dimensions, frame_color);
+
+        const direction_line_target = rm.Vector3Add(self.position, rm.Vector3Scale(self.direction, 1.5));
+        rl.DrawLine3D(self.position, direction_line_target, rl.BLUE);
     }
 };
 
@@ -77,17 +78,14 @@ pub fn main() !void {
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
+    var character = Character.create(0.0, 0.0, 0.0, 1.0, rl.Vector3{ .x = 0.6, .y = 1.8, .z = 0.25 });
+
     var camera = std.mem.zeroes(rl.Camera);
     camera.position = rl.Vector3{ .x = 5.0, .y = 5.0, .z = 5.0 };
-    camera.target = rl.Vector3{ .x = 0.0, .y = 0.0, .z = 0.0 };
+    camera.target = character.position;
     camera.up = rl.Vector3{ .x = 0.0, .y = 1.0, .z = 0.0 };
     camera.fovy = 45.0;
     camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
-
-    var character = Character{
-        .position = rl.Vector2{ .x = 0.0, .y = 0.0 },
-        .direction = rl.Vector2{ .x = 0.0, .y = 1.0 },
-    };
 
     while (!rl.WindowShouldClose()) {
         rl.BeginDrawing();
