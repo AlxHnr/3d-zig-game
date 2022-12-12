@@ -35,6 +35,41 @@ const Character = struct {
     }
 };
 
+// Lap timer for measuring elapsed ticks.
+const TickTimer = struct {
+    timer: std.time.Timer,
+    tick_duration: u64,
+    leftover_time_from_last_tick: u64,
+
+    // Create a new tick timer for measuring the specified tick rate. The given value is assumed to
+    // be non-zero. Fails when no clock is available.
+    fn start(ticks_per_second: u32) std.time.Timer.Error!TickTimer {
+        std.debug.assert(ticks_per_second > 0);
+        return TickTimer{
+            .timer = try std.time.Timer.start(),
+            .tick_duration = std.time.ns_per_s / ticks_per_second,
+            .leftover_time_from_last_tick = 0,
+        };
+    }
+
+    // Return the amount of elapsed ticks since the last call of this function or since start().
+    fn lap(self: *TickTimer) LapResult {
+        const elapsed_time = self.timer.lap() + self.leftover_time_from_last_tick;
+        self.leftover_time_from_last_tick = elapsed_time % self.tick_duration;
+        return LapResult{
+            .elapsed_ticks = elapsed_time / self.tick_duration,
+            .next_tick_progress = @intToFloat(f32, self.leftover_time_from_last_tick) / @intToFloat(f32, self.tick_duration),
+        };
+    }
+
+    const LapResult = struct {
+        elapsed_ticks: u64,
+        // Value between 0.0 and 1.0 denoting how much percent of the next tick has already passed.
+        // This can be used for interpolating between two ticks.
+        next_tick_progress: f32,
+    };
+};
+
 pub fn main() !void {
     const screen_width = 800;
     const screen_height = 450;
