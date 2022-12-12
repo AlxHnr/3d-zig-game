@@ -3,6 +3,10 @@ const std = @import("std");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
 
+const Constants = struct {
+    const up = rl.Vector3{ .x = 0.0, .y = 1.0, .z = 0.0 };
+};
+
 fn drawFpsCounter() void {
     var string_buffer: [16]u8 = undefined;
     if (std.fmt.bufPrintZ(string_buffer[0..], "FPS: {}", .{rl.GetFPS()})) |slice| {
@@ -35,6 +39,15 @@ const Character = struct {
         rl.DrawLine3D(self.position, direction_line_target, rl.BLUE);
     }
 };
+
+// Returns a camera position for looking down on the character from behind.
+fn getCameraPositionBehindCharacter(character: Character) rl.Vector3 {
+    const back_direction = rm.Vector3Negate(character.direction);
+    const right_axis = rm.Vector3CrossProduct(back_direction, Constants.up);
+    // TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
+    const unnormalized_direction = rm.Vector3RotateByAxisAngle(back_direction, right_axis, 30.0 * std.math.pi / 180.0);
+    return rm.Vector3Scale(rm.Vector3Normalize(unnormalized_direction), 9.0);
+}
 
 // Lap timer for measuring elapsed ticks.
 const TickTimer = struct {
@@ -81,9 +94,9 @@ pub fn main() !void {
     var character = Character.create(0.0, 0.0, 0.0, 1.0, rl.Vector3{ .x = 0.6, .y = 1.8, .z = 0.25 });
 
     var camera = std.mem.zeroes(rl.Camera);
-    camera.position = rl.Vector3{ .x = 5.0, .y = 5.0, .z = 5.0 };
+    camera.position = getCameraPositionBehindCharacter(character);
     camera.target = character.position;
-    camera.up = rl.Vector3{ .x = 0.0, .y = 1.0, .z = 0.0 };
+    camera.up = Constants.up;
     camera.fovy = 45.0;
     camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
 
@@ -92,8 +105,10 @@ pub fn main() !void {
         rl.ClearBackground(rl.WHITE);
 
         rl.BeginMode3D(camera);
+
         character.draw();
         rl.DrawGrid(20, 1.0);
+
         rl.EndMode3D();
 
         drawFpsCounter();
