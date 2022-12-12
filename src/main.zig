@@ -16,6 +16,11 @@ fn drawFpsCounter() void {
     }
 }
 
+// TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
+fn degreesToRadians(degrees: f32) f32 {
+    return degrees * std.math.pi / 180.0;
+}
+
 fn XzTo3DDirection(direction_x: f32, direction_z: f32) rl.Vector3 {
     return rm.Vector3Normalize(rl.Vector3{ .x = direction_x, .y = 0.0, .z = direction_z });
 }
@@ -27,6 +32,7 @@ fn projectVector3OnAnother(a: rl.Vector3, b: rl.Vector3) rl.Vector3 {
 const Character = struct {
     position: rl.Vector3,
     looking_direction: rl.Vector3,
+    turning_direction: f32, // Values from -1.0 (left) to 1.0 (right).
     acceleration_direction: rl.Vector3,
     velocity: rl.Vector3,
     dimensions: rl.Vector3,
@@ -35,6 +41,7 @@ const Character = struct {
         return Character{
             .position = rl.Vector3{ .x = position_x, .y = dimensions.y / 2.0, .z = position_z },
             .looking_direction = XzTo3DDirection(direction_x, direction_z),
+            .turning_direction = 0.0,
             .acceleration_direction = std.mem.zeroes(rl.Vector3),
             .velocity = std.mem.zeroes(rl.Vector3),
             .dimensions = dimensions,
@@ -48,6 +55,7 @@ const Character = struct {
         return Character{
             .position = rm.Vector3Lerp(self.position, other.position, i),
             .looking_direction = rm.Vector3Lerp(self.looking_direction, other.looking_direction, i),
+            .turning_direction = rm.Lerp(self.turning_direction, other.turning_direction, i),
             .acceleration_direction = rm.Vector3Lerp(self.acceleration_direction, other.acceleration_direction, i),
             .velocity = rm.Vector3Lerp(self.velocity, other.velocity, i),
             .dimensions = rm.Vector3Lerp(self.dimensions, other.dimensions, i),
@@ -63,6 +71,11 @@ const Character = struct {
         self.acceleration_direction = XzTo3DDirection(direction_x, direction_z);
     }
 
+    // Value from -1.0 (left) to 1.0 (right). Will be clamped into this range.
+    fn setTurningDirection(self: *Character, turning_direction: f32) void {
+        self.turning_direction = rm.Clamp(turning_direction, -1.0, 1.0);
+    }
+
     // To be called once for each tick.
     fn update(self: *Character) void {
         const is_accelerating = rm.Vector3Length(self.acceleration_direction) > std.math.f32_epsilon;
@@ -74,6 +87,10 @@ const Character = struct {
         }
 
         self.position = rm.Vector3Add(self.position, self.velocity);
+
+        const max_rotation_per_tick = degreesToRadians(5);
+        const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
+        self.looking_direction = rm.Vector3RotateByAxisAngle(self.looking_direction, Constants.up, rotation_angle);
     }
 
     fn draw(self: Character) void {
@@ -91,8 +108,7 @@ const Character = struct {
 fn getCameraPositionBehindCharacter(character: Character) rl.Vector3 {
     const back_direction = rm.Vector3Negate(character.looking_direction);
     const right_axis = rm.Vector3Negate(character.getRightFromLookingDirection());
-    // TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
-    const unnormalized_direction = rm.Vector3RotateByAxisAngle(back_direction, right_axis, 30.0 * std.math.pi / 180.0);
+    const unnormalized_direction = rm.Vector3RotateByAxisAngle(back_direction, right_axis, degreesToRadians(30.0));
     const offset_from_character = rm.Vector3Scale(rm.Vector3Normalize(unnormalized_direction), 9.0);
     return rm.Vector3Add(character.position, offset_from_character);
 }
@@ -206,6 +222,15 @@ pub fn main() !void {
             acceleration_direction = rm.Vector3Subtract(acceleration_direction, world_to_render.character.looking_direction);
         }
         world_at_next_tick.character.setAcceleration(acceleration_direction.x, acceleration_direction.z);
+
+        var turning_direction: f32 = 0.0;
+        if (rl.IsKeyDown(rl.KeyboardKey.KEY_A)) {
+            turning_direction -= 1.0;
+        }
+        if (rl.IsKeyDown(rl.KeyboardKey.KEY_D)) {
+            turning_direction += 1.0;
+        }
+        world_at_next_tick.character.setTurningDirection(turning_direction);
 
         rl.BeginDrawing();
         rl.ClearBackground(rl.WHITE);
