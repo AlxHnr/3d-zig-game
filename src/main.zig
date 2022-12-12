@@ -16,7 +16,7 @@ const Character = struct {
     position: rl.Vector2,
     direction: rl.Vector2,
 
-    const character_dimensions = rl.Vector3{ .x = 0.4, .y = 1.8, .z = 0.2 };
+    const character_dimensions = rl.Vector3{ .x = 0.6, .y = 1.8, .z = 0.25 };
 
     fn to3dCoordinates(self: Character) rl.Vector3 {
         return rl.Vector3{
