@@ -132,6 +132,42 @@ const TickTimer = struct {
     };
 };
 
+const GameState = struct {
+    character: Character,
+    camera: rl.Camera, // Only position and target are considered during interpolation.
+
+    fn create(character: Character) GameState {
+        var camera = std.mem.zeroes(rl.Camera);
+        camera.up = Constants.up;
+        camera.fovy = 45.0;
+        camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
+        camera.target = character.position;
+        camera.position = character.position;
+        return GameState{ .character = character, .camera = camera };
+    }
+
+    // Interpolate between this game state and another game state based on the given interval from
+    // 0.0 to 1.0.
+    fn lerp(self: GameState, other: GameState, interval: f32) GameState {
+        const i = std.math.clamp(interval, 0.0, 1.0);
+
+        var camera = self.camera;
+        camera.position = rm.Vector3Lerp(self.camera.position, other.camera.position, i);
+        camera.target = rm.Vector3Lerp(self.camera.target, other.camera.target, i);
+
+        return GameState{ .character = self.character.lerp(other.character, i), .camera = camera };
+    }
+
+    // To be called once for each tick.
+    fn update(self: *GameState) void {
+        self.character.update();
+
+        const camera_follow_speed = 0.1;
+        self.camera.position = rm.Vector3Lerp(self.camera.position, getCameraPositionBehindCharacter(self.character), camera_follow_speed);
+        self.camera.target = rm.Vector3Lerp(self.camera.target, self.character.position, camera_follow_speed);
+    }
+};
+
 pub fn main() !void {
     const screen_width = 800;
     const screen_height = 450;
@@ -139,51 +175,44 @@ pub fn main() !void {
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
-    var character_at_previous_tick = Character.create(0.0, 0.0, 0.0, 1.0, rl.Vector3{ .x = 0.6, .y = 1.8, .z = 0.25 });
-    var character_at_next_tick = character_at_previous_tick;
-
-    var camera = std.mem.zeroes(rl.Camera);
-    camera.up = Constants.up;
-    camera.fovy = 45.0;
-    camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
+    var world_at_previous_tick = GameState.create(Character.create(0.0, 0.0, 0.0, 1.0, rl.Vector3{
+        .x = 0.6,
+        .y = 1.8,
+        .z = 0.25,
+    }));
+    var world_at_next_tick = world_at_previous_tick;
 
     var tick_timer = try TickTimer.start(60);
-
     while (!rl.WindowShouldClose()) {
         const lap_result = tick_timer.lap();
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
-            character_at_previous_tick = character_at_next_tick;
-            character_at_next_tick.update();
+            world_at_previous_tick = world_at_next_tick;
+            world_at_next_tick.update();
         }
-        const character_to_render = character_at_previous_tick.lerp(character_at_next_tick, lap_result.next_tick_progress);
+        const world_to_render = world_at_previous_tick.lerp(world_at_next_tick, lap_result.next_tick_progress);
 
         var acceleration_direction = std.mem.zeroes(rl.Vector3);
         if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT)) {
-            acceleration_direction = rm.Vector3Subtract(acceleration_direction, character_to_render.getRightFromLookingDirection());
+            acceleration_direction = rm.Vector3Subtract(acceleration_direction, world_to_render.character.getRightFromLookingDirection());
         }
         if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT)) {
-            acceleration_direction = rm.Vector3Add(acceleration_direction, character_to_render.getRightFromLookingDirection());
+            acceleration_direction = rm.Vector3Add(acceleration_direction, world_to_render.character.getRightFromLookingDirection());
         }
         if (rl.IsKeyDown(rl.KeyboardKey.KEY_UP)) {
-            acceleration_direction = rm.Vector3Add(acceleration_direction, character_to_render.looking_direction);
+            acceleration_direction = rm.Vector3Add(acceleration_direction, world_to_render.character.looking_direction);
         }
         if (rl.IsKeyDown(rl.KeyboardKey.KEY_DOWN)) {
-            acceleration_direction = rm.Vector3Subtract(acceleration_direction, character_to_render.looking_direction);
+            acceleration_direction = rm.Vector3Subtract(acceleration_direction, world_to_render.character.looking_direction);
         }
-        character_at_next_tick.setAcceleration(acceleration_direction.x, acceleration_direction.z);
-
-        camera.target = character_to_render.position;
-        camera.position = getCameraPositionBehindCharacter(character_to_render);
+        world_at_next_tick.character.setAcceleration(acceleration_direction.x, acceleration_direction.z);
 
         rl.BeginDrawing();
         rl.ClearBackground(rl.WHITE);
 
-        rl.BeginMode3D(camera);
-
-        character_to_render.draw();
+        rl.BeginMode3D(world_to_render.camera);
+        world_to_render.character.draw();
         rl.DrawGrid(20, 1.0);
-
         rl.EndMode3D();
 
         drawFpsCounter();
