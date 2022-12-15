@@ -113,15 +113,6 @@ const Character = struct {
     }
 };
 
-// Returns a camera position for looking down on the character from behind.
-fn getCameraPositionBehindCharacter(character: Character) rl.Vector3 {
-    const back_direction = rm.Vector3Negate(character.looking_direction);
-    const right_axis = rm.Vector3Negate(character.getRightFromLookingDirection());
-    const unnormalized_direction = rm.Vector3RotateByAxisAngle(back_direction, right_axis, degreesToRadians(30.0));
-    const offset_from_character = rm.Vector3Scale(rm.Vector3Normalize(unnormalized_direction), 9.0);
-    return rm.Vector3Add(character.position, offset_from_character);
-}
-
 // Lap timer for measuring elapsed ticks.
 const TickTimer = struct {
     timer: std.time.Timer,
@@ -157,36 +148,43 @@ const TickTimer = struct {
     };
 };
 
-const GameState = struct {
-    character: Character,
-    camera: rl.Camera, // Only position and target are considered during interpolation.
+// Camera which smoothly follows the character and auto-rotates across the Y axis.
+const ThirdPersonCamera = struct {
+    camera: rl.Camera,
 
-    fn create(character: Character) GameState {
+    // Initialize the camera to look down at the given character from behind.
+    fn create(character: Character) ThirdPersonCamera {
         var camera = std.mem.zeroes(rl.Camera);
         camera.up = Constants.up;
         camera.fovy = 45.0;
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
         camera.target = character.position;
-        camera.position = getCameraPositionBehindCharacter(character);
-        return GameState{ .character = character, .camera = camera };
+
+        const looking_angle = degreesToRadians(30);
+        const distance_from_character = 9.0;
+        const back_direction = rm.Vector3Negate(character.looking_direction);
+        const right_axis = rm.Vector3Negate(character.getRightFromLookingDirection());
+        const unnormalized_direction = rm.Vector3RotateByAxisAngle(back_direction, right_axis, looking_angle);
+        const offset_from_character = rm.Vector3Scale(rm.Vector3Normalize(unnormalized_direction), distance_from_character);
+        camera.position = rm.Vector3Add(character.position, offset_from_character);
+
+        return ThirdPersonCamera{ .camera = camera };
     }
 
-    // Interpolate between this game state and another game state based on the given interval from
-    // 0.0 to 1.0.
-    fn lerp(self: GameState, other: GameState, interval: f32) GameState {
+    // Interpolate between this cameras state and another cameras state based on the given interval
+    // from 0.0 to 1.0.
+    fn lerp(self: ThirdPersonCamera, other: ThirdPersonCamera, interval: f32) ThirdPersonCamera {
         const i = std.math.clamp(interval, 0.0, 1.0);
 
         var camera = self.camera;
         camera.position = rm.Vector3Lerp(self.camera.position, other.camera.position, i);
         camera.target = rm.Vector3Lerp(self.camera.target, other.camera.target, i);
 
-        return GameState{ .character = self.character.lerp(other.character, i), .camera = camera };
+        return ThirdPersonCamera{ .camera = camera };
     }
 
     // To be called once for each tick.
-    fn update(self: *GameState) void {
-        self.character.update();
-
+    fn update(self: *ThirdPersonCamera, character_to_follow: Character) void {
         const camera_follow_speed = 0.15;
 
         const camera_offset = rm.Vector3Subtract(self.camera.position, self.camera.target);
@@ -195,8 +193,8 @@ const GameState = struct {
             .y = camera_offset.z,
         });
         const character_back_direction_2d = rl.Vector2{
-            .x = -self.character.looking_direction.x,
-            .y = -self.character.looking_direction.z,
+            .x = -character_to_follow.looking_direction.x,
+            .y = -character_to_follow.looking_direction.z,
         };
         const rotation_angle = getAngle(camera_direction_2d, character_back_direction_2d);
         const camera_right_axis_2d = rl.Vector2{ .x = camera_direction_2d.y, .y = -camera_direction_2d.x };
@@ -206,8 +204,32 @@ const GameState = struct {
         else
             rotation_angle;
         const updated_camera_offset = rm.Vector3RotateByAxisAngle(camera_offset, Constants.up, rotation_step);
-        self.camera.target = rm.Vector3Lerp(self.camera.target, self.character.position, camera_follow_speed);
+        self.camera.target = rm.Vector3Lerp(self.camera.target, character_to_follow.position, camera_follow_speed);
         self.camera.position = rm.Vector3Add(self.camera.target, updated_camera_offset);
+    }
+};
+
+const GameState = struct {
+    character: Character,
+    camera: ThirdPersonCamera,
+
+    fn create(character: Character) GameState {
+        return GameState{ .character = character, .camera = ThirdPersonCamera.create(character) };
+    }
+
+    // Interpolate between this game state and another game state based on the given interval from
+    // 0.0 to 1.0.
+    fn lerp(self: GameState, other: GameState, interval: f32) GameState {
+        return GameState{
+            .character = self.character.lerp(other.character, interval),
+            .camera = self.camera.lerp(other.camera, interval),
+        };
+    }
+
+    // To be called once for each tick.
+    fn update(self: *GameState) void {
+        self.character.update();
+        self.camera.update(self.character);
     }
 };
 
@@ -262,9 +284,9 @@ pub fn main() !void {
         rl.BeginDrawing();
         rl.ClearBackground(rl.WHITE);
 
-        rl.BeginMode3D(world_to_render.camera);
+        rl.BeginMode3D(world_to_render.camera.camera);
         world_to_render.character.draw();
-        rl.DrawGrid(20, 1.0);
+        rl.DrawGrid(200, 1.0);
         rl.EndMode3D();
 
         drawFpsCounter();
