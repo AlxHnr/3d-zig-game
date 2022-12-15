@@ -39,21 +39,30 @@ fn projectVector3OnAnother(a: rl.Vector3, b: rl.Vector3) rl.Vector3 {
 }
 
 const Character = struct {
-    position: rl.Vector3, // Y will always be 0.0.
+    position: rl.Vector3,
     looking_direction: rl.Vector3, // Y will always be 0.0.
-    turning_direction: f32, // Values from -1.0 (left) to 1.0 (right).
+    turning_direction: f32, // Values from -1.0 (turning left) to 1.0 (turning right).
     acceleration_direction: rl.Vector3, // Y will always be 0.0.
     velocity: rl.Vector3, // Y will always be 0.0.
-    dimensions: rl.Vector3,
+    width: f32,
+    height: f32,
 
-    fn create(position_x: f32, position_z: f32, direction_x: f32, direction_z: f32, dimensions: rl.Vector3) Character {
+    fn create(
+        position_x: f32,
+        position_z: f32,
+        direction_x: f32,
+        direction_z: f32,
+        width: f32,
+        height: f32,
+    ) Character {
         return Character{
-            .position = rl.Vector3{ .x = position_x, .y = dimensions.y / 2.0, .z = position_z },
+            .position = rl.Vector3{ .x = position_x, .y = height / 2.0, .z = position_z },
             .looking_direction = XzTo3DDirection(direction_x, direction_z),
             .turning_direction = 0.0,
             .acceleration_direction = std.mem.zeroes(rl.Vector3),
             .velocity = std.mem.zeroes(rl.Vector3),
-            .dimensions = dimensions,
+            .width = width,
+            .height = height,
         };
     }
 
@@ -67,7 +76,8 @@ const Character = struct {
             .turning_direction = rm.Lerp(self.turning_direction, other.turning_direction, i),
             .acceleration_direction = rm.Vector3Lerp(self.acceleration_direction, other.acceleration_direction, i),
             .velocity = rm.Vector3Lerp(self.velocity, other.velocity, i),
-            .dimensions = rm.Vector3Lerp(self.dimensions, other.dimensions, i),
+            .width = rm.Lerp(self.width, other.width, i),
+            .height = rm.Lerp(self.height, other.height, i),
         };
     }
 
@@ -105,10 +115,10 @@ const Character = struct {
     fn draw(self: Character) void {
         const body_color = rl.Color{ .r = 142.0, .g = 223.0, .b = 255.0, .a = 100.0 };
         const frame_color = rl.Color{ .r = 0.0, .g = 48.0, .b = 143.0, .a = 255.0 };
-        rl.DrawCubeV(self.position, self.dimensions, body_color);
-        rl.DrawCubeWiresV(self.position, self.dimensions, frame_color);
+        rl.DrawCylinder(self.position, 0, self.width / 2.0, self.height, 10, body_color);
+        rl.DrawCylinderWires(self.position, 0, self.width / 2.0, self.height, 10, frame_color);
 
-        const direction_line_target = rm.Vector3Add(self.position, rm.Vector3Scale(self.looking_direction, 1.5));
+        const direction_line_target = rm.Vector3Add(self.position, rm.Vector3Scale(self.looking_direction, 2.0));
         rl.DrawLine3D(self.position, direction_line_target, rl.BLUE);
     }
 };
@@ -160,8 +170,8 @@ const ThirdPersonCamera = struct {
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
         camera.target = character.position;
 
-        const looking_angle = degreesToRadians(30);
-        const distance_from_character = 9.0;
+        const looking_angle = degreesToRadians(20);
+        const distance_from_character = 10.0;
         const back_direction = rm.Vector3Negate(character.looking_direction);
         const right_axis = rm.Vector3Negate(character.getRightFromLookingDirection());
         const unnormalized_direction = rm.Vector3RotateByAxisAngle(back_direction, right_axis, looking_angle);
@@ -240,11 +250,7 @@ pub fn main() !void {
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
-    var world_at_previous_tick = GameState.create(Character.create(0.0, 0.0, 0.0, 1.0, rl.Vector3{
-        .x = 0.6,
-        .y = 1.8,
-        .z = 0.25,
-    }));
+    var world_at_previous_tick = GameState.create(Character.create(0.0, 0.0, 0.0, 1.0, 0.6, 1.8));
     var world_at_next_tick = world_at_previous_tick;
 
     var tick_timer = try TickTimer.start(60);
