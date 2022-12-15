@@ -20,6 +20,15 @@ fn drawFpsCounter() void {
 fn degreesToRadians(degrees: f32) f32 {
     return degrees * std.math.pi / 180.0;
 }
+fn radiansToDegrees(radians: f32) f32 {
+    return radians * 180.0 / std.math.pi;
+}
+
+// TODO: rm.Vector2Angle() is broken in raylib 4.2.0.
+fn getAngle(a: rl.Vector2, b: rl.Vector2) f32 {
+    const dot_product = rm.Vector2DotProduct(a, b);
+    return std.math.acos(std.math.clamp(dot_product, -1.0, 1.0));
+}
 
 fn XzTo3DDirection(direction_x: f32, direction_z: f32) rl.Vector3 {
     return rm.Vector3Normalize(rl.Vector3{ .x = direction_x, .y = 0.0, .z = direction_z });
@@ -30,11 +39,11 @@ fn projectVector3OnAnother(a: rl.Vector3, b: rl.Vector3) rl.Vector3 {
 }
 
 const Character = struct {
-    position: rl.Vector3,
-    looking_direction: rl.Vector3,
+    position: rl.Vector3, // Y will always be 0.0.
+    looking_direction: rl.Vector3, // Y will always be 0.0.
     turning_direction: f32, // Values from -1.0 (left) to 1.0 (right).
-    acceleration_direction: rl.Vector3,
-    velocity: rl.Vector3,
+    acceleration_direction: rl.Vector3, // Y will always be 0.0.
+    velocity: rl.Vector3, // Y will always be 0.0.
     dimensions: rl.Vector3,
 
     fn create(position_x: f32, position_z: f32, direction_x: f32, direction_z: f32, dimensions: rl.Vector3) Character {
@@ -158,7 +167,7 @@ const GameState = struct {
         camera.fovy = 45.0;
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
         camera.target = character.position;
-        camera.position = character.position;
+        camera.position = getCameraPositionBehindCharacter(character);
         return GameState{ .character = character, .camera = camera };
     }
 
@@ -178,9 +187,27 @@ const GameState = struct {
     fn update(self: *GameState) void {
         self.character.update();
 
-        const camera_follow_speed = 0.1;
-        self.camera.position = rm.Vector3Lerp(self.camera.position, getCameraPositionBehindCharacter(self.character), camera_follow_speed);
+        const camera_follow_speed = 0.15;
+
+        const camera_offset = rm.Vector3Subtract(self.camera.position, self.camera.target);
+        const camera_direction_2d = rm.Vector2Normalize(rl.Vector2{
+            .x = camera_offset.x,
+            .y = camera_offset.z,
+        });
+        const character_back_direction_2d = rl.Vector2{
+            .x = -self.character.looking_direction.x,
+            .y = -self.character.looking_direction.z,
+        };
+        const rotation_angle = getAngle(camera_direction_2d, character_back_direction_2d);
+        const camera_right_axis_2d = rl.Vector2{ .x = camera_direction_2d.y, .y = -camera_direction_2d.x };
+        const turn_right = rm.Vector2DotProduct(character_back_direction_2d, camera_right_axis_2d) < 0.0;
+        const rotation_step = camera_follow_speed * if (turn_right)
+            -rotation_angle
+        else
+            rotation_angle;
+        const updated_camera_offset = rm.Vector3RotateByAxisAngle(camera_offset, Constants.up, rotation_step);
         self.camera.target = rm.Vector3Lerp(self.camera.target, self.character.position, camera_follow_speed);
+        self.camera.position = rm.Vector3Add(self.camera.target, updated_camera_offset);
     }
 };
 
