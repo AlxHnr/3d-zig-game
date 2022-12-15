@@ -4,7 +4,7 @@ const rl = @import("raylib");
 const rm = @import("raylib-math");
 
 const Constants = struct {
-    const up = rl.Vector3{ .x = 0.0, .y = 1.0, .z = 0.0 };
+    const up = rl.Vector3{ .x = 0, .y = 1, .z = 0 };
 };
 
 fn drawFpsCounter() void {
@@ -18,16 +18,16 @@ fn drawFpsCounter() void {
 
 // TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
 fn degreesToRadians(degrees: f32) f32 {
-    return degrees * std.math.pi / 180.0;
+    return degrees * std.math.pi / 180;
 }
 fn radiansToDegrees(radians: f32) f32 {
-    return radians * 180.0 / std.math.pi;
+    return radians * 180 / std.math.pi;
 }
 
 // TODO: rm.Vector2Angle() is broken in raylib 4.2.0.
 fn getAngle(a: rl.Vector2, b: rl.Vector2) f32 {
     const dot_product = rm.Vector2DotProduct(a, b);
-    return std.math.acos(std.math.clamp(dot_product, -1.0, 1.0));
+    return std.math.acos(std.math.clamp(dot_product, -1, 1));
 }
 
 fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
@@ -40,7 +40,7 @@ fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
 }
 
 fn XzTo3DDirection(direction_x: f32, direction_z: f32) rl.Vector3 {
-    return rm.Vector3Normalize(rl.Vector3{ .x = direction_x, .y = 0.0, .z = direction_z });
+    return rm.Vector3Normalize(rl.Vector3{ .x = direction_x, .y = 0, .z = direction_z });
 }
 
 fn projectVector3OnAnother(a: rl.Vector3, b: rl.Vector3) rl.Vector3 {
@@ -48,11 +48,11 @@ fn projectVector3OnAnother(a: rl.Vector3, b: rl.Vector3) rl.Vector3 {
 }
 
 const Character = struct {
-    position: rl.Vector3, // Y will always be 0.0.
-    looking_direction: rl.Vector3, // Y will always be 0.0.
-    turning_direction: f32, // Values from -1.0 (turning left) to 1.0 (turning right).
-    acceleration_direction: rl.Vector3, // Y will always be 0.0.
-    velocity: rl.Vector3, // Y will always be 0.0.
+    position: rl.Vector3, // Y will always be 0.
+    looking_direction: rl.Vector3, // Y will always be 0.
+    turning_direction: f32, // Values from -1 (turning left) to 1 (turning right).
+    acceleration_direction: rl.Vector3, // Y will always be 0.
+    velocity: rl.Vector3, // Y will always be 0.
     width: f32,
     height: f32,
     color: rl.Color,
@@ -67,9 +67,9 @@ const Character = struct {
         color: rl.Color,
     ) Character {
         return Character{
-            .position = rl.Vector3{ .x = position_x, .y = 0.0, .z = position_z },
+            .position = rl.Vector3{ .x = position_x, .y = 0, .z = position_z },
             .looking_direction = XzTo3DDirection(direction_x, direction_z),
-            .turning_direction = 0.0,
+            .turning_direction = 0,
             .acceleration_direction = std.mem.zeroes(rl.Vector3),
             .velocity = std.mem.zeroes(rl.Vector3),
             .width = width,
@@ -79,9 +79,9 @@ const Character = struct {
     }
 
     // Interpolate between this characters state and another characters state based on the given
-    // interval from 0.0 to 1.0.
+    // interval from 0 to 1.
     fn lerp(self: Character, other: Character, interval: f32) Character {
-        const i = std.math.clamp(interval, 0.0, 1.0);
+        const i = std.math.clamp(interval, 0, 1);
         return Character{
             .position = rm.Vector3Lerp(self.position, other.position, i),
             .looking_direction = rm.Vector3Lerp(self.looking_direction, other.looking_direction, i),
@@ -103,9 +103,9 @@ const Character = struct {
         self.acceleration_direction = XzTo3DDirection(direction_x, direction_z);
     }
 
-    // Value from -1.0 (left) to 1.0 (right). Will be clamped into this range.
+    // Value from -1 (left) to 1 (right). Will be clamped into this range.
     fn setTurningDirection(self: *Character, turning_direction: f32) void {
-        self.turning_direction = rm.Clamp(turning_direction, -1.0, 1.0);
+        self.turning_direction = rm.Clamp(turning_direction, -1, 1);
     }
 
     // To be called once for each tick.
@@ -113,7 +113,7 @@ const Character = struct {
         const is_accelerating = rm.Vector3Length(self.acceleration_direction) > std.math.f32_epsilon;
         if (is_accelerating) {
             self.velocity = rm.Vector3Add(self.velocity, rm.Vector3Scale(self.acceleration_direction, 0.03));
-            self.velocity = rm.Vector3ClampValue(self.velocity, 0.0, 0.2);
+            self.velocity = rm.Vector3ClampValue(self.velocity, 0, 0.2);
         } else {
             self.velocity = rm.Vector3Scale(self.velocity, 0.7);
         }
@@ -126,11 +126,11 @@ const Character = struct {
     }
 
     fn draw(self: Character) void {
-        const frame_color = rl.Color{ .r = 127.0, .g = 127.0, .b = 127.0, .a = 255.0 };
-        rl.DrawCylinder(self.position, 0, self.width / 2.0, self.height, 10, self.color);
-        rl.DrawCylinderWires(self.position, 0, self.width / 2.0, self.height, 10, frame_color);
+        const frame_color = rl.Color{ .r = 127, .g = 127, .b = 127, .a = 255 };
+        rl.DrawCylinder(self.position, 0, self.width / 2, self.height, 10, self.color);
+        rl.DrawCylinderWires(self.position, 0, self.width / 2, self.height, 10, frame_color);
 
-        const direction_line_target = rm.Vector3Add(self.position, rm.Vector3Scale(self.looking_direction, 2.0));
+        const direction_line_target = rm.Vector3Add(self.position, rm.Vector3Scale(self.looking_direction, 2));
         rl.DrawLine3D(self.position, direction_line_target, rl.BLUE);
     }
 };
@@ -167,7 +167,7 @@ const TickTimer = struct {
 
     const LapResult = struct {
         elapsed_ticks: u64,
-        // Value between 0.0 and 1.0 denoting how much percent of the next tick has already passed.
+        // Value between 0 and 1 denoting how much percent of the next tick has already passed.
         // This can be used for interpolating between two ticks.
         next_tick_progress: f32,
     };
@@ -181,12 +181,12 @@ const ThirdPersonCamera = struct {
     fn create(character: Character) ThirdPersonCamera {
         var camera = std.mem.zeroes(rl.Camera);
         camera.up = Constants.up;
-        camera.fovy = 45.0;
+        camera.fovy = 45;
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
         camera.target = character.position;
 
         const looking_angle = degreesToRadians(20);
-        const distance_from_character = 10.0;
+        const distance_from_character = 10;
         const back_direction = rm.Vector3Negate(character.looking_direction);
         const right_axis = rm.Vector3Negate(character.getRightFromLookingDirection());
         const unnormalized_direction = rm.Vector3RotateByAxisAngle(back_direction, right_axis, looking_angle);
@@ -197,9 +197,9 @@ const ThirdPersonCamera = struct {
     }
 
     // Interpolate between this cameras state and another cameras state based on the given interval
-    // from 0.0 to 1.0.
+    // from 0 to 1.
     fn lerp(self: ThirdPersonCamera, other: ThirdPersonCamera, interval: f32) ThirdPersonCamera {
-        const i = std.math.clamp(interval, 0.0, 1.0);
+        const i = std.math.clamp(interval, 0, 1);
 
         var camera = self.camera;
         camera.position = rm.Vector3Lerp(self.camera.position, other.camera.position, i);
@@ -223,7 +223,7 @@ const ThirdPersonCamera = struct {
         };
         const rotation_angle = getAngle(camera_direction_2d, character_back_direction_2d);
         const camera_right_axis_2d = rl.Vector2{ .x = camera_direction_2d.y, .y = -camera_direction_2d.x };
-        const turn_right = rm.Vector2DotProduct(character_back_direction_2d, camera_right_axis_2d) < 0.0;
+        const turn_right = rm.Vector2DotProduct(character_back_direction_2d, camera_right_axis_2d) < 0;
         const rotation_step = camera_follow_speed * if (turn_right)
             -rotation_angle
         else
@@ -249,7 +249,7 @@ const Player = struct {
         camera: ThirdPersonCamera,
 
         // Interpolate between this players state and another players state based on the given
-        // interval from 0.0 to 1.0.
+        // interval from 0 to 1.
         fn lerp(self: State, other: State, interval: f32) State {
             return State{
                 .character = self.character.lerp(other.character, interval),
@@ -336,12 +336,12 @@ const Player = struct {
             acceleration_direction.z,
         );
 
-        var turning_direction: f32 = 0.0;
+        var turning_direction: f32 = 0;
         if (rl.IsKeyDown(self.input_configuration.turn_left)) {
-            turning_direction -= 1.0;
+            turning_direction -= 1;
         }
         if (rl.IsKeyDown(self.input_configuration.turn_right)) {
-            turning_direction += 1.0;
+            turning_direction += 1;
         }
         self.state_at_next_tick.character.setTurningDirection(turning_direction);
     }
@@ -369,7 +369,7 @@ const Player = struct {
 
 fn drawScene(players: []const Player, interval_between_previous_and_current_tick: f32) void {
     rl.ClearBackground(rl.WHITE);
-    rl.DrawGrid(200, 1.0);
+    rl.DrawGrid(200, 1);
 
     for (players) |player| {
         player.draw(interval_between_previous_and_current_tick);
