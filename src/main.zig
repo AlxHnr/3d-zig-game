@@ -146,7 +146,10 @@ const TickTimer = struct {
         self.leftover_time_from_last_tick = elapsed_time % self.tick_duration;
         return LapResult{
             .elapsed_ticks = elapsed_time / self.tick_duration,
-            .next_tick_progress = @intToFloat(f32, self.leftover_time_from_last_tick) / @intToFloat(f32, self.tick_duration),
+            .next_tick_progress = @floatCast(f32, @intToFloat(
+                f64,
+                self.leftover_time_from_last_tick,
+            ) / @intToFloat(f64, self.tick_duration)),
         };
     }
 
@@ -229,8 +232,29 @@ const InputConfiguration = struct {
 };
 
 const Player = struct {
-    character: Character,
-    camera: ThirdPersonCamera,
+    const State = struct {
+        character: Character,
+        camera: ThirdPersonCamera,
+
+        // Interpolate between this players state and another players state based on the given
+        // interval from 0.0 to 1.0.
+        fn lerp(self: State, other: State, interval: f32) State {
+            return State{
+                .character = self.character.lerp(other.character, interval),
+                .camera = self.camera.lerp(other.camera, interval),
+            };
+        }
+
+        // To be called once for each tick.
+        fn update(self: *State) void {
+            self.character.update();
+            self.camera.update(self.character);
+        }
+    };
+
+    state_at_next_tick: State,
+    state_at_previous_tick: State,
+    state_rendered_to_screen: State, // Interpolation result between the previous two states.
     input_configuration: InputConfiguration,
 
     fn create(
@@ -250,42 +274,50 @@ const Player = struct {
             0.6,
             1.8,
         );
-        return Player{
+        const state = State{
             .character = character,
             .camera = ThirdPersonCamera.create(character),
-            .input_configuration = input_configuration,
         };
-    }
-
-    // Interpolate between this players state and another players state based on the given interval
-    // from 0.0 to 1.0.
-    fn lerp(self: Player, other: Player, interval: f32) Player {
         return Player{
-            .character = self.character.lerp(other.character, interval),
-            .camera = self.camera.lerp(other.camera, interval),
-            .input_configuration = if (interval < 0.5)
-                self.input_configuration
-            else
-                other.input_configuration,
+            .state_at_next_tick = state,
+            .state_at_previous_tick = state,
+            .state_rendered_to_screen = state,
+            .input_configuration = input_configuration,
         };
     }
 
     // To be called on every frame after rendering but before processing ticks.
     fn pollInputs(self: *Player) void {
+        // Input is relative to the state rendered to screen.
         var acceleration_direction = std.mem.zeroes(rl.Vector3);
         if (rl.IsKeyDown(self.input_configuration.move_left)) {
-            acceleration_direction = rm.Vector3Subtract(acceleration_direction, self.character.getRightFromLookingDirection());
+            acceleration_direction = rm.Vector3Subtract(
+                acceleration_direction,
+                self.state_rendered_to_screen.character.getRightFromLookingDirection(),
+            );
         }
         if (rl.IsKeyDown(self.input_configuration.move_right)) {
-            acceleration_direction = rm.Vector3Add(acceleration_direction, self.character.getRightFromLookingDirection());
+            acceleration_direction = rm.Vector3Add(
+                acceleration_direction,
+                self.state_rendered_to_screen.character.getRightFromLookingDirection(),
+            );
         }
         if (rl.IsKeyDown(self.input_configuration.move_forward)) {
-            acceleration_direction = rm.Vector3Add(acceleration_direction, self.character.looking_direction);
+            acceleration_direction = rm.Vector3Add(
+                acceleration_direction,
+                self.state_rendered_to_screen.character.looking_direction,
+            );
         }
         if (rl.IsKeyDown(self.input_configuration.move_backwards)) {
-            acceleration_direction = rm.Vector3Subtract(acceleration_direction, self.character.looking_direction);
+            acceleration_direction = rm.Vector3Subtract(
+                acceleration_direction,
+                self.state_rendered_to_screen.character.looking_direction,
+            );
         }
-        self.character.setAcceleration(acceleration_direction.x, acceleration_direction.z);
+        self.state_at_next_tick.character.setAcceleration(
+            acceleration_direction.x,
+            acceleration_direction.z,
+        );
 
         var turning_direction: f32 = 0.0;
         if (rl.IsKeyDown(self.input_configuration.turn_left)) {
@@ -294,13 +326,24 @@ const Player = struct {
         if (rl.IsKeyDown(self.input_configuration.turn_right)) {
             turning_direction += 1.0;
         }
-        self.character.setTurningDirection(turning_direction);
+        self.state_at_next_tick.character.setTurningDirection(turning_direction);
     }
 
     // To be called once for each tick.
     fn update(self: *Player) void {
-        self.character.update();
-        self.camera.update(self.character);
+        self.state_at_previous_tick = self.state_at_next_tick;
+        self.state_at_next_tick.update();
+    }
+
+    fn render(self: *Player, interval_between_previous_and_current_tick: f32) void {
+        self.state_rendered_to_screen = self.state_at_previous_tick.lerp(
+            self.state_at_next_tick,
+            interval_between_previous_and_current_tick,
+        );
+        self.state_rendered_to_screen.camera.camera.Begin();
+        self.state_rendered_to_screen.character.draw();
+        rl.DrawGrid(200, 1.0);
+        self.state_rendered_to_screen.camera.camera.End();
     }
 };
 
@@ -326,15 +369,6 @@ const GameState = struct {
                 .turn_left = rl.KeyboardKey.KEY_PAGE_UP,
                 .turn_right = rl.KeyboardKey.KEY_PAGE_DOWN,
             }),
-        };
-    }
-
-    // Interpolate between this game state and another game state based on the given interval from
-    // 0.0 to 1.0.
-    fn lerp(self: GameState, other: GameState, interval: f32) GameState {
-        return GameState{
-            .left_player = self.left_player.lerp(other.left_player, interval),
-            .right_player = self.right_player.lerp(other.right_player, interval),
         };
     }
 
@@ -371,15 +405,11 @@ pub fn main() !void {
             game_state_at_previous_tick = game_state;
             game_state.update();
         }
-        const game_state_to_render = game_state_at_previous_tick.lerp(game_state, lap_result.next_tick_progress);
 
         rl.BeginDrawing();
         rl.ClearBackground(rl.WHITE);
 
-        rl.BeginMode3D(game_state_to_render.right_player.camera.camera);
-        game_state_to_render.right_player.character.draw();
-        rl.DrawGrid(200, 1.0);
-        rl.EndMode3D();
+        game_state.right_player.render(lap_result.next_tick_progress);
 
         drawFpsCounter();
         rl.EndDrawing();
