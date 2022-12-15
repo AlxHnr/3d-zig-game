@@ -219,27 +219,135 @@ const ThirdPersonCamera = struct {
     }
 };
 
-const GameState = struct {
+const InputConfiguration = struct {
+    move_left: rl.KeyboardKey,
+    move_right: rl.KeyboardKey,
+    move_forward: rl.KeyboardKey,
+    move_backwards: rl.KeyboardKey,
+    turn_left: rl.KeyboardKey,
+    turn_right: rl.KeyboardKey,
+};
+
+const Player = struct {
     character: Character,
     camera: ThirdPersonCamera,
+    input_configuration: InputConfiguration,
 
-    fn create(character: Character) GameState {
-        return GameState{ .character = character, .camera = ThirdPersonCamera.create(character) };
+    fn create(
+        starting_position_x: f32,
+        starting_position_z: f32,
+        input_configuration: InputConfiguration,
+    ) Player {
+        const direction_towards_center = rm.Vector2Normalize(rl.Vector2{
+            .x = -starting_position_x,
+            .y = -starting_position_z,
+        });
+        const character = Character.create(
+            starting_position_x,
+            starting_position_z,
+            direction_towards_center.x,
+            direction_towards_center.y,
+            0.6,
+            1.8,
+        );
+        return Player{
+            .character = character,
+            .camera = ThirdPersonCamera.create(character),
+            .input_configuration = input_configuration,
+        };
+    }
+
+    // Interpolate between this players state and another players state based on the given interval
+    // from 0.0 to 1.0.
+    fn lerp(self: Player, other: Player, interval: f32) Player {
+        return Player{
+            .character = self.character.lerp(other.character, interval),
+            .camera = self.camera.lerp(other.camera, interval),
+            .input_configuration = if (interval < 0.5)
+                self.input_configuration
+            else
+                other.input_configuration,
+        };
+    }
+
+    // To be called on every frame after rendering but before processing ticks.
+    fn pollInputs(self: *Player) void {
+        var acceleration_direction = std.mem.zeroes(rl.Vector3);
+        if (rl.IsKeyDown(self.input_configuration.move_left)) {
+            acceleration_direction = rm.Vector3Subtract(acceleration_direction, self.character.getRightFromLookingDirection());
+        }
+        if (rl.IsKeyDown(self.input_configuration.move_right)) {
+            acceleration_direction = rm.Vector3Add(acceleration_direction, self.character.getRightFromLookingDirection());
+        }
+        if (rl.IsKeyDown(self.input_configuration.move_forward)) {
+            acceleration_direction = rm.Vector3Add(acceleration_direction, self.character.looking_direction);
+        }
+        if (rl.IsKeyDown(self.input_configuration.move_backwards)) {
+            acceleration_direction = rm.Vector3Subtract(acceleration_direction, self.character.looking_direction);
+        }
+        self.character.setAcceleration(acceleration_direction.x, acceleration_direction.z);
+
+        var turning_direction: f32 = 0.0;
+        if (rl.IsKeyDown(self.input_configuration.turn_left)) {
+            turning_direction -= 1.0;
+        }
+        if (rl.IsKeyDown(self.input_configuration.turn_right)) {
+            turning_direction += 1.0;
+        }
+        self.character.setTurningDirection(turning_direction);
+    }
+
+    // To be called once for each tick.
+    fn update(self: *Player) void {
+        self.character.update();
+        self.camera.update(self.character);
+    }
+};
+
+const GameState = struct {
+    left_player: Player,
+    right_player: Player,
+
+    fn create() GameState {
+        return GameState{
+            .left_player = Player.create(28, 28, InputConfiguration{
+                .move_left = rl.KeyboardKey.KEY_A,
+                .move_right = rl.KeyboardKey.KEY_D,
+                .move_forward = rl.KeyboardKey.KEY_W,
+                .move_backwards = rl.KeyboardKey.KEY_S,
+                .turn_left = rl.KeyboardKey.KEY_Q,
+                .turn_right = rl.KeyboardKey.KEY_E,
+            }),
+            .right_player = Player.create(12, 34, InputConfiguration{
+                .move_left = rl.KeyboardKey.KEY_LEFT,
+                .move_right = rl.KeyboardKey.KEY_RIGHT,
+                .move_forward = rl.KeyboardKey.KEY_UP,
+                .move_backwards = rl.KeyboardKey.KEY_DOWN,
+                .turn_left = rl.KeyboardKey.KEY_PAGE_UP,
+                .turn_right = rl.KeyboardKey.KEY_PAGE_DOWN,
+            }),
+        };
     }
 
     // Interpolate between this game state and another game state based on the given interval from
     // 0.0 to 1.0.
     fn lerp(self: GameState, other: GameState, interval: f32) GameState {
         return GameState{
-            .character = self.character.lerp(other.character, interval),
-            .camera = self.camera.lerp(other.camera, interval),
+            .left_player = self.left_player.lerp(other.left_player, interval),
+            .right_player = self.right_player.lerp(other.right_player, interval),
         };
+    }
+
+    // To be called on every frame after rendering but before processing ticks.
+    fn pollInputs(self: *GameState) void {
+        self.left_player.pollInputs();
+        self.right_player.pollInputs();
     }
 
     // To be called once for each tick.
     fn update(self: *GameState) void {
-        self.character.update();
-        self.camera.update(self.character);
+        self.left_player.update();
+        self.right_player.update();
     }
 };
 
@@ -250,48 +358,26 @@ pub fn main() !void {
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
-    var world_at_previous_tick = GameState.create(Character.create(0.0, 0.0, 0.0, 1.0, 0.6, 1.8));
-    var world_at_next_tick = world_at_previous_tick;
+    var game_state = GameState.create();
+    var game_state_at_previous_tick = game_state;
 
     var tick_timer = try TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
+        game_state.pollInputs();
+
         const lap_result = tick_timer.lap();
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
-            world_at_previous_tick = world_at_next_tick;
-            world_at_next_tick.update();
+            game_state_at_previous_tick = game_state;
+            game_state.update();
         }
-        const world_to_render = world_at_previous_tick.lerp(world_at_next_tick, lap_result.next_tick_progress);
-
-        var acceleration_direction = std.mem.zeroes(rl.Vector3);
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT)) {
-            acceleration_direction = rm.Vector3Subtract(acceleration_direction, world_to_render.character.getRightFromLookingDirection());
-        }
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT)) {
-            acceleration_direction = rm.Vector3Add(acceleration_direction, world_to_render.character.getRightFromLookingDirection());
-        }
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_UP)) {
-            acceleration_direction = rm.Vector3Add(acceleration_direction, world_to_render.character.looking_direction);
-        }
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_DOWN)) {
-            acceleration_direction = rm.Vector3Subtract(acceleration_direction, world_to_render.character.looking_direction);
-        }
-        world_at_next_tick.character.setAcceleration(acceleration_direction.x, acceleration_direction.z);
-
-        var turning_direction: f32 = 0.0;
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_A)) {
-            turning_direction -= 1.0;
-        }
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_D)) {
-            turning_direction += 1.0;
-        }
-        world_at_next_tick.character.setTurningDirection(turning_direction);
+        const game_state_to_render = game_state_at_previous_tick.lerp(game_state, lap_result.next_tick_progress);
 
         rl.BeginDrawing();
         rl.ClearBackground(rl.WHITE);
 
-        rl.BeginMode3D(world_to_render.camera.camera);
-        world_to_render.character.draw();
+        rl.BeginMode3D(game_state_to_render.right_player.camera.camera);
+        game_state_to_render.right_player.character.draw();
         rl.DrawGrid(200, 1.0);
         rl.EndMode3D();
 
