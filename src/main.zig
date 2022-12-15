@@ -39,7 +39,7 @@ fn projectVector3OnAnother(a: rl.Vector3, b: rl.Vector3) rl.Vector3 {
 }
 
 const Character = struct {
-    position: rl.Vector3,
+    position: rl.Vector3, // Y will always be 0.0.
     looking_direction: rl.Vector3, // Y will always be 0.0.
     turning_direction: f32, // Values from -1.0 (turning left) to 1.0 (turning right).
     acceleration_direction: rl.Vector3, // Y will always be 0.0.
@@ -56,7 +56,7 @@ const Character = struct {
         height: f32,
     ) Character {
         return Character{
-            .position = rl.Vector3{ .x = position_x, .y = height / 2.0, .z = position_z },
+            .position = rl.Vector3{ .x = position_x, .y = 0.0, .z = position_z },
             .looking_direction = XzTo3DDirection(direction_x, direction_z),
             .turning_direction = 0.0,
             .acceleration_direction = std.mem.zeroes(rl.Vector3),
