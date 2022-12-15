@@ -388,8 +388,8 @@ fn drawSceneToTexture(
 }
 
 pub fn main() !void {
-    const screen_width = 800;
-    const screen_height = 450;
+    var screen_width: u16 = 800;
+    var screen_height: u16 = 450;
 
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
@@ -413,9 +413,9 @@ pub fn main() !void {
         }),
     };
 
-    var left_split_screen = try createRenderTexture(screen_width / 2, screen_height);
+    var left_split_screen = try createRenderTexture(@divTrunc(screen_width, 2), screen_height);
     defer rl.UnloadRenderTexture(left_split_screen);
-    var right_split_screen = try createRenderTexture(screen_width / 2, screen_height);
+    var right_split_screen = try createRenderTexture(@divTrunc(screen_width, 2), screen_height);
     defer rl.UnloadRenderTexture(right_split_screen);
 
     var tick_timer = try TickTimer.start(60);
@@ -435,12 +435,12 @@ pub fn main() !void {
         const split_rectangle = rl.Rectangle{
             .x = 0,
             .y = 0,
-            .width = screen_width / 2,
-            .height = -screen_height,
+            .width = @intToFloat(f32, screen_width) / 2,
+            .height = -@intToFloat(f32, screen_height),
         };
         rl.DrawTextureRec(left_split_screen.texture, split_rectangle, std.mem.zeroes(rl.Vector2), rl.WHITE);
         rl.DrawTextureRec(right_split_screen.texture, split_rectangle, rl.Vector2{
-            .x = screen_width / 2,
+            .x = @intToFloat(f32, screen_width) / 2,
             .y = 0,
         }, rl.WHITE);
         drawFpsCounter();
@@ -448,6 +448,19 @@ pub fn main() !void {
 
         for (players) |*player| {
             player.pollInputs(lap_result.next_tick_progress);
+        }
+        if (rl.IsWindowResized()) {
+            screen_width = @intCast(u16, rl.GetScreenWidth());
+            screen_height = @intCast(u16, rl.GetScreenHeight());
+
+            rl.UnloadRenderTexture(left_split_screen);
+            left_split_screen.id = 0;
+
+            rl.UnloadRenderTexture(right_split_screen);
+            right_split_screen.id = 0;
+
+            left_split_screen = try createRenderTexture(@divTrunc(screen_width, 2), screen_height);
+            right_split_screen = try createRenderTexture(@divTrunc(screen_width, 2), screen_height);
         }
     }
 }
