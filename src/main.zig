@@ -369,7 +369,7 @@ const Player = struct {
 
 fn drawScene(players: []const Player, interval_between_previous_and_current_tick: f32) void {
     rl.ClearBackground(rl.WHITE);
-    rl.DrawGrid(200, 1);
+    rl.DrawGrid(100, 1);
 
     for (players) |player| {
         player.draw(interval_between_previous_and_current_tick);
