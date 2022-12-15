@@ -254,7 +254,6 @@ const Player = struct {
 
     state_at_next_tick: State,
     state_at_previous_tick: State,
-    state_rendered_to_screen: State, // Interpolation result between the previous two states.
     input_configuration: InputConfiguration,
 
     fn create(
@@ -281,37 +280,41 @@ const Player = struct {
         return Player{
             .state_at_next_tick = state,
             .state_at_previous_tick = state,
-            .state_rendered_to_screen = state,
             .input_configuration = input_configuration,
         };
     }
 
     // To be called on every frame after rendering but before processing ticks.
-    fn pollInputs(self: *Player) void {
-        // Input is relative to the state rendered to screen.
+    fn pollInputs(self: *Player, interval_between_previous_and_current_tick: f32) void {
+        // Input is relative to the state currently on screen.
+        const state_rendered_to_screen = self.state_at_previous_tick.lerp(
+            self.state_at_next_tick,
+            interval_between_previous_and_current_tick,
+        );
+
         var acceleration_direction = std.mem.zeroes(rl.Vector3);
         if (rl.IsKeyDown(self.input_configuration.move_left)) {
             acceleration_direction = rm.Vector3Subtract(
                 acceleration_direction,
-                self.state_rendered_to_screen.character.getRightFromLookingDirection(),
+                state_rendered_to_screen.character.getRightFromLookingDirection(),
             );
         }
         if (rl.IsKeyDown(self.input_configuration.move_right)) {
             acceleration_direction = rm.Vector3Add(
                 acceleration_direction,
-                self.state_rendered_to_screen.character.getRightFromLookingDirection(),
+                state_rendered_to_screen.character.getRightFromLookingDirection(),
             );
         }
         if (rl.IsKeyDown(self.input_configuration.move_forward)) {
             acceleration_direction = rm.Vector3Add(
                 acceleration_direction,
-                self.state_rendered_to_screen.character.looking_direction,
+                state_rendered_to_screen.character.looking_direction,
             );
         }
         if (rl.IsKeyDown(self.input_configuration.move_backwards)) {
             acceleration_direction = rm.Vector3Subtract(
                 acceleration_direction,
-                self.state_rendered_to_screen.character.looking_direction,
+                state_rendered_to_screen.character.looking_direction,
             );
         }
         self.state_at_next_tick.character.setAcceleration(
@@ -335,55 +338,54 @@ const Player = struct {
         self.state_at_next_tick.update();
     }
 
-    fn render(self: *Player, interval_between_previous_and_current_tick: f32) void {
-        self.state_rendered_to_screen = self.state_at_previous_tick.lerp(
+    fn draw(self: Player, interval_between_previous_and_current_tick: f32) void {
+        self.state_at_previous_tick.lerp(
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
-        );
-        self.state_rendered_to_screen.camera.camera.Begin();
-        self.state_rendered_to_screen.character.draw();
-        rl.DrawGrid(200, 1.0);
-        self.state_rendered_to_screen.camera.camera.End();
+        ).character.draw();
+    }
+
+    fn getCamera(self: Player, interval_between_previous_and_current_tick: f32) rl.Camera {
+        return self.state_at_previous_tick.lerp(
+            self.state_at_next_tick,
+            interval_between_previous_and_current_tick,
+        ).camera.camera;
     }
 };
 
-const GameState = struct {
-    left_player: Player,
-    right_player: Player,
+fn drawScene(players: []const Player, interval_between_previous_and_current_tick: f32) void {
+    rl.ClearBackground(rl.WHITE);
+    rl.DrawGrid(200, 1.0);
 
-    fn create() GameState {
-        return GameState{
-            .left_player = Player.create(28, 28, InputConfiguration{
-                .move_left = rl.KeyboardKey.KEY_A,
-                .move_right = rl.KeyboardKey.KEY_D,
-                .move_forward = rl.KeyboardKey.KEY_W,
-                .move_backwards = rl.KeyboardKey.KEY_S,
-                .turn_left = rl.KeyboardKey.KEY_Q,
-                .turn_right = rl.KeyboardKey.KEY_E,
-            }),
-            .right_player = Player.create(12, 34, InputConfiguration{
-                .move_left = rl.KeyboardKey.KEY_LEFT,
-                .move_right = rl.KeyboardKey.KEY_RIGHT,
-                .move_forward = rl.KeyboardKey.KEY_UP,
-                .move_backwards = rl.KeyboardKey.KEY_DOWN,
-                .turn_left = rl.KeyboardKey.KEY_PAGE_UP,
-                .turn_right = rl.KeyboardKey.KEY_PAGE_DOWN,
-            }),
-        };
+    for (players) |player| {
+        player.draw(interval_between_previous_and_current_tick);
     }
+}
 
-    // To be called on every frame after rendering but before processing ticks.
-    fn pollInputs(self: *GameState) void {
-        self.left_player.pollInputs();
-        self.right_player.pollInputs();
-    }
-
-    // To be called once for each tick.
-    fn update(self: *GameState) void {
-        self.left_player.update();
-        self.right_player.update();
-    }
+const RaylibError = error{
+    UnableToCreateRenderTexture,
 };
+
+fn createRenderTexture(width: u16, height: u16) RaylibError!rl.RenderTexture {
+    const render_texture = rl.LoadRenderTexture(width, height);
+    return if (render_texture.id == 0)
+        RaylibError.UnableToCreateRenderTexture
+    else
+        render_texture;
+}
+
+fn drawSceneToTexture(
+    texture: rl.RenderTexture,
+    players: []const Player,
+    current_player: Player,
+    interval_between_previous_and_current_tick: f32,
+) void {
+    rl.BeginTextureMode(texture);
+    rl.BeginMode3D(current_player.getCamera(interval_between_previous_and_current_tick));
+    drawScene(players, interval_between_previous_and_current_tick);
+    rl.EndMode3D();
+    rl.EndTextureMode();
+}
 
 pub fn main() !void {
     const screen_width = 800;
@@ -392,26 +394,60 @@ pub fn main() !void {
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
-    var game_state = GameState.create();
-    var game_state_at_previous_tick = game_state;
+    var players = [_]Player{
+        Player.create(28, 28, InputConfiguration{
+            .move_left = rl.KeyboardKey.KEY_A,
+            .move_right = rl.KeyboardKey.KEY_D,
+            .move_forward = rl.KeyboardKey.KEY_W,
+            .move_backwards = rl.KeyboardKey.KEY_S,
+            .turn_left = rl.KeyboardKey.KEY_Q,
+            .turn_right = rl.KeyboardKey.KEY_E,
+        }),
+        Player.create(12, 34, InputConfiguration{
+            .move_left = rl.KeyboardKey.KEY_LEFT,
+            .move_right = rl.KeyboardKey.KEY_RIGHT,
+            .move_forward = rl.KeyboardKey.KEY_UP,
+            .move_backwards = rl.KeyboardKey.KEY_DOWN,
+            .turn_left = rl.KeyboardKey.KEY_PAGE_UP,
+            .turn_right = rl.KeyboardKey.KEY_PAGE_DOWN,
+        }),
+    };
+
+    var left_split_screen = try createRenderTexture(screen_width / 2, screen_height);
+    defer rl.UnloadRenderTexture(left_split_screen);
+    var right_split_screen = try createRenderTexture(screen_width / 2, screen_height);
+    defer rl.UnloadRenderTexture(right_split_screen);
 
     var tick_timer = try TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
-        game_state.pollInputs();
-
         const lap_result = tick_timer.lap();
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
-            game_state_at_previous_tick = game_state;
-            game_state.update();
+            for (players) |*player| {
+                player.update();
+            }
         }
 
+        drawSceneToTexture(left_split_screen, &players, players[0], lap_result.next_tick_progress);
+        drawSceneToTexture(right_split_screen, &players, players[1], lap_result.next_tick_progress);
+
         rl.BeginDrawing();
-        rl.ClearBackground(rl.WHITE);
-
-        game_state.right_player.render(lap_result.next_tick_progress);
-
+        const split_rectangle = rl.Rectangle{
+            .x = 0,
+            .y = 0,
+            .width = screen_width / 2,
+            .height = -screen_height,
+        };
+        rl.DrawTextureRec(left_split_screen.texture, split_rectangle, std.mem.zeroes(rl.Vector2), rl.WHITE);
+        rl.DrawTextureRec(right_split_screen.texture, split_rectangle, rl.Vector2{
+            .x = screen_width / 2,
+            .y = 0,
+        }, rl.WHITE);
         drawFpsCounter();
         rl.EndDrawing();
+
+        for (players) |*player| {
+            player.pollInputs(lap_result.next_tick_progress);
+        }
     }
 }
