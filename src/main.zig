@@ -30,6 +30,15 @@ fn getAngle(a: rl.Vector2, b: rl.Vector2) f32 {
     return std.math.acos(std.math.clamp(dot_product, -1.0, 1.0));
 }
 
+fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
+    return rl.Color{
+        .r = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.r), @intToFloat(f32, b.r), interval)),
+        .g = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.g), @intToFloat(f32, b.g), interval)),
+        .b = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.b), @intToFloat(f32, b.b), interval)),
+        .a = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.a), @intToFloat(f32, b.a), interval)),
+    };
+}
+
 fn XzTo3DDirection(direction_x: f32, direction_z: f32) rl.Vector3 {
     return rm.Vector3Normalize(rl.Vector3{ .x = direction_x, .y = 0.0, .z = direction_z });
 }
@@ -46,6 +55,7 @@ const Character = struct {
     velocity: rl.Vector3, // Y will always be 0.0.
     width: f32,
     height: f32,
+    color: rl.Color,
 
     fn create(
         position_x: f32,
@@ -54,6 +64,7 @@ const Character = struct {
         direction_z: f32,
         width: f32,
         height: f32,
+        color: rl.Color,
     ) Character {
         return Character{
             .position = rl.Vector3{ .x = position_x, .y = 0.0, .z = position_z },
@@ -63,6 +74,7 @@ const Character = struct {
             .velocity = std.mem.zeroes(rl.Vector3),
             .width = width,
             .height = height,
+            .color = color,
         };
     }
 
@@ -78,6 +90,7 @@ const Character = struct {
             .velocity = rm.Vector3Lerp(self.velocity, other.velocity, i),
             .width = rm.Lerp(self.width, other.width, i),
             .height = rm.Lerp(self.height, other.height, i),
+            .color = lerpColor(self.color, other.color, i),
         };
     }
 
@@ -113,9 +126,8 @@ const Character = struct {
     }
 
     fn draw(self: Character) void {
-        const body_color = rl.Color{ .r = 142.0, .g = 223.0, .b = 255.0, .a = 100.0 };
-        const frame_color = rl.Color{ .r = 0.0, .g = 48.0, .b = 143.0, .a = 255.0 };
-        rl.DrawCylinder(self.position, 0, self.width / 2.0, self.height, 10, body_color);
+        const frame_color = rl.Color{ .r = 127.0, .g = 127.0, .b = 127.0, .a = 255.0 };
+        rl.DrawCylinder(self.position, 0, self.width / 2.0, self.height, 10, self.color);
         rl.DrawCylinderWires(self.position, 0, self.width / 2.0, self.height, 10, frame_color);
 
         const direction_line_target = rm.Vector3Add(self.position, rm.Vector3Scale(self.looking_direction, 2.0));
@@ -259,6 +271,7 @@ const Player = struct {
     fn create(
         starting_position_x: f32,
         starting_position_z: f32,
+        color: rl.Color,
         input_configuration: InputConfiguration,
     ) Player {
         const direction_towards_center = rm.Vector2Normalize(rl.Vector2{
@@ -272,6 +285,7 @@ const Player = struct {
             direction_towards_center.y,
             0.6,
             1.8,
+            color,
         );
         const state = State{
             .character = character,
@@ -395,7 +409,7 @@ pub fn main() !void {
     defer rl.CloseWindow();
 
     var players = [_]Player{
-        Player.create(28, 28, InputConfiguration{
+        Player.create(28, 28, rl.Color{ .r = 154, .g = 205, .b = 50, .a = 100 }, InputConfiguration{
             .move_left = rl.KeyboardKey.KEY_A,
             .move_right = rl.KeyboardKey.KEY_D,
             .move_forward = rl.KeyboardKey.KEY_W,
@@ -403,7 +417,7 @@ pub fn main() !void {
             .turn_left = rl.KeyboardKey.KEY_Q,
             .turn_right = rl.KeyboardKey.KEY_E,
         }),
-        Player.create(12, 34, InputConfiguration{
+        Player.create(12, 34, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 100 }, InputConfiguration{
             .move_left = rl.KeyboardKey.KEY_LEFT,
             .move_right = rl.KeyboardKey.KEY_RIGHT,
             .move_forward = rl.KeyboardKey.KEY_UP,
