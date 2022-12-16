@@ -355,6 +355,12 @@ const Player = struct {
         self.state_at_next_tick.character.setTurningDirection(turning_direction);
     }
 
+    /// Behaves like letting go of all buttons/keys for this player.
+    fn resetInputs(self: *Player) void {
+        self.state_at_next_tick.character.setAcceleration(0, 0);
+        self.state_at_next_tick.character.setTurningDirection(0);
+    }
+
     /// To be called once for each tick.
     fn update(self: *Player) void {
         self.state_at_previous_tick = self.state_at_next_tick;
@@ -579,6 +585,10 @@ pub fn main() !void {
                 },
             }
             reinit_split_screen_setup = true;
+
+            for (available_players) |*player| {
+                player.resetInputs();
+            }
         }
         if (rl.IsWindowResized()) {
             screen_width = @intCast(u16, rl.GetScreenWidth());
