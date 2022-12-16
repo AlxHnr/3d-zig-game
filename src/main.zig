@@ -475,6 +475,7 @@ const SplitScreenSetup = struct {
 
     fn prerenderScenes(
         self: *SplitScreenSetup,
+        /// Assumed to be at least as large as screen_splittings passed to create().
         players: []const Player,
         interval_between_previous_and_current_tick: f32,
     ) void {
@@ -510,26 +511,31 @@ const InputPresets = struct {
     };
 };
 
+const ProgramMode = enum {
+    TwoPlayerSplitScreen,
+    Edit,
+};
+
 pub fn main() !void {
     var screen_width: u16 = 800;
     var screen_height: u16 = 450;
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
-    var allocated_players = [_]Player{
-        Player.create(28, 28, rl.Color{ .r = 154, .g = 205, .b = 50, .a = 100 }, InputPresets.Wasd),
-        Player.create(12, 34, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 100 }, InputPresets.ArrowKeys),
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
+    var available_players = [_]Player{
         // Admin for map editing.
         Player.create(0, 0, rl.Color{ .r = 140, .g = 17, .b = 39, .a = 100 }, InputPresets.ArrowKeys),
+        Player.create(28, 28, rl.Color{ .r = 154, .g = 205, .b = 50, .a = 100 }, InputPresets.Wasd),
+        Player.create(12, 34, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 100 }, InputPresets.ArrowKeys),
     };
-    var active_players = allocated_players[0 .. allocated_players.len - 1];
-    var controllable_players = active_players;
 
-    var split_screen_setup =
-        try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
+    var program_mode = ProgramMode.TwoPlayerSplitScreen;
+    var active_players: []Player = available_players[1..];
+    var controllable_players: []Player = active_players;
+    var split_screen_setup = try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
     defer split_screen_setup.destroy(gpa.allocator());
 
     var tick_timer = try TickTimer.start(60);
@@ -552,12 +558,35 @@ pub fn main() !void {
         for (controllable_players) |*player| {
             player.pollInputs(lap_result.next_tick_progress);
         }
+
+        var reinit_split_screen_setup = false;
+        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_ENTER)) {
+            switch (program_mode) {
+                ProgramMode.TwoPlayerSplitScreen => {
+                    program_mode = ProgramMode.Edit;
+                    active_players = available_players[0..];
+                    controllable_players = available_players[0..1];
+                },
+                ProgramMode.Edit => {
+                    program_mode = ProgramMode.TwoPlayerSplitScreen;
+                    active_players = available_players[1..];
+                    controllable_players = active_players;
+                },
+            }
+            reinit_split_screen_setup = true;
+        }
         if (rl.IsWindowResized()) {
             screen_width = @intCast(u16, rl.GetScreenWidth());
             screen_height = @intCast(u16, rl.GetScreenHeight());
-
+            reinit_split_screen_setup = true;
+        }
+        if (reinit_split_screen_setup) {
+            const screen_splittings: u3 = switch (program_mode) {
+                ProgramMode.TwoPlayerSplitScreen => 2,
+                ProgramMode.Edit => 1,
+            };
             const new_split_screen_setup =
-                try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
+                try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, screen_splittings);
             split_screen_setup.destroy(gpa.allocator());
             split_screen_setup = new_split_screen_setup;
         }
