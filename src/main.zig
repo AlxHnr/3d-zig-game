@@ -48,11 +48,16 @@ fn projectVector3OnAnother(a: rl.Vector3, b: rl.Vector3) rl.Vector3 {
 }
 
 const Character = struct {
-    position: rl.Vector3, // Y will always be 0.
-    looking_direction: rl.Vector3, // Y will always be 0.
-    turning_direction: f32, // Values from -1 (turning left) to 1 (turning right).
-    acceleration_direction: rl.Vector3, // Y will always be 0.
-    velocity: rl.Vector3, // Y will always be 0.
+    /// Y will always be 0.
+    position: rl.Vector3,
+    /// Y will always be 0.
+    looking_direction: rl.Vector3,
+    /// Values from -1 (turning left) to 1 (turning right).
+    turning_direction: f32,
+    /// Y will always be 0.
+    acceleration_direction: rl.Vector3,
+    /// Y will always be 0.
+    velocity: rl.Vector3,
     width: f32,
     height: f32,
     color: rl.Color,
@@ -78,8 +83,8 @@ const Character = struct {
         };
     }
 
-    // Interpolate between this characters state and another characters state based on the given
-    // interval from 0 to 1.
+    /// Interpolate between this characters state and another characters state based on the given
+    /// interval from 0 to 1.
     fn lerp(self: Character, other: Character, interval: f32) Character {
         const i = std.math.clamp(interval, 0, 1);
         return Character{
@@ -98,17 +103,17 @@ const Character = struct {
         return rm.Vector3CrossProduct(self.looking_direction, Constants.up);
     }
 
-    // Given direction values will be normalized.
+    /// Given direction values will be normalized.
     fn setAcceleration(self: *Character, direction_x: f32, direction_z: f32) void {
         self.acceleration_direction = XzTo3DDirection(direction_x, direction_z);
     }
 
-    // Value from -1 (left) to 1 (right). Will be clamped into this range.
+    /// Value from -1 (left) to 1 (right). Will be clamped into this range.
     fn setTurningDirection(self: *Character, turning_direction: f32) void {
         self.turning_direction = rm.Clamp(turning_direction, -1, 1);
     }
 
-    // To be called once for each tick.
+    /// To be called once for each tick.
     fn update(self: *Character) void {
         const is_accelerating = rm.Vector3Length(self.acceleration_direction) > std.math.f32_epsilon;
         if (is_accelerating) {
@@ -135,14 +140,14 @@ const Character = struct {
     }
 };
 
-// Lap timer for measuring elapsed ticks.
+/// Lap timer for measuring elapsed ticks.
 const TickTimer = struct {
     timer: std.time.Timer,
     tick_duration: u64,
     leftover_time_from_last_tick: u64,
 
-    // Create a new tick timer for measuring the specified tick rate. The given value is assumed to
-    // be non-zero. Fails when no clock is available.
+    /// Create a new tick timer for measuring the specified tick rate. The given value is assumed to
+    /// be non-zero. Fails when no clock is available.
     fn start(ticks_per_second: u32) std.time.Timer.Error!TickTimer {
         std.debug.assert(ticks_per_second > 0);
         return TickTimer{
@@ -152,7 +157,7 @@ const TickTimer = struct {
         };
     }
 
-    // Return the amount of elapsed ticks since the last call of this function or since start().
+    /// Return the amount of elapsed ticks since the last call of this function or since start().
     fn lap(self: *TickTimer) LapResult {
         const elapsed_time = self.timer.lap() + self.leftover_time_from_last_tick;
         self.leftover_time_from_last_tick = elapsed_time % self.tick_duration;
@@ -167,17 +172,17 @@ const TickTimer = struct {
 
     const LapResult = struct {
         elapsed_ticks: u64,
-        // Value between 0 and 1 denoting how much percent of the next tick has already passed.
-        // This can be used for interpolating between two ticks.
+        /// Value between 0 and 1 denoting how much percent of the next tick has already passed.
+        /// This can be used for interpolating between two ticks.
         next_tick_progress: f32,
     };
 };
 
-// Camera which smoothly follows the character and auto-rotates across the Y axis.
+/// Camera which smoothly follows the character and auto-rotates across the Y axis.
 const ThirdPersonCamera = struct {
     camera: rl.Camera,
 
-    // Initialize the camera to look down at the given character from behind.
+    /// Initialize the camera to look down at the given character from behind.
     fn create(character: Character) ThirdPersonCamera {
         var camera = std.mem.zeroes(rl.Camera);
         camera.up = Constants.up;
@@ -196,8 +201,8 @@ const ThirdPersonCamera = struct {
         return ThirdPersonCamera{ .camera = camera };
     }
 
-    // Interpolate between this cameras state and another cameras state based on the given interval
-    // from 0 to 1.
+    /// Interpolate between this cameras state and another cameras state based on the given interval
+    /// from 0 to 1.
     fn lerp(self: ThirdPersonCamera, other: ThirdPersonCamera, interval: f32) ThirdPersonCamera {
         const i = std.math.clamp(interval, 0, 1);
 
@@ -208,7 +213,7 @@ const ThirdPersonCamera = struct {
         return ThirdPersonCamera{ .camera = camera };
     }
 
-    // To be called once for each tick.
+    /// To be called once for each tick.
     fn update(self: *ThirdPersonCamera, character_to_follow: Character) void {
         const camera_follow_speed = 0.15;
 
@@ -248,8 +253,8 @@ const Player = struct {
         character: Character,
         camera: ThirdPersonCamera,
 
-        // Interpolate between this players state and another players state based on the given
-        // interval from 0 to 1.
+        /// Interpolate between this players state and another players state based on the given
+        /// interval from 0 to 1.
         fn lerp(self: State, other: State, interval: f32) State {
             return State{
                 .character = self.character.lerp(other.character, interval),
@@ -257,7 +262,7 @@ const Player = struct {
             };
         }
 
-        // To be called once for each tick.
+        /// To be called once for each tick.
         fn update(self: *State) void {
             self.character.update();
             self.camera.update(self.character);
@@ -302,7 +307,7 @@ const Player = struct {
         };
     }
 
-    // To be called on every frame after rendering but before processing ticks.
+    /// To be called on every frame after rendering but before processing ticks.
     fn pollInputs(self: *Player, interval_between_previous_and_current_tick: f32) void {
         // Input is relative to the state currently on screen.
         const state_rendered_to_screen = self.state_at_previous_tick.lerp(
@@ -350,7 +355,7 @@ const Player = struct {
         self.state_at_next_tick.character.setTurningDirection(turning_direction);
     }
 
-    // To be called once for each tick.
+    /// To be called once for each tick.
     fn update(self: *Player) void {
         self.state_at_previous_tick = self.state_at_next_tick;
         self.state_at_next_tick.update();
