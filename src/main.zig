@@ -420,10 +420,58 @@ const Player = struct {
     }
 };
 
-fn drawScene(players: []const Player, interval_between_previous_and_current_tick: f32) void {
-    rl.ClearBackground(rl.WHITE);
-    rl.DrawGrid(100, 1);
+const LevelGeometry = struct {
+    wall_mesh: rl.Mesh,
+    wall_material: rl.Material,
+    wall_matrices: std.ArrayList(rl.Matrix),
 
+    /// Stores the given allocator internally for its entire lifetime.
+    fn create(allocator: std.mem.Allocator) LevelGeometry {
+        var material = rl.LoadMaterialDefault();
+        material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = rl.LIGHTGRAY;
+        return LevelGeometry{
+            .wall_mesh = rl.GenMeshCube(1, 1, 1),
+            .wall_material = material,
+            .wall_matrices = std.ArrayList(rl.Matrix).init(allocator),
+        };
+    }
+
+    fn destroy(self: *LevelGeometry) void {
+        rl.UnloadMesh(self.wall_mesh);
+        rl.UnloadMaterial(self.wall_material);
+        self.wall_matrices.deinit();
+    }
+
+    fn draw(self: LevelGeometry) void {
+        rl.DrawGrid(100, 1);
+        for (self.wall_matrices.items) |matrix| {
+            rl.DrawMesh(self.wall_mesh, self.wall_material, matrix);
+        }
+    }
+
+    fn addWall(
+        self: *LevelGeometry,
+        position_x: f32,
+        position_z: f32,
+        length: f32,
+        rotation_angle_around_y_axis: f32,
+    ) !void {
+        const default_height: f32 = 5;
+        const wall = try self.wall_matrices.addOne();
+        wall.* = rm.MatrixMultiply(rm.MatrixMultiply(
+            rm.MatrixScale(length, default_height, 0.25),
+            rm.MatrixRotateY(rotation_angle_around_y_axis),
+        ), rm.MatrixTranslate(position_x, default_height / 2, position_z));
+    }
+};
+
+fn drawScene(
+    players: []const Player,
+    level_geometry: LevelGeometry,
+    interval_between_previous_and_current_tick: f32,
+) void {
+    rl.ClearBackground(rl.WHITE);
+    level_geometry.draw();
     for (players) |player| {
         player.draw(interval_between_previous_and_current_tick);
     }
@@ -460,11 +508,12 @@ const SplitScreenRenderContext = struct {
         self: *SplitScreenRenderContext,
         players: []const Player,
         current_player: Player,
+        level_geometry: LevelGeometry,
         interval_between_previous_and_current_tick: f32,
     ) void {
         rl.BeginTextureMode(self.prerendered_scene);
         rl.BeginMode3D(current_player.getCamera(interval_between_previous_and_current_tick));
-        drawScene(players, interval_between_previous_and_current_tick);
+        drawScene(players, level_geometry, interval_between_previous_and_current_tick);
         rl.EndMode3D();
         rl.EndTextureMode();
     }
@@ -526,11 +575,17 @@ const SplitScreenSetup = struct {
         self: *SplitScreenSetup,
         /// Assumed to be at least as large as screen_splittings passed to create().
         players: []const Player,
+        level_geometry: LevelGeometry,
         interval_between_previous_and_current_tick: f32,
     ) void {
         std.debug.assert(players.len >= self.render_contexts.len);
         for (self.render_contexts) |*context, index| {
-            context.prerenderScene(players, players[index], interval_between_previous_and_current_tick);
+            context.prerenderScene(
+                players,
+                players[index],
+                level_geometry,
+                interval_between_previous_and_current_tick,
+            );
         }
     }
 
@@ -581,6 +636,10 @@ pub fn main() !void {
         Player.create(12, 34, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 100 }, InputPresets.ArrowKeys),
     };
 
+    var level_geometry = LevelGeometry.create(gpa.allocator());
+    defer level_geometry.destroy();
+    try level_geometry.addWall(20, 20, 50, degreesToRadians(12));
+
     var program_mode = ProgramMode.TwoPlayerSplitScreen;
     var active_players: []Player = available_players[1..];
     var controllable_players: []Player = active_players;
@@ -597,7 +656,7 @@ pub fn main() !void {
             }
         }
 
-        split_screen_setup.prerenderScenes(active_players, lap_result.next_tick_progress);
+        split_screen_setup.prerenderScenes(active_players, level_geometry, lap_result.next_tick_progress);
 
         rl.BeginDrawing();
         split_screen_setup.drawToScreen();
