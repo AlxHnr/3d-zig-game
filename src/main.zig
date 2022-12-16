@@ -181,6 +181,9 @@ const TickTimer = struct {
 /// Camera which smoothly follows the character and auto-rotates across the Y axis.
 const ThirdPersonCamera = struct {
     camera: rl.Camera,
+    distance_from_character: f32,
+    /// This value will be approached by update().
+    target_distance_from_character: f32,
 
     /// Initialize the camera to look down at the given character from behind.
     fn create(character: Character) ThirdPersonCamera {
@@ -198,7 +201,11 @@ const ThirdPersonCamera = struct {
         const offset_from_character = rm.Vector3Scale(rm.Vector3Normalize(unnormalized_direction), distance_from_character);
         camera.position = rm.Vector3Add(character.position, offset_from_character);
 
-        return ThirdPersonCamera{ .camera = camera };
+        return ThirdPersonCamera{
+            .camera = camera,
+            .distance_from_character = distance_from_character,
+            .target_distance_from_character = distance_from_character,
+        };
     }
 
     /// Interpolate between this cameras state and another cameras state based on the given interval
@@ -210,7 +217,24 @@ const ThirdPersonCamera = struct {
         camera.position = rm.Vector3Lerp(self.camera.position, other.camera.position, i);
         camera.target = rm.Vector3Lerp(self.camera.target, other.camera.target, i);
 
-        return ThirdPersonCamera{ .camera = camera };
+        return ThirdPersonCamera{
+            .camera = camera,
+            .distance_from_character = rm.Lerp(
+                self.distance_from_character,
+                other.distance_from_character,
+                i,
+            ),
+            .target_distance_from_character = rm.Lerp(
+                self.target_distance_from_character,
+                other.target_distance_from_character,
+                i,
+            ),
+        };
+    }
+
+    fn increaseDistanceToCharacter(self: *ThirdPersonCamera, offset: f32) void {
+        self.target_distance_from_character =
+            std.math.max(self.target_distance_from_character + offset, 5);
     }
 
     /// To be called once for each tick.
@@ -235,7 +259,22 @@ const ThirdPersonCamera = struct {
             rotation_angle;
         const updated_camera_offset = rm.Vector3RotateByAxisAngle(camera_offset, Constants.up, rotation_step);
         self.camera.target = rm.Vector3Lerp(self.camera.target, character_to_follow.position, camera_follow_speed);
-        self.camera.position = rm.Vector3Add(self.camera.target, updated_camera_offset);
+
+        if (std.math.fabs(self.distance_from_character - self.target_distance_from_character) >
+            std.math.f32_epsilon)
+        {
+            self.distance_from_character = rm.Lerp(
+                self.distance_from_character,
+                self.target_distance_from_character,
+                camera_follow_speed,
+            );
+            self.camera.position = rm.Vector3Add(self.camera.target, rm.Vector3Scale(
+                rm.Vector3Normalize(updated_camera_offset),
+                self.distance_from_character,
+            ));
+        } else {
+            self.camera.position = rm.Vector3Add(self.camera.target, updated_camera_offset);
+        }
     }
 };
 
@@ -588,6 +627,12 @@ pub fn main() !void {
 
             for (available_players) |*player| {
                 player.resetInputs();
+            }
+        }
+        if (program_mode == ProgramMode.Edit) {
+            if (std.math.fabs(rl.GetMouseWheelMoveV().y) > std.math.f32_epsilon) {
+                active_players[0].state_at_next_tick.camera
+                    .increaseDistanceToCharacter(-rl.GetMouseWheelMoveV().y * 2.5);
             }
         }
         if (rl.IsWindowResized()) {
