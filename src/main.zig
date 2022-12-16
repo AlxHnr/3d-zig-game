@@ -380,101 +380,182 @@ const RaylibError = error{
     UnableToCreateRenderTexture,
 };
 
-fn createRenderTexture(width: u16, height: u16) RaylibError!rl.RenderTexture {
-    const render_texture = rl.LoadRenderTexture(width, height);
-    return if (render_texture.id == 0)
-        RaylibError.UnableToCreateRenderTexture
-    else
-        render_texture;
-}
+const SplitScreenRenderContext = struct {
+    prerendered_scene: rl.RenderTexture,
+    destination_on_screen: rl.Rectangle,
 
-fn drawSceneToTexture(
-    texture: rl.RenderTexture,
-    players: []const Player,
-    current_player: Player,
-    interval_between_previous_and_current_tick: f32,
-) void {
-    rl.BeginTextureMode(texture);
-    rl.BeginMode3D(current_player.getCamera(interval_between_previous_and_current_tick));
-    drawScene(players, interval_between_previous_and_current_tick);
-    rl.EndMode3D();
-    rl.EndTextureMode();
-}
+    fn create(destination_on_screen: rl.Rectangle) RaylibError!SplitScreenRenderContext {
+        const prerendered_scene = rl.LoadRenderTexture(
+            @floatToInt(c_int, destination_on_screen.width),
+            @floatToInt(c_int, destination_on_screen.height),
+        );
+        return if (prerendered_scene.id == 0)
+            RaylibError.UnableToCreateRenderTexture
+        else
+            SplitScreenRenderContext{
+                .prerendered_scene = prerendered_scene,
+                .destination_on_screen = destination_on_screen,
+            };
+    }
+
+    fn destroy(self: *SplitScreenRenderContext) void {
+        rl.UnloadRenderTexture(self.prerendered_scene);
+        self.prerendered_scene.id = 0;
+    }
+
+    fn prerenderScene(
+        self: *SplitScreenRenderContext,
+        players: []const Player,
+        current_player: Player,
+        interval_between_previous_and_current_tick: f32,
+    ) void {
+        rl.BeginTextureMode(self.prerendered_scene);
+        rl.BeginMode3D(current_player.getCamera(interval_between_previous_and_current_tick));
+        drawScene(players, interval_between_previous_and_current_tick);
+        rl.EndMode3D();
+        rl.EndTextureMode();
+    }
+
+    fn drawTextureToScreen(self: SplitScreenRenderContext) void {
+        const source_rectangle = rl.Rectangle{
+            .x = 0,
+            .y = 0,
+            .width = self.destination_on_screen.width,
+            .height = -self.destination_on_screen.height,
+        };
+        rl.DrawTextureRec(
+            self.prerendered_scene.texture,
+            source_rectangle,
+            rl.Vector2{ .x = self.destination_on_screen.x, .y = self.destination_on_screen.y },
+            rl.WHITE,
+        );
+    }
+};
+
+const SplitScreenSetup = struct {
+    render_contexts: []SplitScreenRenderContext,
+
+    fn create(
+        allocator: std.mem.Allocator,
+        screen_width: u16,
+        screen_height: u16,
+        screen_splittings: u3,
+    ) !SplitScreenSetup {
+        const render_contexts = try allocator.alloc(SplitScreenRenderContext, screen_splittings);
+        errdefer allocator.free(render_contexts);
+
+        for (render_contexts) |*context, index| {
+            const render_width = screen_width / screen_splittings;
+            const destination_on_screen = rl.Rectangle{
+                .x = @intToFloat(f32, render_width * index),
+                .y = 0,
+                .width = @intToFloat(f32, render_width),
+                .height = @intToFloat(f32, screen_height),
+            };
+            context.* = SplitScreenRenderContext.create(destination_on_screen) catch |err| {
+                for (render_contexts[0..index]) |*context_to_destroy| {
+                    context_to_destroy.destroy();
+                }
+                return err;
+            };
+        }
+        return SplitScreenSetup{ .render_contexts = render_contexts };
+    }
+
+    fn destroy(self: *SplitScreenSetup, allocator: std.mem.Allocator) void {
+        for (self.render_contexts) |*context| {
+            context.destroy();
+        }
+        allocator.free(self.render_contexts);
+    }
+
+    fn prerenderScenes(
+        self: *SplitScreenSetup,
+        players: []const Player,
+        interval_between_previous_and_current_tick: f32,
+    ) void {
+        std.debug.assert(players.len >= self.render_contexts.len);
+        for (self.render_contexts) |*context, index| {
+            context.prerenderScene(players, players[index], interval_between_previous_and_current_tick);
+        }
+    }
+
+    fn drawToScreen(self: SplitScreenSetup) void {
+        for (self.render_contexts) |context| {
+            context.drawTextureToScreen();
+        }
+    }
+};
+
+const InputPresets = struct {
+    const Wasd = InputConfiguration{
+        .move_left = rl.KeyboardKey.KEY_A,
+        .move_right = rl.KeyboardKey.KEY_D,
+        .move_forward = rl.KeyboardKey.KEY_W,
+        .move_backwards = rl.KeyboardKey.KEY_S,
+        .turn_left = rl.KeyboardKey.KEY_Q,
+        .turn_right = rl.KeyboardKey.KEY_E,
+    };
+    const ArrowKeys = InputConfiguration{
+        .move_left = rl.KeyboardKey.KEY_LEFT,
+        .move_right = rl.KeyboardKey.KEY_RIGHT,
+        .move_forward = rl.KeyboardKey.KEY_UP,
+        .move_backwards = rl.KeyboardKey.KEY_DOWN,
+        .turn_left = rl.KeyboardKey.KEY_PAGE_UP,
+        .turn_right = rl.KeyboardKey.KEY_PAGE_DOWN,
+    };
+};
 
 pub fn main() !void {
     var screen_width: u16 = 800;
     var screen_height: u16 = 450;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
 
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
-    var players = [_]Player{
-        Player.create(28, 28, rl.Color{ .r = 154, .g = 205, .b = 50, .a = 100 }, InputConfiguration{
-            .move_left = rl.KeyboardKey.KEY_A,
-            .move_right = rl.KeyboardKey.KEY_D,
-            .move_forward = rl.KeyboardKey.KEY_W,
-            .move_backwards = rl.KeyboardKey.KEY_S,
-            .turn_left = rl.KeyboardKey.KEY_Q,
-            .turn_right = rl.KeyboardKey.KEY_E,
-        }),
-        Player.create(12, 34, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 100 }, InputConfiguration{
-            .move_left = rl.KeyboardKey.KEY_LEFT,
-            .move_right = rl.KeyboardKey.KEY_RIGHT,
-            .move_forward = rl.KeyboardKey.KEY_UP,
-            .move_backwards = rl.KeyboardKey.KEY_DOWN,
-            .turn_left = rl.KeyboardKey.KEY_PAGE_UP,
-            .turn_right = rl.KeyboardKey.KEY_PAGE_DOWN,
-        }),
+    var allocated_players = [_]Player{
+        Player.create(28, 28, rl.Color{ .r = 154, .g = 205, .b = 50, .a = 100 }, InputPresets.Wasd),
+        Player.create(12, 34, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 100 }, InputPresets.ArrowKeys),
+        // Admin for map editing.
+        Player.create(0, 0, rl.Color{ .r = 140, .g = 17, .b = 39, .a = 100 }, InputPresets.ArrowKeys),
     };
+    var active_players = allocated_players[0 .. allocated_players.len - 1];
+    var controllable_players = active_players;
 
-    var left_split_screen = try createRenderTexture(@divTrunc(screen_width, 2), screen_height);
-    defer rl.UnloadRenderTexture(left_split_screen);
-    var right_split_screen = try createRenderTexture(@divTrunc(screen_width, 2), screen_height);
-    defer rl.UnloadRenderTexture(right_split_screen);
+    var split_screen_setup =
+        try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
+    defer split_screen_setup.destroy(gpa.allocator());
 
     var tick_timer = try TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
         const lap_result = tick_timer.lap();
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
-            for (players) |*player| {
+            for (active_players) |*player| {
                 player.update();
             }
         }
 
-        drawSceneToTexture(left_split_screen, &players, players[0], lap_result.next_tick_progress);
-        drawSceneToTexture(right_split_screen, &players, players[1], lap_result.next_tick_progress);
+        split_screen_setup.prerenderScenes(active_players, lap_result.next_tick_progress);
 
         rl.BeginDrawing();
-        const split_rectangle = rl.Rectangle{
-            .x = 0,
-            .y = 0,
-            .width = @intToFloat(f32, screen_width) / 2,
-            .height = -@intToFloat(f32, screen_height),
-        };
-        rl.DrawTextureRec(left_split_screen.texture, split_rectangle, std.mem.zeroes(rl.Vector2), rl.WHITE);
-        rl.DrawTextureRec(right_split_screen.texture, split_rectangle, rl.Vector2{
-            .x = @intToFloat(f32, screen_width) / 2,
-            .y = 0,
-        }, rl.WHITE);
+        split_screen_setup.drawToScreen();
         drawFpsCounter();
         rl.EndDrawing();
 
-        for (players) |*player| {
+        for (controllable_players) |*player| {
             player.pollInputs(lap_result.next_tick_progress);
         }
         if (rl.IsWindowResized()) {
             screen_width = @intCast(u16, rl.GetScreenWidth());
             screen_height = @intCast(u16, rl.GetScreenHeight());
 
-            rl.UnloadRenderTexture(left_split_screen);
-            left_split_screen.id = 0;
-
-            rl.UnloadRenderTexture(right_split_screen);
-            right_split_screen.id = 0;
-
-            left_split_screen = try createRenderTexture(@divTrunc(screen_width, 2), screen_height);
-            right_split_screen = try createRenderTexture(@divTrunc(screen_width, 2), screen_height);
+            const new_split_screen_setup =
+                try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
+            split_screen_setup.destroy(gpa.allocator());
+            split_screen_setup = new_split_screen_setup;
         }
     }
 }
