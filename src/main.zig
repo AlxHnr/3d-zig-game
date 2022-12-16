@@ -274,10 +274,14 @@ const Player = struct {
         color: rl.Color,
         input_configuration: InputConfiguration,
     ) Player {
-        const direction_towards_center = rm.Vector2Normalize(rl.Vector2{
-            .x = -starting_position_x,
-            .y = -starting_position_z,
-        });
+        const position_is_zero = starting_position_z + starting_position_z < std.math.f32_epsilon;
+        const direction_towards_center = if (position_is_zero)
+            rl.Vector2{ .x = 0, .y = 1 }
+        else
+            rm.Vector2Normalize(rl.Vector2{
+                .x = -starting_position_x,
+                .y = -starting_position_z,
+            });
         const character = Character.create(
             starting_position_x,
             starting_position_z,
