@@ -131,9 +131,8 @@ const Character = struct {
     }
 
     fn draw(self: Character) void {
-        const frame_color = rl.Color{ .r = 127, .g = 127, .b = 127, .a = 255 };
         rl.DrawCylinder(self.position, 0, self.width / 2, self.height, 10, self.color);
-        rl.DrawCylinderWires(self.position, 0, self.width / 2, self.height, 10, frame_color);
+        rl.DrawCylinderWires(self.position, 0, self.width / 2, self.height, 10, rl.GRAY);
 
         const direction_line_target = rm.Vector3Add(self.position, rm.Vector3Scale(self.looking_direction, 2));
         rl.DrawLine3D(self.position, direction_line_target, rl.BLUE);
