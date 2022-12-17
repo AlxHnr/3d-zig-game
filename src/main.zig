@@ -473,11 +473,41 @@ const Player = struct {
 };
 
 const LevelGeometry = struct {
+    const Wall = struct {
+        id: u64,
+        /// Y will always be 0.
+        start_position: rl.Vector3,
+        /// Y will always be 0.
+        end_position: rl.Vector3,
+        precomputed_matrix: rl.Matrix,
+        const height: f32 = 5;
+        const thickness: f32 = 0.25;
+
+        fn create(id: u64, start_x: f32, start_z: f32, end_x: f32, end_z: f32) Wall {
+            const start = rl.Vector3{ .x = start_x, .y = 0, .z = start_z };
+            const end = rl.Vector3{ .x = end_x, .y = 0, .z = end_z };
+            const offset = rm.Vector3Subtract(end, start);
+            const length = rm.Vector3Length(offset);
+            const center = rm.Vector3Add(start, rm.Vector3Scale(offset, 0.5));
+            const rotation_angle_around_y_axis =
+                rm.Vector3Angle(rl.Vector3{ .x = 0, .y = 0, .z = -1 }, rm.Vector3Normalize(offset));
+
+            return Wall{
+                .id = id,
+                .start_position = start,
+                .end_position = end,
+                .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
+                    rm.MatrixScale(length, height, thickness),
+                    rm.MatrixRotateY(rotation_angle_around_y_axis),
+                ), rm.MatrixTranslate(center.x, height / 2, center.z)),
+            };
+        }
+    };
+
+    wall_id_counter: u64,
+    walls: std.ArrayList(Wall),
     wall_mesh: rl.Mesh,
     wall_material: rl.Material,
-    wall_matrices: std.ArrayList(rl.Matrix),
-    const wall_height: f32 = 5;
-    const wall_thickness: f32 = 0.25;
     const level_grid_size = 100;
 
     /// Stores the given allocator internally for its entire lifetime.
@@ -485,39 +515,32 @@ const LevelGeometry = struct {
         var material = rl.LoadMaterialDefault();
         material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = rl.LIGHTGRAY;
         return LevelGeometry{
+            .wall_id_counter = 0,
+            .walls = std.ArrayList(Wall).init(allocator),
             .wall_mesh = rl.GenMeshCube(1, 1, 1),
             .wall_material = material,
-            .wall_matrices = std.ArrayList(rl.Matrix).init(allocator),
         };
     }
 
     fn destroy(self: *LevelGeometry) void {
+        self.walls.deinit();
         rl.UnloadMesh(self.wall_mesh);
         rl.UnloadMaterial(self.wall_material);
-        self.wall_matrices.deinit();
     }
 
     fn draw(self: LevelGeometry) void {
         rl.DrawGrid(level_grid_size, 1);
-        for (self.wall_matrices.items) |matrix| {
-            rl.DrawMesh(self.wall_mesh, self.wall_material, matrix);
+        for (self.walls.items) |wall| {
+            rl.DrawMesh(self.wall_mesh, self.wall_material, wall.precomputed_matrix);
         }
     }
 
-    fn addWall(self: *LevelGeometry, start_x: f32, start_z: f32, end_x: f32, end_z: f32) !void {
-        const start = rl.Vector3{ .x = start_x, .y = 0, .z = start_z };
-        const end = rl.Vector3{ .x = end_x, .y = 0, .z = end_z };
-        const offset = rm.Vector3Subtract(end, start);
-        const length = rm.Vector3Length(offset);
-        const center = rm.Vector3Add(start, rm.Vector3Scale(offset, 0.5));
-        const rotation_angle_around_y_axis =
-            rm.Vector3Angle(rl.Vector3{ .x = 0, .y = 0, .z = -1 }, rm.Vector3Normalize(offset));
-
-        const wall = try self.wall_matrices.addOne();
-        wall.* = rm.MatrixMultiply(rm.MatrixMultiply(
-            rm.MatrixScale(length, wall_height, wall_thickness),
-            rm.MatrixRotateY(rotation_angle_around_y_axis),
-        ), rm.MatrixTranslate(center.x, wall_height / 2, center.z));
+    /// Returns the id of the created wall on success.
+    fn addWall(self: *LevelGeometry, start_x: f32, start_z: f32, end_x: f32, end_z: f32) !u64 {
+        const wall = try self.walls.addOne();
+        wall.* = Wall.create(self.wall_id_counter, start_x, start_z, end_x, end_z);
+        self.wall_id_counter = self.wall_id_counter + 1;
+        return wall.id;
     }
 };
 
@@ -699,7 +722,8 @@ pub fn main() !void {
 
     var level_geometry = LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy();
-    try level_geometry.addWall(0, -50, 50, 0);
+    _ = try level_geometry.addWall(0, -50, 50, 0);
+
     var tick_timer = try TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
         const lap_result = tick_timer.lap();
