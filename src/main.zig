@@ -42,10 +42,6 @@ fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
     };
 }
 
-fn XzTo3DDirection(direction_x: f32, direction_z: f32) rl.Vector3 {
-    return rm.Vector3Normalize(rl.Vector3{ .x = direction_x, .y = 0, .z = direction_z });
-}
-
 fn projectVector3OnAnother(a: rl.Vector3, b: rl.Vector3) rl.Vector3 {
     return rm.Vector3Scale(b, rm.Vector3DotProduct(a, b) / rm.Vector3DotProduct(b, b));
 }
@@ -76,7 +72,7 @@ const Character = struct {
     ) Character {
         return Character{
             .position = rl.Vector3{ .x = position_x, .y = 0, .z = position_z },
-            .looking_direction = XzTo3DDirection(direction_x, direction_z),
+            .looking_direction = rm.Vector3Normalize(rl.Vector3{ .x = direction_x, .y = 0, .z = direction_z }),
             .turning_direction = 0,
             .acceleration_direction = std.mem.zeroes(rl.Vector3),
             .velocity = std.mem.zeroes(rl.Vector3),
@@ -108,7 +104,8 @@ const Character = struct {
 
     /// Given direction values will be normalized.
     fn setAcceleration(self: *Character, direction_x: f32, direction_z: f32) void {
-        self.acceleration_direction = XzTo3DDirection(direction_x, direction_z);
+        self.acceleration_direction =
+            rm.Vector3Normalize(rl.Vector3{ .x = direction_x, .y = 0, .z = direction_z });
     }
 
     /// Value from -1 (left) to 1 (right). Will be clamped into this range.
@@ -371,7 +368,8 @@ const Player = struct {
         color: rl.Color,
         input_configuration: InputConfiguration,
     ) Player {
-        const position_is_zero = starting_position_z + starting_position_z < std.math.f32_epsilon;
+        const position_is_zero =
+            std.math.fabs(starting_position_x) + std.math.fabs(starting_position_z) < std.math.f32_epsilon;
         const direction_towards_center = if (position_is_zero)
             rl.Vector2{ .x = 0, .y = 1 }
         else
@@ -480,6 +478,7 @@ const LevelGeometry = struct {
     wall_matrices: std.ArrayList(rl.Matrix),
     const wall_height: f32 = 5;
     const wall_thickness: f32 = 0.25;
+    const level_grid_size = 100;
 
     /// Stores the given allocator internally for its entire lifetime.
     fn create(allocator: std.mem.Allocator) LevelGeometry {
@@ -499,40 +498,29 @@ const LevelGeometry = struct {
     }
 
     fn draw(self: LevelGeometry) void {
-        rl.DrawGrid(100, 1);
+        rl.DrawGrid(level_grid_size, 1);
         for (self.wall_matrices.items) |matrix| {
             rl.DrawMesh(self.wall_mesh, self.wall_material, matrix);
         }
     }
 
     fn addWall(self: *LevelGeometry, start_x: f32, start_z: f32, end_x: f32, end_z: f32) !void {
-        const start = rl.Vector2{ .x = start_x, .y = start_z };
-        const end = rl.Vector2{ .x = end_x, .y = end_z };
-        const offset = rm.Vector2Subtract(end, start);
-        const length = rm.Vector2Length(offset);
-        const center = rm.Vector2Add(start, rm.Vector2Scale(offset, 0.5));
+        const start = rl.Vector3{ .x = start_x, .y = 0, .z = start_z };
+        const end = rl.Vector3{ .x = end_x, .y = 0, .z = end_z };
+        const offset = rm.Vector3Subtract(end, start);
+        const length = rm.Vector3Length(offset);
+        const center = rm.Vector3Add(start, rm.Vector3Scale(offset, 0.5));
         const rotation_angle_around_y_axis =
-            -getAngle(rl.Vector2{ .x = 0, .y = 1 }, rm.Vector2Normalize(offset));
+            rm.Vector3Angle(rl.Vector3{ .x = 0, .y = 0, .z = -1 }, rm.Vector3Normalize(offset));
 
         const wall = try self.wall_matrices.addOne();
         wall.* = rm.MatrixMultiply(rm.MatrixMultiply(
             rm.MatrixScale(length, wall_height, wall_thickness),
             rm.MatrixRotateY(rotation_angle_around_y_axis),
-        ), rm.MatrixTranslate(center.x, wall_height / 2, center.y));
+        ), rm.MatrixTranslate(center.x, wall_height / 2, center.z));
     }
 };
 
-fn drawScene(
-    players: []const Player,
-    level_geometry: LevelGeometry,
-    interval_between_previous_and_current_tick: f32,
-) void {
-    rl.ClearBackground(rl.WHITE);
-    level_geometry.draw();
-    for (players) |player| {
-        player.draw(interval_between_previous_and_current_tick);
-    }
-}
 
 const RaylibError = error{
     UnableToCreateRenderTexture,
@@ -570,7 +558,11 @@ const SplitScreenRenderContext = struct {
     ) void {
         rl.BeginTextureMode(self.prerendered_scene);
         rl.BeginMode3D(current_player.getCamera(interval_between_previous_and_current_tick));
-        drawScene(players, level_geometry, interval_between_previous_and_current_tick);
+        rl.ClearBackground(rl.WHITE);
+        level_geometry.draw();
+        for (players) |player| {
+            player.draw(interval_between_previous_and_current_tick);
+        }
         rl.EndMode3D();
         rl.EndTextureMode();
     }
@@ -698,10 +690,6 @@ pub fn main() !void {
         Player.create(12, 34, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 100 }, InputPresets.ArrowKeys),
     };
 
-    var level_geometry = LevelGeometry.create(gpa.allocator());
-    defer level_geometry.destroy();
-    try level_geometry.addWall(0, 50, 50, 0);
-
     var program_mode = ProgramMode.TwoPlayerSplitScreen;
     var edit_mode_view = EditModeView.FromBehind;
     var active_players: []Player = available_players[1..];
@@ -709,6 +697,9 @@ pub fn main() !void {
     var split_screen_setup = try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
     defer split_screen_setup.destroy(gpa.allocator());
 
+    var level_geometry = LevelGeometry.create(gpa.allocator());
+    defer level_geometry.destroy();
+    try level_geometry.addWall(0, -50, 50, 0);
     var tick_timer = try TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
         const lap_result = tick_timer.lap();
