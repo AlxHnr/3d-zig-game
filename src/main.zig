@@ -317,6 +317,10 @@ const ThirdPersonCamera = struct {
             rm.Vector3Scale(rm.Vector3Normalize(camera_offset), self.distance_from_character);
         self.camera.position = rm.Vector3Add(self.camera.target, rescaled_camera_offset);
     }
+
+    fn getRay(self: ThirdPersonCamera, mouse_position_on_screen: rl.Vector2) rl.Ray {
+        return rl.GetMouseRay(mouse_position_on_screen, self.camera);
+    }
 };
 
 const InputConfiguration = struct {
@@ -455,11 +459,11 @@ const Player = struct {
         ).character.draw();
     }
 
-    fn getCamera(self: Player, interval_between_previous_and_current_tick: f32) rl.Camera {
+    fn getCamera(self: Player, interval_between_previous_and_current_tick: f32) ThirdPersonCamera {
         return self.state_at_previous_tick.lerp(
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
-        ).camera.camera;
+        ).camera;
     }
 };
 
@@ -532,8 +536,32 @@ const LevelGeometry = struct {
         self.wall_id_counter = self.wall_id_counter + 1;
         return wall.id;
     }
-};
 
+    /// If the given wall id does not exist, this function will do nothing.
+    fn updateWall(self: *LevelGeometry, wall_id: u64, start_x: f32, start_z: f32, end_x: f32, end_z: f32) void {
+        for (self.walls.items) |*wall| {
+            if (wall.id == wall_id) {
+                wall.* = Wall.create(wall_id, start_x, start_z, end_x, end_z);
+                return;
+            }
+        }
+    }
+
+    fn castRayToLevelGrid(_: LevelGeometry, ray: rl.Ray) ?rl.Vector3 {
+        const half_grid_size = level_grid_size / 2;
+        const collision = rl.GetRayCollisionQuad(
+            ray,
+            rl.Vector3{ .x = -half_grid_size, .y = 0, .z = -half_grid_size },
+            rl.Vector3{ .x = half_grid_size, .y = 0, .z = -half_grid_size },
+            rl.Vector3{ .x = half_grid_size, .y = 0, .z = half_grid_size },
+            rl.Vector3{ .x = -half_grid_size, .y = 0, .z = half_grid_size },
+        );
+        return if (collision.hit)
+            collision.point
+        else
+            null;
+    }
+};
 
 const RaylibError = error{
     UnableToCreateRenderTexture,
@@ -570,7 +598,7 @@ const SplitScreenRenderContext = struct {
         interval_between_previous_and_current_tick: f32,
     ) void {
         rl.BeginTextureMode(self.prerendered_scene);
-        rl.BeginMode3D(current_player.getCamera(interval_between_previous_and_current_tick));
+        rl.BeginMode3D(current_player.getCamera(interval_between_previous_and_current_tick).camera);
         rl.ClearBackground(rl.WHITE);
         level_geometry.draw();
         for (players) |player| {
@@ -687,6 +715,8 @@ const EditModeView = enum {
     TopDown,
 };
 
+const CurrentlyEditedWall = struct { id: u64, start_position: rl.Vector3 };
+
 pub fn main() !void {
     var screen_width: u16 = 800;
     var screen_height: u16 = 450;
@@ -712,7 +742,7 @@ pub fn main() !void {
 
     var level_geometry = LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy();
-    _ = try level_geometry.addWall(0, -50, 50, 0);
+    var currently_edited_wall: ?CurrentlyEditedWall = null;
 
     var tick_timer = try TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
@@ -772,6 +802,37 @@ pub fn main() !void {
                         active_players[0].state_at_next_tick.camera
                             .setAngleFromGround(ThirdPersonCamera.default_angle_from_ground);
                     },
+                }
+            }
+            if (currently_edited_wall) |*wall| {
+                if (rm.Vector2Length(rl.GetMouseDelta()) > std.math.f32_epsilon) {
+                    const ray = active_players[0].getCamera(lap_result.next_tick_progress)
+                        .getRay(rl.GetMousePosition());
+                    if (level_geometry.castRayToLevelGrid(ray)) |position_on_grid| {
+                        level_geometry.updateWall(
+                            wall.id,
+                            wall.start_position.x,
+                            wall.start_position.z,
+                            position_on_grid.x,
+                            position_on_grid.z,
+                        );
+                    }
+                }
+                if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
+                    currently_edited_wall = null;
+                }
+            } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
+                const ray = active_players[0].getCamera(lap_result.next_tick_progress)
+                    .getRay(rl.GetMousePosition());
+                if (level_geometry.castRayToLevelGrid(ray)) |position_on_grid| {
+                    const wall_id = try level_geometry.addWall(
+                        position_on_grid.x,
+                        position_on_grid.z,
+                        position_on_grid.x,
+                        position_on_grid.z,
+                    );
+                    currently_edited_wall =
+                        CurrentlyEditedWall{ .id = wall_id, .start_position = position_on_grid };
                 }
             }
         }
