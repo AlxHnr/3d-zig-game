@@ -186,8 +186,12 @@ const ThirdPersonCamera = struct {
     distance_from_character: f32,
     /// This value will be approached by update().
     target_distance_from_character: f32,
+    angle_from_ground: f32,
+    /// This value will be approached by update().
+    target_angle_from_ground: f32,
 
     const camera_follow_speed = 0.15;
+    const default_angle_from_ground = degreesToRadians(20);
 
     /// Initialize the camera to look down at the given character from behind.
     fn create(character: Character) ThirdPersonCamera {
@@ -197,11 +201,11 @@ const ThirdPersonCamera = struct {
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
         camera.target = character.position;
 
-        const angle_from_ground = degreesToRadians(20);
         const distance_from_character = 10;
         const back_direction = rm.Vector3Negate(character.looking_direction);
         const right_axis = rm.Vector3Negate(character.getRightFromLookingDirection());
-        const unnormalized_direction = rm.Vector3RotateByAxisAngle(back_direction, right_axis, angle_from_ground);
+        const unnormalized_direction =
+            rm.Vector3RotateByAxisAngle(back_direction, right_axis, default_angle_from_ground);
         const offset_from_character =
             rm.Vector3Scale(rm.Vector3Normalize(unnormalized_direction), distance_from_character);
         camera.position = rm.Vector3Add(character.position, offset_from_character);
@@ -210,6 +214,8 @@ const ThirdPersonCamera = struct {
             .camera = camera,
             .distance_from_character = distance_from_character,
             .target_distance_from_character = distance_from_character,
+            .angle_from_ground = default_angle_from_ground,
+            .target_angle_from_ground = default_angle_from_ground,
         };
     }
 
@@ -234,6 +240,12 @@ const ThirdPersonCamera = struct {
                 other.target_distance_from_character,
                 i,
             ),
+            .angle_from_ground = rm.Lerp(self.angle_from_ground, other.angle_from_ground, i),
+            .target_angle_from_ground = rm.Lerp(
+                self.target_angle_from_ground,
+                other.target_angle_from_ground,
+                i,
+            ),
         };
     }
 
@@ -242,23 +254,48 @@ const ThirdPersonCamera = struct {
             std.math.max(self.target_distance_from_character + offset, 5);
     }
 
-    /// Angle between 0 and 1/2 pi (90 degrees). Will be clamped into this range.
+    /// Angle between 0 and 1.55 (89 degrees). Will be clamped into this range.
     fn setAngleFromGround(self: *ThirdPersonCamera, angle: f32) void {
-        self.target_angle_from_ground = std.math.clamp(angle, 0, degreesToRadians(90));
+        self.target_angle_from_ground = std.math.clamp(angle, 0, degreesToRadians(89));
     }
 
     /// To be called once for each tick.
     fn update(self: *ThirdPersonCamera, character_to_follow: Character) void {
+        self.updateAngleFromGround();
         const y_rotated_camera_offset = self.computeYRotatedCameraOffset(character_to_follow);
         self.camera.target = rm.Vector3Lerp(self.camera.target, character_to_follow.position, camera_follow_speed);
         self.camera.position = rm.Vector3Add(self.camera.target, y_rotated_camera_offset);
         self.updateCameraDistanceFromCharacter();
     }
 
-    fn computeYRotatedCameraOffset(
-        self: *ThirdPersonCamera,
-        character_to_follow: Character,
-    ) rl.Vector3 {
+    fn updateAngleFromGround(self: *ThirdPersonCamera) void {
+        if (isEqualFloat(self.angle_from_ground, self.target_angle_from_ground)) {
+            return;
+        }
+        self.angle_from_ground = rm.Lerp(
+            self.angle_from_ground,
+            self.target_angle_from_ground,
+            camera_follow_speed,
+        );
+
+        const camera_offset = rm.Vector3Subtract(self.camera.position, self.camera.target);
+        const flat_camera_direction = rm.Vector3Normalize(
+            rl.Vector3{ .x = camera_offset.x, .y = 0, .z = camera_offset.z },
+        );
+        const rotation_axis =
+            rl.Vector3{ .x = flat_camera_direction.z, .y = 0, .z = -flat_camera_direction.x };
+        const rotated_camera_direction = rm.Vector3RotateByAxisAngle(
+            flat_camera_direction,
+            rotation_axis,
+            -self.angle_from_ground,
+        );
+        self.camera.position = rm.Vector3Add(
+            self.camera.target,
+            rm.Vector3Scale(rotated_camera_direction, self.distance_from_character),
+        );
+    }
+
+    fn computeYRotatedCameraOffset(self: ThirdPersonCamera, character_to_follow: Character) rl.Vector3 {
         const camera_offset = rm.Vector3Subtract(self.camera.position, self.camera.target);
         const camera_direction_2d = rm.Vector2Normalize(
             rl.Vector2{ .x = camera_offset.x, .y = camera_offset.z },
@@ -637,6 +674,11 @@ const ProgramMode = enum {
     Edit,
 };
 
+const EditModeView = enum {
+    FromBehind,
+    TopDown,
+};
+
 pub fn main() !void {
     var screen_width: u16 = 800;
     var screen_height: u16 = 450;
@@ -658,6 +700,7 @@ pub fn main() !void {
     try level_geometry.addWall(20, 20, 50, degreesToRadians(12));
 
     var program_mode = ProgramMode.TwoPlayerSplitScreen;
+    var edit_mode_view = EditModeView.FromBehind;
     var active_players: []Player = available_players[1..];
     var controllable_players: []Player = active_players;
     var split_screen_setup = try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
@@ -708,6 +751,20 @@ pub fn main() !void {
             if (std.math.fabs(rl.GetMouseWheelMoveV().y) > std.math.f32_epsilon) {
                 active_players[0].state_at_next_tick.camera
                     .increaseDistanceToCharacter(-rl.GetMouseWheelMoveV().y * 2.5);
+            }
+            if (rl.IsKeyPressed(rl.KeyboardKey.KEY_T)) {
+                switch (edit_mode_view) {
+                    EditModeView.FromBehind => {
+                        edit_mode_view = EditModeView.TopDown;
+                        active_players[0].state_at_next_tick.camera
+                            .setAngleFromGround(degreesToRadians(90));
+                    },
+                    EditModeView.TopDown => {
+                        edit_mode_view = EditModeView.FromBehind;
+                        active_players[0].state_at_next_tick.camera
+                            .setAngleFromGround(ThirdPersonCamera.default_angle_from_ground);
+                    },
+                }
             }
         }
         if (rl.IsWindowResized()) {
