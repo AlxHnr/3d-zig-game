@@ -478,6 +478,8 @@ const LevelGeometry = struct {
     wall_mesh: rl.Mesh,
     wall_material: rl.Material,
     wall_matrices: std.ArrayList(rl.Matrix),
+    const wall_height: f32 = 5;
+    const wall_thickness: f32 = 0.25;
 
     /// Stores the given allocator internally for its entire lifetime.
     fn create(allocator: std.mem.Allocator) LevelGeometry {
@@ -503,19 +505,20 @@ const LevelGeometry = struct {
         }
     }
 
-    fn addWall(
-        self: *LevelGeometry,
-        position_x: f32,
-        position_z: f32,
-        length: f32,
-        rotation_angle_around_y_axis: f32,
-    ) !void {
-        const default_height: f32 = 5;
+    fn addWall(self: *LevelGeometry, start_x: f32, start_z: f32, end_x: f32, end_z: f32) !void {
+        const start = rl.Vector2{ .x = start_x, .y = start_z };
+        const end = rl.Vector2{ .x = end_x, .y = end_z };
+        const offset = rm.Vector2Subtract(end, start);
+        const length = rm.Vector2Length(offset);
+        const center = rm.Vector2Add(start, rm.Vector2Scale(offset, 0.5));
+        const rotation_angle_around_y_axis =
+            -getAngle(rl.Vector2{ .x = 0, .y = 1 }, rm.Vector2Normalize(offset));
+
         const wall = try self.wall_matrices.addOne();
         wall.* = rm.MatrixMultiply(rm.MatrixMultiply(
-            rm.MatrixScale(length, default_height, 0.25),
+            rm.MatrixScale(length, wall_height, wall_thickness),
             rm.MatrixRotateY(rotation_angle_around_y_axis),
-        ), rm.MatrixTranslate(position_x, default_height / 2, position_z));
+        ), rm.MatrixTranslate(center.x, wall_height / 2, center.y));
     }
 };
 
@@ -697,7 +700,7 @@ pub fn main() !void {
 
     var level_geometry = LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy();
-    try level_geometry.addWall(20, 20, 50, degreesToRadians(12));
+    try level_geometry.addWall(0, 50, 50, 0);
 
     var program_mode = ProgramMode.TwoPlayerSplitScreen;
     var edit_mode_view = EditModeView.FromBehind;
