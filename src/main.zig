@@ -547,6 +547,16 @@ const LevelGeometry = struct {
     }
 
     /// If the given wall id does not exist, this function will do nothing.
+    fn removeWall(self: *LevelGeometry, wall_id: u64) void {
+        for (self.walls.items) |wall, index| {
+            if (wall.id == wall_id) {
+                _ = self.walls.orderedRemove(index);
+                return;
+            }
+        }
+    }
+
+    /// If the given wall id does not exist, this function will do nothing.
     fn updateWall(self: *LevelGeometry, wall_id: u64, start_x: f32, start_z: f32, end_x: f32, end_z: f32) void {
         if (self.findWall(wall_id)) |wall| {
             const tint = wall.tint;
@@ -570,6 +580,7 @@ const LevelGeometry = struct {
         return null;
     }
 
+    /// If the given ray hits the level grid, return the position on the floor.
     fn castRayToLevelGrid(_: LevelGeometry, ray: rl.Ray) ?rl.Vector3 {
         const half_grid_size = level_grid_size / 2;
         const collision = rl.GetRayCollisionQuad(
@@ -583,6 +594,26 @@ const LevelGeometry = struct {
             collision.point
         else
             null;
+    }
+
+    /// Find the id of the closest wall hit by the given ray, if available.
+    fn castRayToWalls(self: LevelGeometry, ray: rl.Ray) ?u64 {
+        var closest_wall_id: ?u64 = null;
+        var closest_distance: ?f32 = null;
+        for (self.walls.items) |wall| {
+            const collision = rl.GetRayCollisionMesh(ray, self.wall_mesh, wall.precomputed_matrix);
+            const found_closer_wall = if (!collision.hit)
+                false
+            else if (closest_distance) |existing_distance|
+                collision.distance < existing_distance
+            else
+                true;
+            if (found_closer_wall) {
+                closest_wall_id = wall.id;
+                closest_distance = collision.distance;
+            }
+        }
+        return closest_wall_id;
     }
 };
 
@@ -738,6 +769,11 @@ const EditModeView = enum {
     TopDown,
 };
 
+const EditMode = enum {
+    PlaceWalls,
+    DeleteWalls,
+};
+
 const CurrentlyEditedWall = struct { id: u64, start_position: rl.Vector3 };
 
 pub fn main() !void {
@@ -758,6 +794,7 @@ pub fn main() !void {
 
     var program_mode = ProgramMode.TwoPlayerSplitScreen;
     var edit_mode_view = EditModeView.FromBehind;
+    var edit_mode = EditMode.PlaceWalls;
     var active_players: []Player = available_players[1..];
     var controllable_players: []Player = active_players;
     var split_screen_setup = try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
@@ -827,38 +864,72 @@ pub fn main() !void {
                     },
                 }
             }
-            if (currently_edited_wall) |*wall| {
-                if (rm.Vector2Length(rl.GetMouseDelta()) > std.math.f32_epsilon) {
-                    const ray = active_players[0].getCamera(lap_result.next_tick_progress)
-                        .getRay(rl.GetMousePosition());
-                    if (level_geometry.castRayToLevelGrid(ray)) |position_on_grid| {
-                        level_geometry.updateWall(
-                            wall.id,
-                            wall.start_position.x,
-                            wall.start_position.z,
-                            position_on_grid.x,
-                            position_on_grid.z,
-                        );
-                    }
-                }
-                if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
+            if (rl.IsKeyPressed(rl.KeyboardKey.KEY_DELETE)) {
+                edit_mode = switch (edit_mode) {
+                    EditMode.PlaceWalls => EditMode.DeleteWalls,
+                    EditMode.DeleteWalls => EditMode.PlaceWalls,
+                };
+                if (currently_edited_wall) |wall| {
                     level_geometry.tintWall(wall.id, LevelGeometry.Wall.Tint.Default);
                     currently_edited_wall = null;
                 }
-            } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                const ray = active_players[0].getCamera(lap_result.next_tick_progress)
-                    .getRay(rl.GetMousePosition());
-                if (level_geometry.castRayToLevelGrid(ray)) |position_on_grid| {
-                    const wall_id = try level_geometry.addWall(
-                        position_on_grid.x,
-                        position_on_grid.z,
-                        position_on_grid.x,
-                        position_on_grid.z,
-                    );
-                    level_geometry.tintWall(wall_id, LevelGeometry.Wall.Tint.Green);
-                    currently_edited_wall =
-                        CurrentlyEditedWall{ .id = wall_id, .start_position = position_on_grid };
-                }
+            }
+
+            const ray = active_players[0].getCamera(lap_result.next_tick_progress)
+                .getRay(rl.GetMousePosition());
+            switch (edit_mode) {
+                EditMode.PlaceWalls => {
+                    if (currently_edited_wall) |*wall| {
+                        if (rm.Vector2Length(rl.GetMouseDelta()) > std.math.f32_epsilon) {
+                            if (level_geometry.castRayToLevelGrid(ray)) |position_on_grid| {
+                                level_geometry.updateWall(
+                                    wall.id,
+                                    wall.start_position.x,
+                                    wall.start_position.z,
+                                    position_on_grid.x,
+                                    position_on_grid.z,
+                                );
+                            }
+                        }
+                        if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
+                            level_geometry.tintWall(wall.id, LevelGeometry.Wall.Tint.Default);
+                            currently_edited_wall = null;
+                        }
+                    } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
+                        if (level_geometry.castRayToLevelGrid(ray)) |position_on_grid| {
+                            const wall_id = try level_geometry.addWall(
+                                position_on_grid.x,
+                                position_on_grid.z,
+                                position_on_grid.x,
+                                position_on_grid.z,
+                            );
+                            level_geometry.tintWall(wall_id, LevelGeometry.Wall.Tint.Green);
+                            currently_edited_wall =
+                                CurrentlyEditedWall{ .id = wall_id, .start_position = position_on_grid };
+                        }
+                    }
+                },
+                EditMode.DeleteWalls => {
+                    if (rm.Vector2Length(rl.GetMouseDelta()) > std.math.f32_epsilon) {
+                        if (currently_edited_wall) |wall| {
+                            level_geometry.tintWall(wall.id, LevelGeometry.Wall.Tint.Default);
+                            currently_edited_wall = null;
+                        }
+                        if (level_geometry.castRayToWalls(ray)) |wall_id| {
+                            level_geometry.tintWall(wall_id, LevelGeometry.Wall.Tint.Red);
+                            currently_edited_wall = CurrentlyEditedWall{
+                                .id = wall_id,
+                                .start_position = std.mem.zeroes(rl.Vector3),
+                            };
+                        }
+                    }
+                    if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
+                        if (currently_edited_wall) |wall| {
+                            level_geometry.removeWall(wall.id);
+                            currently_edited_wall = null;
+                        }
+                    }
+                },
             }
         }
         if (rl.IsWindowResized()) {
