@@ -27,10 +27,16 @@ fn isEqualFloat(a: f32, b: f32) bool {
     return std.math.fabs(a - b) < std.math.f32_epsilon;
 }
 
-// TODO: rm.Vector2Angle() is broken in raylib 4.2.0.
-fn getAngle(a: rl.Vector2, b: rl.Vector2) f32 {
-    const dot_product = rm.Vector2DotProduct(a, b);
-    return std.math.acos(std.math.clamp(dot_product, -1, 1));
+/// Get the angle needed to rotate vector a to have the same direction as vector b. The given
+/// vectors don't need to be normalized.
+fn computeYRotationAngle(a: rl.Vector3, b: rl.Vector3) f32 {
+    const a_2d = rm.Vector2Normalize(rl.Vector2{ .x = a.x, .y = a.z });
+    const b_2d = rm.Vector2Normalize(rl.Vector2{ .x = b.x, .y = b.z });
+    const y_rotation_angle = std.math.acos(std.math.clamp(rm.Vector2DotProduct(a_2d, b_2d), -1, 1));
+    return if (rm.Vector2DotProduct(b_2d, rl.Vector2{ .x = a.z, .y = -a.x }) < 0)
+        -y_rotation_angle
+    else
+        y_rotation_angle;
 }
 
 fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
@@ -40,10 +46,6 @@ fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
         .b = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.b), @intToFloat(f32, b.b), interval)),
         .a = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.a), @intToFloat(f32, b.a), interval)),
     };
-}
-
-fn projectVector3OnAnother(a: rl.Vector3, b: rl.Vector3) rl.Vector3 {
-    return rm.Vector3Scale(b, rm.Vector3DotProduct(a, b) / rm.Vector3DotProduct(b, b));
 }
 
 const Character = struct {
@@ -294,20 +296,9 @@ const ThirdPersonCamera = struct {
 
     fn computeYRotatedCameraOffset(self: ThirdPersonCamera, character_to_follow: Character) rl.Vector3 {
         const camera_offset = rm.Vector3Subtract(self.camera.position, self.camera.target);
-        const camera_direction_2d = rm.Vector2Normalize(
-            rl.Vector2{ .x = camera_offset.x, .y = camera_offset.z },
-        );
-        const character_back_direction_2d = rl.Vector2{
-            .x = -character_to_follow.looking_direction.x,
-            .y = -character_to_follow.looking_direction.z,
-        };
-        const y_rotation_angle = getAngle(camera_direction_2d, character_back_direction_2d);
-        const camera_right_axis_2d = rl.Vector2{ .x = camera_direction_2d.y, .y = -camera_direction_2d.x };
-        const turn_right = rm.Vector2DotProduct(character_back_direction_2d, camera_right_axis_2d) < 0;
-        const rotation_step = camera_follow_speed * if (turn_right)
-            -y_rotation_angle
-        else
-            y_rotation_angle;
+        const character_back_direction = rm.Vector3Negate(character_to_follow.looking_direction);
+        const rotation_step = camera_follow_speed *
+            computeYRotationAngle(camera_offset, character_back_direction);
         return rm.Vector3RotateByAxisAngle(camera_offset, Constants.up, rotation_step);
     }
 
@@ -487,18 +478,17 @@ const LevelGeometry = struct {
             const start = rl.Vector3{ .x = start_x, .y = 0, .z = start_z };
             const end = rl.Vector3{ .x = end_x, .y = 0, .z = end_z };
             const offset = rm.Vector3Subtract(end, start);
-            const length = rm.Vector3Length(offset);
             const center = rm.Vector3Add(start, rm.Vector3Scale(offset, 0.5));
-            const rotation_angle_around_y_axis =
-                rm.Vector3Angle(rl.Vector3{ .x = 0, .y = 0, .z = -1 }, rm.Vector3Normalize(offset));
+            const rotation_angle =
+                computeYRotationAngle(rl.Vector3{ .x = 1, .y = 0, .z = 0 }, offset);
 
             return Wall{
                 .id = id,
                 .start_position = start,
                 .end_position = end,
                 .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
-                    rm.MatrixScale(length, height, thickness),
-                    rm.MatrixRotateY(rotation_angle_around_y_axis),
+                    rm.MatrixScale(rm.Vector3Length(offset), height, thickness),
+                    rm.MatrixRotateY(rotation_angle),
                 ), rm.MatrixTranslate(center.x, height / 2, center.z)),
             };
         }
