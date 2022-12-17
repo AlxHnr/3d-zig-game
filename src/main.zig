@@ -23,6 +23,9 @@ fn degreesToRadians(degrees: f32) f32 {
 fn radiansToDegrees(radians: f32) f32 {
     return radians * 180 / std.math.pi;
 }
+fn isEqualFloat(a: f32, b: f32) bool {
+    return std.math.fabs(a - b) < std.math.f32_epsilon;
+}
 
 // TODO: rm.Vector2Angle() is broken in raylib 4.2.0.
 fn getAngle(a: rl.Vector2, b: rl.Vector2) f32 {
@@ -184,6 +187,8 @@ const ThirdPersonCamera = struct {
     /// This value will be approached by update().
     target_distance_from_character: f32,
 
+    const camera_follow_speed = 0.15;
+
     /// Initialize the camera to look down at the given character from behind.
     fn create(character: Character) ThirdPersonCamera {
         var camera = std.mem.zeroes(rl.Camera);
@@ -192,12 +197,13 @@ const ThirdPersonCamera = struct {
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
         camera.target = character.position;
 
-        const looking_angle = degreesToRadians(20);
+        const angle_from_ground = degreesToRadians(20);
         const distance_from_character = 10;
         const back_direction = rm.Vector3Negate(character.looking_direction);
         const right_axis = rm.Vector3Negate(character.getRightFromLookingDirection());
-        const unnormalized_direction = rm.Vector3RotateByAxisAngle(back_direction, right_axis, looking_angle);
-        const offset_from_character = rm.Vector3Scale(rm.Vector3Normalize(unnormalized_direction), distance_from_character);
+        const unnormalized_direction = rm.Vector3RotateByAxisAngle(back_direction, right_axis, angle_from_ground);
+        const offset_from_character =
+            rm.Vector3Scale(rm.Vector3Normalize(unnormalized_direction), distance_from_character);
         camera.position = rm.Vector3Add(character.position, offset_from_character);
 
         return ThirdPersonCamera{
@@ -236,44 +242,55 @@ const ThirdPersonCamera = struct {
             std.math.max(self.target_distance_from_character + offset, 5);
     }
 
+    /// Angle between 0 and 1/2 pi (90 degrees). Will be clamped into this range.
+    fn setAngleFromGround(self: *ThirdPersonCamera, angle: f32) void {
+        self.target_angle_from_ground = std.math.clamp(angle, 0, degreesToRadians(90));
+    }
+
     /// To be called once for each tick.
     fn update(self: *ThirdPersonCamera, character_to_follow: Character) void {
-        const camera_follow_speed = 0.15;
+        const y_rotated_camera_offset = self.computeYRotatedCameraOffset(character_to_follow);
+        self.camera.target = rm.Vector3Lerp(self.camera.target, character_to_follow.position, camera_follow_speed);
+        self.camera.position = rm.Vector3Add(self.camera.target, y_rotated_camera_offset);
+        self.updateCameraDistanceFromCharacter();
+    }
 
+    fn computeYRotatedCameraOffset(
+        self: *ThirdPersonCamera,
+        character_to_follow: Character,
+    ) rl.Vector3 {
         const camera_offset = rm.Vector3Subtract(self.camera.position, self.camera.target);
-        const camera_direction_2d = rm.Vector2Normalize(rl.Vector2{
-            .x = camera_offset.x,
-            .y = camera_offset.z,
-        });
+        const camera_direction_2d = rm.Vector2Normalize(
+            rl.Vector2{ .x = camera_offset.x, .y = camera_offset.z },
+        );
         const character_back_direction_2d = rl.Vector2{
             .x = -character_to_follow.looking_direction.x,
             .y = -character_to_follow.looking_direction.z,
         };
-        const rotation_angle = getAngle(camera_direction_2d, character_back_direction_2d);
+        const y_rotation_angle = getAngle(camera_direction_2d, character_back_direction_2d);
         const camera_right_axis_2d = rl.Vector2{ .x = camera_direction_2d.y, .y = -camera_direction_2d.x };
         const turn_right = rm.Vector2DotProduct(character_back_direction_2d, camera_right_axis_2d) < 0;
         const rotation_step = camera_follow_speed * if (turn_right)
-            -rotation_angle
+            -y_rotation_angle
         else
-            rotation_angle;
-        const updated_camera_offset = rm.Vector3RotateByAxisAngle(camera_offset, Constants.up, rotation_step);
-        self.camera.target = rm.Vector3Lerp(self.camera.target, character_to_follow.position, camera_follow_speed);
+            y_rotation_angle;
+        return rm.Vector3RotateByAxisAngle(camera_offset, Constants.up, rotation_step);
+    }
 
-        if (std.math.fabs(self.distance_from_character - self.target_distance_from_character) >
-            std.math.f32_epsilon)
-        {
-            self.distance_from_character = rm.Lerp(
-                self.distance_from_character,
-                self.target_distance_from_character,
-                camera_follow_speed,
-            );
-            self.camera.position = rm.Vector3Add(self.camera.target, rm.Vector3Scale(
-                rm.Vector3Normalize(updated_camera_offset),
-                self.distance_from_character,
-            ));
-        } else {
-            self.camera.position = rm.Vector3Add(self.camera.target, updated_camera_offset);
+    fn updateCameraDistanceFromCharacter(self: *ThirdPersonCamera) void {
+        if (isEqualFloat(self.distance_from_character, self.target_distance_from_character)) {
+            return;
         }
+        self.distance_from_character = rm.Lerp(
+            self.distance_from_character,
+            self.target_distance_from_character,
+            camera_follow_speed,
+        );
+
+        const camera_offset = rm.Vector3Subtract(self.camera.position, self.camera.target);
+        const rescaled_camera_offset =
+            rm.Vector3Scale(rm.Vector3Normalize(camera_offset), self.distance_from_character);
+        self.camera.position = rm.Vector3Add(self.camera.target, rescaled_camera_offset);
     }
 };
 
