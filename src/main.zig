@@ -469,12 +469,16 @@ const Player = struct {
 
 const LevelGeometry = struct {
     const Wall = struct {
+        const Tint = enum { Default, Green, Red };
+
         id: u64,
         /// Y will always be 0.
         start_position: rl.Vector3,
         /// Y will always be 0.
         end_position: rl.Vector3,
         precomputed_matrix: rl.Matrix,
+        tint: Tint,
+
         const height: f32 = 5;
         const thickness: f32 = 0.25;
 
@@ -494,6 +498,7 @@ const LevelGeometry = struct {
                     rm.MatrixScale(rm.Vector3Length(offset), height, thickness),
                     rm.MatrixRotateY(rotation_angle),
                 ), rm.MatrixTranslate(center.x, height / 2, center.z)),
+                .tint = Tint.Default,
             };
         }
     };
@@ -506,13 +511,11 @@ const LevelGeometry = struct {
 
     /// Stores the given allocator internally for its entire lifetime.
     fn create(allocator: std.mem.Allocator) LevelGeometry {
-        var material = rl.LoadMaterialDefault();
-        material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = rl.LIGHTGRAY;
         return LevelGeometry{
             .wall_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
             .wall_mesh = rl.GenMeshCube(1, 1, 1),
-            .wall_material = material,
+            .wall_material = rl.LoadMaterialDefault(),
         };
     }
 
@@ -524,7 +527,13 @@ const LevelGeometry = struct {
 
     fn draw(self: LevelGeometry) void {
         rl.DrawGrid(level_grid_size, 1);
+        const key = @enumToInt(rl.MATERIAL_MAP_DIFFUSE);
         for (self.walls.items) |wall| {
+            switch (wall.tint) {
+                Wall.Tint.Default => self.wall_material.maps[key].color = rl.LIGHTGRAY,
+                Wall.Tint.Green => self.wall_material.maps[key].color = rl.GREEN,
+                Wall.Tint.Red => self.wall_material.maps[key].color = rl.RED,
+            }
             rl.DrawMesh(self.wall_mesh, self.wall_material, wall.precomputed_matrix);
         }
     }
@@ -539,12 +548,26 @@ const LevelGeometry = struct {
 
     /// If the given wall id does not exist, this function will do nothing.
     fn updateWall(self: *LevelGeometry, wall_id: u64, start_x: f32, start_z: f32, end_x: f32, end_z: f32) void {
+        if (self.findWall(wall_id)) |wall| {
+            const tint = wall.tint;
+            wall.* = Wall.create(wall_id, start_x, start_z, end_x, end_z);
+            wall.tint = tint;
+        }
+    }
+
+    fn tintWall(self: *LevelGeometry, wall_id: u64, tint: Wall.Tint) void {
+        if (self.findWall(wall_id)) |wall| {
+            wall.tint = tint;
+        }
+    }
+
+    fn findWall(self: *LevelGeometry, wall_id: u64) ?*Wall {
         for (self.walls.items) |*wall| {
             if (wall.id == wall_id) {
-                wall.* = Wall.create(wall_id, start_x, start_z, end_x, end_z);
-                return;
+                return wall;
             }
         }
+        return null;
     }
 
     fn castRayToLevelGrid(_: LevelGeometry, ray: rl.Ray) ?rl.Vector3 {
@@ -819,6 +842,7 @@ pub fn main() !void {
                     }
                 }
                 if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
+                    level_geometry.tintWall(wall.id, LevelGeometry.Wall.Tint.Default);
                     currently_edited_wall = null;
                 }
             } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
@@ -831,6 +855,7 @@ pub fn main() !void {
                         position_on_grid.x,
                         position_on_grid.z,
                     );
+                    level_geometry.tintWall(wall_id, LevelGeometry.Wall.Tint.Green);
                     currently_edited_wall =
                         CurrentlyEditedWall{ .id = wall_id, .start_position = position_on_grid };
                 }
