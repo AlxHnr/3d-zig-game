@@ -48,6 +48,17 @@ fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
     };
 }
 
+fn clampCameraDistanceFromTarget(camera: rl.Camera, max_distance: f32) rl.Camera {
+    const offset = rm.Vector3Subtract(camera.position, camera.target);
+    if (rm.Vector3Length(offset) < max_distance) {
+        return camera;
+    }
+    var updated_camera = camera;
+    updated_camera.position =
+        rm.Vector3Add(camera.target, rm.Vector3Scale(rm.Vector3Normalize(offset), max_distance));
+    return updated_camera;
+}
+
 const Character = struct {
     /// Y will always be 0.
     position: rl.Vector3,
@@ -113,6 +124,10 @@ const Character = struct {
     /// Value from -1 (left) to 1 (right). Will be clamped into this range.
     fn setTurningDirection(self: *Character, turning_direction: f32) void {
         self.turning_direction = rm.Clamp(turning_direction, -1, 1);
+    }
+
+    fn getTopOfCharacter(self: Character) rl.Vector3 {
+        return rm.Vector3Add(self.position, rl.Vector3{ .x = 0, .y = self.height, .z = 0 });
     }
 
     /// To be called once for each tick.
@@ -190,7 +205,7 @@ const ThirdPersonCamera = struct {
     target_angle_from_ground: f32,
 
     const camera_follow_speed = 0.15;
-    const default_angle_from_ground = degreesToRadians(20);
+    const default_angle_from_ground = degreesToRadians(15);
 
     /// Initialize the camera to look down at the given character from behind.
     fn create(character: Character) ThirdPersonCamera {
@@ -198,7 +213,7 @@ const ThirdPersonCamera = struct {
         camera.up = Constants.up;
         camera.fovy = 45;
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
-        camera.target = character.position;
+        camera.target = character.getTopOfCharacter();
 
         const distance_from_character = 10;
         const back_direction = rm.Vector3Negate(character.looking_direction);
@@ -207,7 +222,7 @@ const ThirdPersonCamera = struct {
             rm.Vector3RotateByAxisAngle(back_direction, right_axis, default_angle_from_ground);
         const offset_from_character =
             rm.Vector3Scale(rm.Vector3Normalize(unnormalized_direction), distance_from_character);
-        camera.position = rm.Vector3Add(character.position, offset_from_character);
+        camera.position = rm.Vector3Add(camera.target, offset_from_character);
 
         return ThirdPersonCamera{
             .camera = camera,
@@ -262,7 +277,11 @@ const ThirdPersonCamera = struct {
     fn update(self: *ThirdPersonCamera, character_to_follow: Character) void {
         self.updateAngleFromGround();
         const y_rotated_camera_offset = self.computeYRotatedCameraOffset(character_to_follow);
-        self.camera.target = rm.Vector3Lerp(self.camera.target, character_to_follow.position, camera_follow_speed);
+        self.camera.target = rm.Vector3Lerp(
+            self.camera.target,
+            character_to_follow.getTopOfCharacter(),
+            camera_follow_speed,
+        );
         self.camera.position = rm.Vector3Add(self.camera.target, y_rotated_camera_offset);
         self.updateCameraDistanceFromCharacter();
     }
@@ -596,24 +615,27 @@ const LevelGeometry = struct {
             null;
     }
 
+    const RayWallCollision = struct {
+        wall_id: u64,
+        distance: f32,
+    };
+
     /// Find the id of the closest wall hit by the given ray, if available.
-    fn castRayToWalls(self: LevelGeometry, ray: rl.Ray) ?u64 {
-        var closest_wall_id: ?u64 = null;
-        var closest_distance: ?f32 = null;
+    fn castRayToWalls(self: LevelGeometry, ray: rl.Ray) ?RayWallCollision {
+        var result: ?RayWallCollision = null;
         for (self.walls.items) |wall| {
             const collision = rl.GetRayCollisionMesh(ray, self.wall_mesh, wall.precomputed_matrix);
             const found_closer_wall = if (!collision.hit)
                 false
-            else if (closest_distance) |existing_distance|
-                collision.distance < existing_distance
+            else if (result) |existing_result|
+                collision.distance < existing_result.distance
             else
                 true;
             if (found_closer_wall) {
-                closest_wall_id = wall.id;
-                closest_distance = collision.distance;
+                result = RayWallCollision{ .wall_id = wall.id, .distance = collision.distance };
             }
         }
-        return closest_wall_id;
+        return result;
     }
 };
 
@@ -652,7 +674,20 @@ const SplitScreenRenderContext = struct {
         interval_between_previous_and_current_tick: f32,
     ) void {
         rl.BeginTextureMode(self.prerendered_scene);
-        rl.BeginMode3D(current_player.getCamera(interval_between_previous_and_current_tick).camera);
+
+        // Handle walls between character and camera.
+        const camera = current_player.getCamera(interval_between_previous_and_current_tick).camera;
+        const ray_to_camera = rl.Ray{
+            .position = camera.target,
+            .direction = rm.Vector3Normalize(rm.Vector3Subtract(camera.position, camera.target)),
+        };
+        if (level_geometry.castRayToWalls(ray_to_camera)) |collision| {
+            const clamped_camera = clampCameraDistanceFromTarget(camera, collision.distance);
+            rl.BeginMode3D(clamped_camera);
+        } else {
+            rl.BeginMode3D(camera);
+        }
+
         rl.ClearBackground(rl.WHITE);
         level_geometry.draw();
         for (players) |player| {
