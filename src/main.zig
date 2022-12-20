@@ -868,7 +868,7 @@ const SplitScreenRenderContext = struct {
             rl.BeginMode3D(camera);
         }
 
-        rl.ClearBackground(rl.WHITE);
+        rl.ClearBackground(rl.Color{ .r = 140, .g = 190, .b = 214, .a = 255 });
         level_geometry.draw();
         for (players) |player| {
             player.draw(interval_between_previous_and_current_tick);
