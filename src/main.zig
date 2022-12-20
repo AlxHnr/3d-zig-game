@@ -495,53 +495,148 @@ const LevelGeometry = struct {
         start_position: rl.Vector3,
         /// Y will always be 0.
         end_position: rl.Vector3,
+        mesh: rl.Mesh,
         precomputed_matrix: rl.Matrix,
         tint: Tint,
 
         const height: f32 = 5;
         const thickness: f32 = 0.25;
 
-        fn create(id: u64, start_x: f32, start_z: f32, end_x: f32, end_z: f32) Wall {
+        /// Keeps a reference to the given wall vertices for its entire lifetime.
+        fn create(
+            id: u64,
+            start_x: f32,
+            start_z: f32,
+            end_x: f32,
+            end_z: f32,
+            shared_wall_vertices: []f32,
+            texture_scale: f32,
+        ) Wall {
             const start = rl.Vector3{ .x = start_x, .y = 0, .z = start_z };
             const end = rl.Vector3{ .x = end_x, .y = 0, .z = end_z };
             const offset = rm.Vector3Subtract(end, start);
-            const center = rm.Vector3Add(start, rm.Vector3Scale(offset, 0.5));
+            const width = rm.Vector3Length(offset);
             const rotation_angle =
                 computeYRotationAngle(rl.Vector3{ .x = 1, .y = 0, .z = 0 }, offset);
+
+            var mesh = std.mem.zeroes(rl.Mesh);
+            mesh.vertices = shared_wall_vertices.ptr;
+            mesh.vertexCount = @intCast(c_int, shared_wall_vertices.len / 3);
+            mesh.triangleCount = @intCast(c_int, shared_wall_vertices.len / 9);
+
+            const texture_corners = [8]rl.Vector2{
+                rl.Vector2{ .x = 0, .y = 0 },
+                rl.Vector2{ .x = width / texture_scale, .y = 0 },
+                rl.Vector2{ .x = width / texture_scale, .y = height / texture_scale },
+                rl.Vector2{ .x = 0, .y = height / texture_scale },
+                rl.Vector2{ .x = thickness / texture_scale, .y = 0 },
+                rl.Vector2{ .x = thickness / texture_scale, .y = height / texture_scale },
+                rl.Vector2{ .x = width / texture_scale, .y = thickness / texture_scale },
+                rl.Vector2{ .x = 0, .y = thickness / texture_scale },
+            };
+            const texture_corner_indices = [30]u3{
+                3, 0, 2, 0, 1, 2, // Front side.
+                5, 3, 4, 5, 0, 4, // Left side.
+                0, 6, 7, 0, 1, 6, // Top side.
+                2, 3, 1, 1, 3, 0, // Back side.
+                3, 0, 5, 5, 0, 4, // Right side.
+            };
+            var texcoords: [computeVertices().len / 3 * 2]f32 = undefined;
+            mesh.texcoords = &texcoords;
+            var index: usize = 0;
+            while (index < texcoords.len) : (index += 2) {
+                texcoords[index] = texture_corners[texture_corner_indices[index / 2]].x;
+                texcoords[index + 1] = texture_corners[texture_corner_indices[index / 2]].y;
+            }
+
+            rl.UploadMesh(&mesh, false);
+            mesh.texcoords = null; // Was copied to GPU.
 
             return Wall{
                 .id = id,
                 .start_position = start,
                 .end_position = end,
+                .mesh = mesh,
                 .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
-                    rm.MatrixScale(rm.Vector3Length(offset), height, thickness),
+                    rm.MatrixScale(width, 1, 1),
                     rm.MatrixRotateY(rotation_angle),
-                ), rm.MatrixTranslate(center.x, height / 2, center.z)),
+                ), rm.MatrixTranslate(start.x, 0, start.z)),
                 .tint = Tint.Default,
             };
+        }
+
+        fn destroy(self: *Wall) void {
+            self.mesh.vertices = null; // Prevent raylib from freeing our shared mesh.
+            rl.UnloadMesh(self.mesh);
+        }
+
+        // Return the mesh of a wall. It has a fixed width of 1 and must be scaled by individual
+        // transformation matrices to the desired length. This mesh has no bottom.
+        fn computeVertices() [90]f32 {
+            const corners = [8]rl.Vector3{
+                rl.Vector3{ .x = 0, .y = Wall.height, .z = Wall.thickness / 2 },
+                rl.Vector3{ .x = 0, .y = 0, .z = Wall.thickness / 2 },
+                rl.Vector3{ .x = 1, .y = Wall.height, .z = Wall.thickness / 2 },
+                rl.Vector3{ .x = 1, .y = 0, .z = Wall.thickness / 2 },
+                rl.Vector3{ .x = 0, .y = Wall.height, .z = -Wall.thickness / 2 },
+                rl.Vector3{ .x = 0, .y = 0, .z = -Wall.thickness / 2 },
+                rl.Vector3{ .x = 1, .y = Wall.height, .z = -Wall.thickness / 2 },
+                rl.Vector3{ .x = 1, .y = 0, .z = -Wall.thickness / 2 },
+            };
+            const corner_indices = [30]u3{
+                0, 1, 2, 1, 3, 2, // Front side.
+                0, 4, 5, 0, 5, 1, // Left side.
+                0, 6, 4, 0, 2, 6, // Top side.
+                4, 6, 5, 5, 6, 7, // Back side.
+                2, 3, 6, 6, 3, 7, // Right side.
+            };
+
+            var vertices: [90]f32 = undefined;
+            var index: usize = 0;
+            while (index < vertices.len) : (index += 3) {
+                vertices[index] = corners[corner_indices[index / 3]].x;
+                vertices[index + 1] = corners[corner_indices[index / 3]].y;
+                vertices[index + 2] = corners[corner_indices[index / 3]].z;
+            }
+            return vertices;
         }
     };
 
     wall_id_counter: u64,
     walls: std.ArrayList(Wall),
-    wall_mesh: rl.Mesh,
     wall_material: rl.Material,
+    shared_wall_vertices: []f32,
+    texture_scale: f32,
     const level_grid_size = 100;
 
-    /// Stores the given allocator internally for its entire lifetime.
-    fn create(allocator: std.mem.Allocator) LevelGeometry {
+    /// Stores the given allocator internally for its entire lifetime. Will own the given texture.
+    fn create(
+        allocator: std.mem.Allocator,
+        wall_texture: rl.Texture,
+        texture_scale: f32,
+    ) !LevelGeometry {
+        const precomputed_vertices = Wall.computeVertices();
+        var shared_wall_vertices = try allocator.alloc(f32, precomputed_vertices.len);
+        std.mem.copy(f32, shared_wall_vertices, precomputed_vertices[0..]);
+
+        var material = rl.LoadMaterialDefault();
+        rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), wall_texture);
         return LevelGeometry{
             .wall_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
-            .wall_mesh = rl.GenMeshCube(1, 1, 1),
-            .wall_material = rl.LoadMaterialDefault(),
+            .wall_material = material,
+            .shared_wall_vertices = shared_wall_vertices,
+            .texture_scale = texture_scale,
         };
     }
 
-    fn destroy(self: *LevelGeometry) void {
+    fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
+        for (self.walls.items) |*wall| {
+            wall.destroy();
+        }
         self.walls.deinit();
-        rl.UnloadMesh(self.wall_mesh);
         rl.UnloadMaterial(self.wall_material);
+        allocator.free(self.shared_wall_vertices);
     }
 
     fn draw(self: LevelGeometry) void {
@@ -553,22 +648,31 @@ const LevelGeometry = struct {
                 Wall.Tint.Green => self.wall_material.maps[key].color = rl.GREEN,
                 Wall.Tint.Red => self.wall_material.maps[key].color = rl.RED,
             }
-            rl.DrawMesh(self.wall_mesh, self.wall_material, wall.precomputed_matrix);
+            rl.DrawMesh(wall.mesh, self.wall_material, wall.precomputed_matrix);
         }
     }
 
     /// Returns the id of the created wall on success.
     fn addWall(self: *LevelGeometry, start_x: f32, start_z: f32, end_x: f32, end_z: f32) !u64 {
         const wall = try self.walls.addOne();
-        wall.* = Wall.create(self.wall_id_counter, start_x, start_z, end_x, end_z);
+        wall.* = Wall.create(
+            self.wall_id_counter,
+            start_x,
+            start_z,
+            end_x,
+            end_z,
+            self.shared_wall_vertices,
+            self.texture_scale,
+        );
         self.wall_id_counter = self.wall_id_counter + 1;
         return wall.id;
     }
 
     /// If the given wall id does not exist, this function will do nothing.
     fn removeWall(self: *LevelGeometry, wall_id: u64) void {
-        for (self.walls.items) |wall, index| {
+        for (self.walls.items) |*wall, index| {
             if (wall.id == wall_id) {
+                wall.destroy();
                 _ = self.walls.orderedRemove(index);
                 return;
             }
@@ -579,7 +683,16 @@ const LevelGeometry = struct {
     fn updateWall(self: *LevelGeometry, wall_id: u64, start_x: f32, start_z: f32, end_x: f32, end_z: f32) void {
         if (self.findWall(wall_id)) |wall| {
             const tint = wall.tint;
-            wall.* = Wall.create(wall_id, start_x, start_z, end_x, end_z);
+            wall.destroy();
+            wall.* = Wall.create(
+                wall_id,
+                start_x,
+                start_z,
+                end_x,
+                end_z,
+                self.shared_wall_vertices,
+                self.texture_scale,
+            );
             wall.tint = tint;
         }
     }
@@ -624,7 +737,7 @@ const LevelGeometry = struct {
     fn castRayToWalls(self: LevelGeometry, ray: rl.Ray) ?RayWallCollision {
         var result: ?RayWallCollision = null;
         for (self.walls.items) |wall| {
-            const collision = rl.GetRayCollisionMesh(ray, self.wall_mesh, wall.precomputed_matrix);
+            const collision = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
             const found_closer_wall = if (!collision.hit)
                 false
             else if (result) |existing_result|
@@ -641,6 +754,7 @@ const LevelGeometry = struct {
 
 const RaylibError = error{
     UnableToCreateRenderTexture,
+    FailedToLoadTextureFile,
 };
 
 const SplitScreenRenderContext = struct {
@@ -775,6 +889,14 @@ const SplitScreenSetup = struct {
     }
 };
 
+fn loadTexture(path: [*:0]const u8) RaylibError!rl.Texture {
+    const texture = rl.LoadTexture(path);
+    if (texture.id == 0) {
+        return RaylibError.FailedToLoadTextureFile;
+    }
+    return texture;
+}
+
 const InputPresets = struct {
     const Wasd = InputConfiguration{
         .move_left = rl.KeyboardKey.KEY_A,
@@ -812,8 +934,8 @@ const EditMode = enum {
 const CurrentlyEditedWall = struct { id: u64, start_position: rl.Vector3 };
 
 pub fn main() !void {
-    var screen_width: u16 = 800;
-    var screen_height: u16 = 450;
+    var screen_width: u16 = 1200;
+    var screen_height: u16 = 850;
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
@@ -835,8 +957,9 @@ pub fn main() !void {
     var split_screen_setup = try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
     defer split_screen_setup.destroy(gpa.allocator());
 
-    var level_geometry = LevelGeometry.create(gpa.allocator());
-    defer level_geometry.destroy();
+    var level_geometry =
+        try LevelGeometry.create(gpa.allocator(), try loadTexture("assets/wall.png"), 5.0);
+    defer level_geometry.destroy(gpa.allocator());
     var currently_edited_wall: ?CurrentlyEditedWall = null;
 
     var tick_timer = try TickTimer.start(60);
@@ -950,10 +1073,10 @@ pub fn main() !void {
                             level_geometry.tintWall(wall.id, LevelGeometry.Wall.Tint.Default);
                             currently_edited_wall = null;
                         }
-                        if (level_geometry.castRayToWalls(ray)) |wall_id| {
-                            level_geometry.tintWall(wall_id, LevelGeometry.Wall.Tint.Red);
+                        if (level_geometry.castRayToWalls(ray)) |collision| {
+                            level_geometry.tintWall(collision.wall_id, LevelGeometry.Wall.Tint.Red);
                             currently_edited_wall = CurrentlyEditedWall{
-                                .id = wall_id,
+                                .id = collision.wall_id,
                                 .start_position = std.mem.zeroes(rl.Vector3),
                             };
                         }
