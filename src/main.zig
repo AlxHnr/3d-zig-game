@@ -487,6 +487,73 @@ const Player = struct {
 };
 
 const LevelGeometry = struct {
+    const Floor = struct {
+        vertices: []f32,
+        mesh: rl.Mesh,
+        material: rl.Material,
+
+        /// Will own the given texture.
+        fn create(
+            allocator: std.mem.Allocator,
+            side_length: f32,
+            texture: rl.Texture,
+            texture_scale: f32,
+        ) !Floor {
+            var material = rl.LoadMaterialDefault();
+            rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), texture);
+            errdefer rl.UnloadMaterial(material);
+
+            var vertices = try allocator.alloc(f32, 6 * 3);
+            std.mem.copy(f32, vertices, &[6 * 3]f32{
+                -side_length / 2, 0, side_length / 2,
+                side_length / 2,  0, -side_length / 2,
+                -side_length / 2, 0, -side_length / 2,
+                -side_length / 2, 0, side_length / 2,
+                side_length / 2,  0, side_length / 2,
+                side_length / 2,  0, -side_length / 2,
+            });
+            var texcoords = [6 * 2]f32{
+                0,                           0,
+                side_length / texture_scale, side_length / texture_scale,
+                0,                           side_length / texture_scale,
+                0,                           0,
+                side_length / texture_scale, 0,
+                side_length / texture_scale, side_length / texture_scale,
+            };
+
+            var mesh = std.mem.zeroes(rl.Mesh);
+            mesh.vertices = vertices.ptr;
+            mesh.vertexCount = @intCast(c_int, vertices.len / 3);
+            mesh.triangleCount = @intCast(c_int, vertices.len / 9);
+            mesh.texcoords = &texcoords;
+
+            rl.UploadMesh(&mesh, false);
+            mesh.texcoords = null; // Was copied to GPU.
+
+            return Floor{ .vertices = vertices, .mesh = mesh, .material = material };
+        }
+
+        fn destroy(self: *Floor, allocator: std.mem.Allocator) void {
+            allocator.free(self.vertices);
+            self.mesh.vertices = null; // Prevent raylib from freeing our own vertices.
+            rl.UnloadMesh(self.mesh);
+            rl.UnloadMaterial(self.material);
+        }
+
+        fn draw(self: Floor) void {
+            rl.DrawMesh(self.mesh, self.material, rm.MatrixIdentity());
+        }
+
+        /// If the given ray hits the level grid, return the position on the floor.
+        fn castRay(self: Floor, ray: rl.Ray) ?rl.Vector3 {
+            const collision = rl.GetRayCollisionMesh(ray, self.mesh, rm.MatrixIdentity());
+            return if (collision.hit)
+                collision.point
+            else
+                null;
+        }
+    };
+
     const Wall = struct {
         const Tint = enum { Default, Green, Red };
 
@@ -602,35 +669,44 @@ const LevelGeometry = struct {
         }
     };
 
+    floor: Floor,
     wall_id_counter: u64,
     walls: std.ArrayList(Wall),
     wall_material: rl.Material,
     shared_wall_vertices: []f32,
-    texture_scale: f32,
-    const level_grid_size = 100;
+    wall_texture_scale: f32,
 
-    /// Stores the given allocator internally for its entire lifetime. Will own the given texture.
+    /// Stores the given allocator internally for its entire lifetime. Will own the given textures.
     fn create(
         allocator: std.mem.Allocator,
         wall_texture: rl.Texture,
-        texture_scale: f32,
+        wall_texture_scale: f32,
+        floor_texture: rl.Texture,
+        floor_texture_scale: f32,
     ) !LevelGeometry {
-        const precomputed_vertices = Wall.computeVertices();
-        var shared_wall_vertices = try allocator.alloc(f32, precomputed_vertices.len);
-        std.mem.copy(f32, shared_wall_vertices, precomputed_vertices[0..]);
+        var wall_material = rl.LoadMaterialDefault();
+        rl.SetMaterialTexture(&wall_material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), wall_texture);
+        errdefer rl.UnloadMaterial(wall_material);
 
-        var material = rl.LoadMaterialDefault();
-        rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), wall_texture);
+        var floor = try Floor.create(allocator, 100, floor_texture, floor_texture_scale);
+        errdefer floor.destroy(allocator);
+
+        const precomputed_wall_vertices = Wall.computeVertices();
+        var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
+        std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
+
         return LevelGeometry{
+            .floor = floor,
             .wall_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
-            .wall_material = material,
+            .wall_material = wall_material,
             .shared_wall_vertices = shared_wall_vertices,
-            .texture_scale = texture_scale,
+            .wall_texture_scale = wall_texture_scale,
         };
     }
 
     fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
+        self.floor.destroy(allocator);
         for (self.walls.items) |*wall| {
             wall.destroy();
         }
@@ -640,11 +716,12 @@ const LevelGeometry = struct {
     }
 
     fn draw(self: LevelGeometry) void {
-        rl.DrawGrid(level_grid_size, 1);
+        self.floor.draw();
+
         const key = @enumToInt(rl.MATERIAL_MAP_DIFFUSE);
         for (self.walls.items) |wall| {
             switch (wall.tint) {
-                Wall.Tint.Default => self.wall_material.maps[key].color = rl.LIGHTGRAY,
+                Wall.Tint.Default => self.wall_material.maps[key].color = rl.WHITE,
                 Wall.Tint.Green => self.wall_material.maps[key].color = rl.GREEN,
                 Wall.Tint.Red => self.wall_material.maps[key].color = rl.RED,
             }
@@ -662,7 +739,7 @@ const LevelGeometry = struct {
             end_x,
             end_z,
             self.shared_wall_vertices,
-            self.texture_scale,
+            self.wall_texture_scale,
         );
         self.wall_id_counter = self.wall_id_counter + 1;
         return wall.id;
@@ -691,7 +768,7 @@ const LevelGeometry = struct {
                 end_x,
                 end_z,
                 self.shared_wall_vertices,
-                self.texture_scale,
+                self.wall_texture_scale,
             );
             wall.tint = tint;
         }
@@ -713,19 +790,8 @@ const LevelGeometry = struct {
     }
 
     /// If the given ray hits the level grid, return the position on the floor.
-    fn castRayToLevelGrid(_: LevelGeometry, ray: rl.Ray) ?rl.Vector3 {
-        const half_grid_size = level_grid_size / 2;
-        const collision = rl.GetRayCollisionQuad(
-            ray,
-            rl.Vector3{ .x = -half_grid_size, .y = 0, .z = -half_grid_size },
-            rl.Vector3{ .x = half_grid_size, .y = 0, .z = -half_grid_size },
-            rl.Vector3{ .x = half_grid_size, .y = 0, .z = half_grid_size },
-            rl.Vector3{ .x = -half_grid_size, .y = 0, .z = half_grid_size },
-        );
-        return if (collision.hit)
-            collision.point
-        else
-            null;
+    fn castRayToFloor(self: LevelGeometry, ray: rl.Ray) ?rl.Vector3 {
+        return self.floor.castRay(ray);
     }
 
     const RayWallCollision = struct {
@@ -897,6 +963,13 @@ fn loadTexture(path: [*:0]const u8) RaylibError!rl.Texture {
     return texture;
 }
 
+fn loadKnownTextures() ![2]rl.Texture {
+    const wall_texture = try loadTexture("assets/wall.png");
+    errdefer rl.UnloadTexture(wall_texture);
+    const floor_texture = try loadTexture("assets/floor.png");
+    return [_]rl.Texture{ wall_texture, floor_texture };
+}
+
 const InputPresets = struct {
     const Wasd = InputConfiguration{
         .move_left = rl.KeyboardKey.KEY_A,
@@ -944,9 +1017,9 @@ pub fn main() !void {
 
     var available_players = [_]Player{
         // Admin for map editing.
-        Player.create(0, 0, rl.Color{ .r = 140, .g = 17, .b = 39, .a = 100 }, InputPresets.ArrowKeys),
-        Player.create(28, 28, rl.Color{ .r = 154, .g = 205, .b = 50, .a = 100 }, InputPresets.Wasd),
-        Player.create(12, 34, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 100 }, InputPresets.ArrowKeys),
+        Player.create(0, 0, rl.Color{ .r = 140, .g = 17, .b = 39, .a = 150 }, InputPresets.ArrowKeys),
+        Player.create(28, 28, rl.Color{ .r = 154, .g = 205, .b = 50, .a = 150 }, InputPresets.Wasd),
+        Player.create(12, 34, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 150 }, InputPresets.ArrowKeys),
     };
 
     var program_mode = ProgramMode.TwoPlayerSplitScreen;
@@ -957,8 +1030,14 @@ pub fn main() !void {
     var split_screen_setup = try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
     defer split_screen_setup.destroy(gpa.allocator());
 
-    var level_geometry =
-        try LevelGeometry.create(gpa.allocator(), try loadTexture("assets/wall.png"), 5.0);
+    const known_textures = try loadKnownTextures();
+    var level_geometry = try LevelGeometry.create(
+        gpa.allocator(),
+        known_textures[0],
+        5.0,
+        known_textures[1],
+        5.0,
+    );
     defer level_geometry.destroy(gpa.allocator());
     var currently_edited_wall: ?CurrentlyEditedWall = null;
 
@@ -1039,7 +1118,7 @@ pub fn main() !void {
                 EditMode.PlaceWalls => {
                     if (currently_edited_wall) |*wall| {
                         if (rm.Vector2Length(rl.GetMouseDelta()) > std.math.f32_epsilon) {
-                            if (level_geometry.castRayToLevelGrid(ray)) |position_on_grid| {
+                            if (level_geometry.castRayToFloor(ray)) |position_on_grid| {
                                 level_geometry.updateWall(
                                     wall.id,
                                     wall.start_position.x,
@@ -1054,7 +1133,7 @@ pub fn main() !void {
                             currently_edited_wall = null;
                         }
                     } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                        if (level_geometry.castRayToLevelGrid(ray)) |position_on_grid| {
+                        if (level_geometry.castRayToFloor(ray)) |position_on_grid| {
                             const wall_id = try level_geometry.addWall(
                                 position_on_grid.x,
                                 position_on_grid.z,
