@@ -343,12 +343,11 @@ const ThirdPersonCamera = struct {
 };
 
 const InputConfiguration = struct {
-    move_left: rl.KeyboardKey,
-    move_right: rl.KeyboardKey,
+    left: rl.KeyboardKey,
+    right: rl.KeyboardKey,
     move_forward: rl.KeyboardKey,
     move_backwards: rl.KeyboardKey,
-    turn_left: rl.KeyboardKey,
-    turn_right: rl.KeyboardKey,
+    strafe: rl.KeyboardKey,
 };
 
 const Player = struct {
@@ -420,17 +419,26 @@ const Player = struct {
         );
 
         var acceleration_direction = std.mem.zeroes(rl.Vector3);
-        if (rl.IsKeyDown(self.input_configuration.move_left)) {
-            acceleration_direction = rm.Vector3Subtract(
-                acceleration_direction,
-                state_rendered_to_screen.character.getRightFromLookingDirection(),
-            );
+        var turning_direction: f32 = 0;
+        if (rl.IsKeyDown(self.input_configuration.left)) {
+            if (rl.IsKeyDown(self.input_configuration.strafe)) {
+                acceleration_direction = rm.Vector3Subtract(
+                    acceleration_direction,
+                    state_rendered_to_screen.character.getRightFromLookingDirection(),
+                );
+            } else {
+                turning_direction -= 1;
+            }
         }
-        if (rl.IsKeyDown(self.input_configuration.move_right)) {
-            acceleration_direction = rm.Vector3Add(
-                acceleration_direction,
-                state_rendered_to_screen.character.getRightFromLookingDirection(),
-            );
+        if (rl.IsKeyDown(self.input_configuration.right)) {
+            if (rl.IsKeyDown(self.input_configuration.strafe)) {
+                acceleration_direction = rm.Vector3Add(
+                    acceleration_direction,
+                    state_rendered_to_screen.character.getRightFromLookingDirection(),
+                );
+            } else {
+                turning_direction += 1;
+            }
         }
         if (rl.IsKeyDown(self.input_configuration.move_forward)) {
             acceleration_direction = rm.Vector3Add(
@@ -448,14 +456,6 @@ const Player = struct {
             acceleration_direction.x,
             acceleration_direction.z,
         );
-
-        var turning_direction: f32 = 0;
-        if (rl.IsKeyDown(self.input_configuration.turn_left)) {
-            turning_direction -= 1;
-        }
-        if (rl.IsKeyDown(self.input_configuration.turn_right)) {
-            turning_direction += 1;
-        }
         self.state_at_next_tick.character.setTurningDirection(turning_direction);
     }
 
@@ -972,20 +972,18 @@ fn loadKnownTextures() ![2]rl.Texture {
 
 const InputPresets = struct {
     const Wasd = InputConfiguration{
-        .move_left = rl.KeyboardKey.KEY_A,
-        .move_right = rl.KeyboardKey.KEY_D,
+        .left = rl.KeyboardKey.KEY_A,
+        .right = rl.KeyboardKey.KEY_D,
         .move_forward = rl.KeyboardKey.KEY_W,
         .move_backwards = rl.KeyboardKey.KEY_S,
-        .turn_left = rl.KeyboardKey.KEY_Q,
-        .turn_right = rl.KeyboardKey.KEY_E,
+        .strafe = rl.KeyboardKey.KEY_LEFT_CONTROL,
     };
     const ArrowKeys = InputConfiguration{
-        .move_left = rl.KeyboardKey.KEY_LEFT,
-        .move_right = rl.KeyboardKey.KEY_RIGHT,
+        .left = rl.KeyboardKey.KEY_LEFT,
+        .right = rl.KeyboardKey.KEY_RIGHT,
         .move_forward = rl.KeyboardKey.KEY_UP,
         .move_backwards = rl.KeyboardKey.KEY_DOWN,
-        .turn_left = rl.KeyboardKey.KEY_PAGE_UP,
-        .turn_right = rl.KeyboardKey.KEY_PAGE_DOWN,
+        .strafe = rl.KeyboardKey.KEY_RIGHT_CONTROL,
     };
 };
 
