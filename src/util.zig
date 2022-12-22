@@ -41,4 +41,8 @@ pub const FlatVector = struct {
     pub fn subtract(self: FlatVector, other: FlatVector) FlatVector {
         return FlatVector{ .x = self.x - other.x, .z = self.z - other.z };
     }
+
+    pub fn scale(self: FlatVector, factor: f32) FlatVector {
+        return FlatVector{ .x = self.x * factor, .z = self.z * factor };
+    }
 };
