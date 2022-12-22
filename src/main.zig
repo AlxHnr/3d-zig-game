@@ -598,11 +598,11 @@ const LevelGeometry = struct {
                 rl.Vector2{ .x = 0, .y = thickness / texture_scale },
             };
             const texture_corner_indices = [30]u3{
-                3, 0, 2, 0, 1, 2, // Front side.
-                5, 3, 0, 5, 0, 4, // Left side.
-                0, 6, 7, 0, 1, 6, // Top side.
-                2, 3, 1, 1, 3, 0, // Back side.
-                3, 0, 5, 5, 0, 4, // Right side.
+                0, 3, 1, 3, 2, 1, // Front side.
+                4, 0, 3, 4, 3, 5, // Left side.
+                7, 1, 0, 7, 6, 1, // Top side.
+                1, 0, 2, 2, 0, 3, // Back side.
+                0, 3, 4, 4, 3, 5, // Right side.
             };
             var texcoords: [computeVertices().len / 3 * 2]f32 = undefined;
             mesh.texcoords = &texcoords;
