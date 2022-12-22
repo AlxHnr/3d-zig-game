@@ -50,6 +50,10 @@ pub const FlatVector = struct {
         return rm.Vector3Length(self.toVector3());
     }
 
+    pub fn lengthSquared(self: FlatVector) f32 {
+        return self.x * self.x + self.z * self.z;
+    }
+
     /// Get the angle needed to rotate this vector to have the same direction as another vector. The
     /// given vectors don't need to be normalized.
     pub fn computeRotationToOtherVector(self: FlatVector, other: FlatVector) f32 {

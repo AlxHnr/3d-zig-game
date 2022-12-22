@@ -7,8 +7,8 @@ const util = @import("util.zig");
 
 pub const Rectangle = struct {
     /// Game-world coordinates rotated around the worlds origin to axis-align this rectangle.
-    bottom_left_corner: util.FlatVector,
-    top_right_corner: util.FlatVector,
+    first_corner: util.FlatVector,
+    third_corner: util.FlatVector,
     /// Precomputed sine/cosine values for replicating this rectangles rotation around the game
     /// worlds origin.
     rotation: Rotation,
@@ -32,34 +32,22 @@ pub const Rectangle = struct {
         }
     };
 
-    /// Helper struct for precomputing this rectangles values.
-    const Side = struct {
-        lower_corner: util.FlatVector,
-        upper_corner: util.FlatVector,
-    };
-
     /// Takes game-world coordinates. Side a and b can be chosen arbitrarily, but must be adjacent.
-    /// side_a_length is assumed to be positive and > than 0.
     pub fn create(
         side_a_start: util.FlatVector,
         side_a_end: util.FlatVector,
         side_b_length: f32,
     ) Rectangle {
-        std.debug.assert(side_b_length > util.Constants.epsilon);
-        const side_a = if (side_a_start.z > side_a_end.z)
-            Side{ .lower_corner = side_a_start, .upper_corner = side_a_end }
-        else
-            Side{ .lower_corner = side_a_end, .upper_corner = side_a_start };
         const side_a_length = side_a_start.subtract(side_a_end).length();
-        const rotation_angle = side_a.upper_corner.subtract(side_a.lower_corner)
+        const rotation_angle = side_a_start.subtract(side_a_end)
             .computeRotationToOtherVector(util.FlatVector{ .x = 0, .z = -1 });
         const rotation = Rotation.create(rotation_angle);
-        const bottom_left_corner = rotation.rotate(side_a.lower_corner);
+        const first_corner = rotation.rotate(side_a_end);
         return Rectangle{
-            .bottom_left_corner = bottom_left_corner,
-            .top_right_corner = util.FlatVector{
-                .x = bottom_left_corner.x + side_b_length,
-                .z = bottom_left_corner.z - side_a_length,
+            .first_corner = first_corner,
+            .third_corner = util.FlatVector{
+                .x = first_corner.x + side_b_length,
+                .z = first_corner.z - side_a_length,
             },
             .rotation = rotation,
             .inverse_rotation = Rotation.create(-rotation_angle),
@@ -84,7 +72,7 @@ pub const Circle = struct {
 
     /// If a collision occurs, return a displacement vector for moving self out of other. The
     /// returned displacement vector must be added to self.position to resolve the collision.
-    pub fn collision(self: Circle, other: Circle) ?util.FlatVector {
+    pub fn collidesWithCircle(self: Circle, other: Circle) ?util.FlatVector {
         const offset_to_other = self.position.subtract(other.position).toVector3();
         const max_distance = self.radius + other.radius;
         const max_distance_squared = max_distance * max_distance;
@@ -96,5 +84,30 @@ pub const Circle = struct {
             rm.Vector3Normalize(offset_to_other),
             max_distance - rm.Vector3Length(offset_to_other),
         ));
+    }
+
+    /// If a collision occurs, return a displacement vector for moving self out of other. The
+    /// returned displacement vector must be added to self.position to resolve the collision.
+    pub fn collidesWithRectangle(self: Circle, rectangle: Rectangle) ?util.FlatVector {
+        const rotated_self_position = rectangle.rotation.rotate(self.position);
+        const reference_point = util.FlatVector{
+            .x = if (rotated_self_position.x < rectangle.first_corner.x)
+                rectangle.first_corner.x
+            else if (rotated_self_position.x > rectangle.third_corner.x)
+                rectangle.third_corner.x
+            else
+                rotated_self_position.x,
+            .z = if (rotated_self_position.z > rectangle.first_corner.z)
+                rectangle.first_corner.z
+            else if (rotated_self_position.z < rectangle.third_corner.z)
+                rectangle.third_corner.z
+            else
+                rotated_self_position.z,
+        };
+        const offset = rotated_self_position.subtract(reference_point);
+        if (offset.lengthSquared() > self.radius * self.radius) {
+            return null;
+        }
+        return util.FlatVector{ .x = 0, .z = 0 };
     }
 };
