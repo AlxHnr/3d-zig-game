@@ -599,7 +599,7 @@ const LevelGeometry = struct {
             };
             const texture_corner_indices = [30]u3{
                 3, 0, 2, 0, 1, 2, // Front side.
-                5, 3, 4, 5, 0, 4, // Left side.
+                5, 3, 0, 5, 0, 4, // Left side.
                 0, 6, 7, 0, 1, 6, // Top side.
                 2, 3, 1, 1, 3, 0, // Back side.
                 3, 0, 5, 5, 0, 4, // Right side.
