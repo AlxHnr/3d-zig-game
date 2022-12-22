@@ -8,8 +8,7 @@ const util = @import("util.zig");
 pub const Rectangle = struct {
     /// Game-world coordinates rotated around the worlds origin to axis-align this rectangle.
     bottom_left_corner: util.FlatVector,
-    width: f32,
-    height: f32,
+    top_right_corner: util.FlatVector,
     /// Precomputed sine/cosine values for replicating this rectangles rotation around the game
     /// worlds origin.
     rotation: Rotation,
@@ -20,6 +19,17 @@ pub const Rectangle = struct {
     const Rotation = struct {
         sine: f32,
         cosine: f32,
+
+        fn create(angle: f32) Rotation {
+            return Rotation{ .sine = math.sin(angle), .cosine = math.cos(angle) };
+        }
+
+        fn rotate(self: Rotation, vector: util.FlatVector) util.FlatVector {
+            return util.FlatVector{
+                .x = vector.x * self.cosine + vector.z * self.sine,
+                .z = -vector.x * self.sine + vector.z * self.cosine,
+            };
+        }
     };
 
     /// Helper struct for precomputing this rectangles values.
@@ -41,18 +51,18 @@ pub const Rectangle = struct {
         else
             Side{ .lower_corner = side_a_end, .upper_corner = side_a_start };
         const side_a_length = side_a_start.subtract(side_a_end).length();
-        const angle = side_a.upper_corner.subtract(side_a.lower_corner)
+        const rotation_angle = side_a.upper_corner.subtract(side_a.lower_corner)
             .computeRotationToOtherVector(util.FlatVector{ .x = 0, .z = -1 });
+        const rotation = Rotation.create(rotation_angle);
+        const bottom_left_corner = rotation.rotate(side_a.lower_corner);
         return Rectangle{
-            .bottom_left_corner = util.FlatVector.fromVector3(rm.Vector3RotateByAxisAngle(
-                side_a.lower_corner.toVector3(),
-                util.Constants.up,
-                angle,
-            )),
-            .width = side_b_length,
-            .height = side_a_length,
-            .rotation = Rotation{ .sine = math.sin(angle), .cosine = math.cos(angle) },
-            .inverse_rotation = Rotation{ .sine = math.sin(-angle), .cosine = math.cos(-angle) },
+            .bottom_left_corner = bottom_left_corner,
+            .top_right_corner = util.FlatVector{
+                .x = bottom_left_corner.x + side_b_length,
+                .z = bottom_left_corner.z - side_a_length,
+            },
+            .rotation = rotation,
+            .inverse_rotation = Rotation.create(-rotation_angle),
         };
     }
 };
