@@ -563,7 +563,7 @@ const LevelGeometry = struct {
         tint: Tint,
 
         const height: f32 = 5;
-        const thickness: f32 = 0.25;
+        const thickness: f32 = 1;
 
         /// Keeps a reference to the given wall vertices for its entire lifetime.
         fn create(
