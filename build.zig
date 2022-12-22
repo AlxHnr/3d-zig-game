@@ -22,4 +22,14 @@ pub fn build(b: *std.build.Builder) void {
     raylib.link(exe, false);
     raylib.addAsPackage("raylib", exe);
     raylib.math.addAsPackage("raylib-math", exe);
+
+    const tests = b.addTest("src/test.zig");
+    tests.setTarget(target);
+    tests.setBuildMode(mode);
+    raylib.link(tests, false);
+    raylib.addAsPackage("raylib", tests);
+    raylib.math.addAsPackage("raylib-math", tests);
+
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&tests.step);
 }
