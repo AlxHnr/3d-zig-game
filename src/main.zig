@@ -13,13 +13,6 @@ fn drawFpsCounter() void {
     }
 }
 
-// TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
-fn degreesToRadians(degrees: f32) f32 {
-    return degrees * std.math.pi / 180;
-}
-fn radiansToDegrees(radians: f32) f32 {
-    return radians * 180 / std.math.pi;
-}
 fn isEqualFloat(a: f32, b: f32) bool {
     return std.math.fabs(a - b) < std.math.f32_epsilon;
 }
@@ -27,13 +20,8 @@ fn isEqualFloat(a: f32, b: f32) bool {
 /// Get the angle needed to rotate vector a to have the same direction as vector b. The given
 /// vectors don't need to be normalized.
 fn computeYRotationAngle(a: rl.Vector3, b: rl.Vector3) f32 {
-    const a_2d = rm.Vector2Normalize(rl.Vector2{ .x = a.x, .y = a.z });
-    const b_2d = rm.Vector2Normalize(rl.Vector2{ .x = b.x, .y = b.z });
-    const y_rotation_angle = std.math.acos(std.math.clamp(rm.Vector2DotProduct(a_2d, b_2d), -1, 1));
-    return if (rm.Vector2DotProduct(b_2d, rl.Vector2{ .x = a.z, .y = -a.x }) < 0)
-        -y_rotation_angle
-    else
-        y_rotation_angle;
+    return util.FlatVector.fromVector3(a)
+        .computeRotationToOtherVector(util.FlatVector.fromVector3(b));
 }
 
 fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
@@ -137,7 +125,7 @@ const Character = struct {
         self.boundaries.position =
             self.boundaries.position.add(util.FlatVector.fromVector3(self.velocity));
 
-        const max_rotation_per_tick = degreesToRadians(5);
+        const max_rotation_per_tick = util.degreesToRadians(5);
         const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
         self.looking_direction =
             rm.Vector3RotateByAxisAngle(self.looking_direction, util.Constants.up, rotation_angle);
@@ -218,7 +206,7 @@ const ThirdPersonCamera = struct {
     target_angle_from_ground: f32,
 
     const camera_follow_speed = 0.15;
-    const default_angle_from_ground = degreesToRadians(15);
+    const default_angle_from_ground = util.degreesToRadians(15);
 
     /// Initialize the camera to look down at the given character from behind.
     fn create(character: Character) ThirdPersonCamera {
@@ -283,7 +271,7 @@ const ThirdPersonCamera = struct {
 
     /// Angle between 0 and 1.55 (89 degrees). Will be clamped into this range.
     fn setAngleFromGround(self: *ThirdPersonCamera, angle: f32) void {
-        self.target_angle_from_ground = std.math.clamp(angle, 0, degreesToRadians(89));
+        self.target_angle_from_ground = std.math.clamp(angle, 0, util.degreesToRadians(89));
     }
 
     /// To be called once for each tick.
@@ -1101,7 +1089,7 @@ pub fn main() !void {
                     EditModeView.FromBehind => {
                         edit_mode_view = EditModeView.TopDown;
                         active_players[0].state_at_next_tick.camera
-                            .setAngleFromGround(degreesToRadians(90));
+                            .setAngleFromGround(util.degreesToRadians(90));
                     },
                     EditModeView.TopDown => {
                         edit_mode_view = EditModeView.FromBehind;

@@ -45,4 +45,28 @@ pub const FlatVector = struct {
     pub fn scale(self: FlatVector, factor: f32) FlatVector {
         return FlatVector{ .x = self.x * factor, .z = self.z * factor };
     }
+
+    pub fn length(self: FlatVector) f32 {
+        return rm.Vector3Length(self.toVector3());
+    }
+
+    /// Get the angle needed to rotate this vector to have the same direction as another vector. The
+    /// given vectors don't need to be normalized.
+    pub fn computeRotationToOtherVector(self: FlatVector, other: FlatVector) f32 {
+        const self_v2 = rm.Vector2Normalize(rl.Vector2{ .x = self.x, .y = self.z });
+        const other_v2 = rm.Vector2Normalize(rl.Vector2{ .x = other.x, .y = other.z });
+        const angle = math.acos(math.clamp(rm.Vector2DotProduct(self_v2, other_v2), -1, 1));
+        return if (rm.Vector2DotProduct(other_v2, rl.Vector2{ .x = self.z, .y = -self.x }) < 0)
+            -angle
+        else
+            angle;
+    }
 };
+
+// TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
+pub fn degreesToRadians(degrees: f32) f32 {
+    return degrees * math.pi / 180;
+}
+pub fn radiansToDegrees(radians: f32) f32 {
+    return radians * 180 / math.pi;
+}
