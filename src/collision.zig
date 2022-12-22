@@ -5,6 +5,13 @@ const math = std.math;
 const rm = @import("raylib-math");
 const util = @import("util.zig");
 
+fn getSmallestValueBasedOnAbsolute(a: f32, b: f32) f32 {
+    return if (math.fabs(a) < math.fabs(b))
+        a
+    else
+        b;
+}
+
 pub const Rectangle = struct {
     /// Game-world coordinates rotated around the worlds origin to axis-align this rectangle.
     first_corner: util.FlatVector,
@@ -108,6 +115,21 @@ pub const Circle = struct {
         if (offset.lengthSquared() > self.radius * self.radius) {
             return null;
         }
-        return util.FlatVector{ .x = 0, .z = 0 };
+
+        const displacement_x = getSmallestValueBasedOnAbsolute(
+            rectangle.first_corner.x - rotated_self_position.x - self.radius,
+            rectangle.third_corner.x - rotated_self_position.x + self.radius,
+        );
+        const displacement_z = getSmallestValueBasedOnAbsolute(
+            rectangle.first_corner.z - rotated_self_position.z + self.radius,
+            rectangle.third_corner.z - rotated_self_position.z - self.radius,
+        );
+        const displacement_vector =
+            if (math.fabs(displacement_x) < math.fabs(displacement_z))
+            util.FlatVector{ .x = displacement_x, .z = 0 }
+        else
+            util.FlatVector{ .x = 0, .z = displacement_z };
+
+        return rectangle.inverse_rotation.rotate(displacement_vector);
     }
 };
