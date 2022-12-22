@@ -13,10 +13,6 @@ fn drawFpsCounter() void {
     }
 }
 
-fn isEqualFloat(a: f32, b: f32) bool {
-    return std.math.fabs(a - b) < std.math.f32_epsilon;
-}
-
 /// Get the angle needed to rotate vector a to have the same direction as vector b. The given
 /// vectors don't need to be normalized.
 fn computeYRotationAngle(a: rl.Vector3, b: rl.Vector3) f32 {
@@ -114,7 +110,8 @@ const Character = struct {
 
     /// To be called once for each tick.
     fn update(self: *Character) void {
-        const is_accelerating = rm.Vector3Length(self.acceleration_direction) > std.math.f32_epsilon;
+        const is_accelerating =
+            rm.Vector3Length(self.acceleration_direction) > util.Constants.epsilon;
         if (is_accelerating) {
             self.velocity = rm.Vector3Add(self.velocity, rm.Vector3Scale(self.acceleration_direction, 0.03));
             self.velocity = rm.Vector3ClampValue(self.velocity, 0, 0.2);
@@ -288,7 +285,7 @@ const ThirdPersonCamera = struct {
     }
 
     fn updateAngleFromGround(self: *ThirdPersonCamera) void {
-        if (isEqualFloat(self.angle_from_ground, self.target_angle_from_ground)) {
+        if (util.isEqualFloat(self.angle_from_ground, self.target_angle_from_ground)) {
             return;
         }
         self.angle_from_ground = rm.Lerp(
@@ -323,7 +320,7 @@ const ThirdPersonCamera = struct {
     }
 
     fn updateCameraDistanceFromCharacter(self: *ThirdPersonCamera) void {
-        if (isEqualFloat(self.distance_from_character, self.target_distance_from_character)) {
+        if (util.isEqualFloat(self.distance_from_character, self.target_distance_from_character)) {
             return;
         }
         self.distance_from_character = rm.Lerp(
@@ -382,8 +379,8 @@ const Player = struct {
         color: rl.Color,
         input_configuration: InputConfiguration,
     ) Player {
-        const position_is_zero =
-            std.math.fabs(starting_position_x) + std.math.fabs(starting_position_z) < std.math.f32_epsilon;
+        const position_is_zero = std.math.fabs(starting_position_x) +
+            std.math.fabs(starting_position_z) < util.Constants.epsilon;
         const direction_towards_center = if (position_is_zero)
             util.FlatVector{ .x = 0, .z = -1 }
         else
@@ -1080,7 +1077,7 @@ pub fn main() !void {
             }
         }
         if (program_mode == ProgramMode.Edit) {
-            if (std.math.fabs(rl.GetMouseWheelMoveV().y) > std.math.f32_epsilon) {
+            if (std.math.fabs(rl.GetMouseWheelMoveV().y) > util.Constants.epsilon) {
                 active_players[0].state_at_next_tick.camera
                     .increaseDistanceToCharacter(-rl.GetMouseWheelMoveV().y * 2.5);
             }
@@ -1114,7 +1111,7 @@ pub fn main() !void {
             switch (edit_mode) {
                 EditMode.PlaceWalls => {
                     if (currently_edited_wall) |*wall| {
-                        if (rm.Vector2Length(rl.GetMouseDelta()) > std.math.f32_epsilon) {
+                        if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
                             if (level_geometry.castRayToFloor(ray)) |position_on_grid| {
                                 level_geometry.updateWall(
                                     wall.id,
@@ -1144,7 +1141,7 @@ pub fn main() !void {
                     }
                 },
                 EditMode.DeleteWalls => {
-                    if (rm.Vector2Length(rl.GetMouseDelta()) > std.math.f32_epsilon) {
+                    if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
                         if (currently_edited_wall) |wall| {
                             level_geometry.tintWall(wall.id, LevelGeometry.Wall.Tint.Default);
                             currently_edited_wall = null;

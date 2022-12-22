@@ -70,3 +70,7 @@ pub fn degreesToRadians(degrees: f32) f32 {
 pub fn radiansToDegrees(radians: f32) f32 {
     return radians * 180 / math.pi;
 }
+
+pub fn isEqualFloat(a: f32, b: f32) bool {
+    return math.fabs(a - b) < Constants.epsilon;
+}
