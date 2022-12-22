@@ -1,11 +1,8 @@
-const std = @import("std");
-
+const collision = @import("collision.zig");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
-
-const Constants = struct {
-    const up = rl.Vector3{ .x = 0, .y = 1, .z = 0 };
-};
+const std = @import("std");
+const util = @import("util.zig");
 
 fn drawFpsCounter() void {
     var string_buffer: [16]u8 = undefined;
@@ -60,8 +57,7 @@ fn clampCameraDistanceFromTarget(camera: rl.Camera, max_distance: f32) rl.Camera
 }
 
 const Character = struct {
-    /// Y will always be 0.
-    position: rl.Vector3,
+    boundaries: collision.Circle,
     /// Y will always be 0.
     looking_direction: rl.Vector3,
     /// Values from -1 (turning left) to 1 (turning right).
@@ -70,26 +66,22 @@ const Character = struct {
     acceleration_direction: rl.Vector3,
     /// Y will always be 0.
     velocity: rl.Vector3,
-    width: f32,
     height: f32,
     color: rl.Color,
 
     fn create(
-        position_x: f32,
-        position_z: f32,
-        direction_x: f32,
-        direction_z: f32,
-        width: f32,
+        position: util.FlatVector,
+        looking_direction: util.FlatVector,
+        radius: f32,
         height: f32,
         color: rl.Color,
     ) Character {
         return Character{
-            .position = rl.Vector3{ .x = position_x, .y = 0, .z = position_z },
-            .looking_direction = rm.Vector3Normalize(rl.Vector3{ .x = direction_x, .y = 0, .z = direction_z }),
+            .boundaries = collision.Circle{ .position = position, .radius = radius },
+            .looking_direction = looking_direction.normalize().toVector3(),
             .turning_direction = 0,
             .acceleration_direction = std.mem.zeroes(rl.Vector3),
             .velocity = std.mem.zeroes(rl.Vector3),
-            .width = width,
             .height = height,
             .color = color,
         };
@@ -100,19 +92,18 @@ const Character = struct {
     fn lerp(self: Character, other: Character, interval: f32) Character {
         const i = std.math.clamp(interval, 0, 1);
         return Character{
-            .position = rm.Vector3Lerp(self.position, other.position, i),
+            .boundaries = self.boundaries.lerp(other.boundaries, i),
             .looking_direction = rm.Vector3Lerp(self.looking_direction, other.looking_direction, i),
             .turning_direction = rm.Lerp(self.turning_direction, other.turning_direction, i),
             .acceleration_direction = rm.Vector3Lerp(self.acceleration_direction, other.acceleration_direction, i),
             .velocity = rm.Vector3Lerp(self.velocity, other.velocity, i),
-            .width = rm.Lerp(self.width, other.width, i),
             .height = rm.Lerp(self.height, other.height, i),
             .color = lerpColor(self.color, other.color, i),
         };
     }
 
     fn getRightFromLookingDirection(self: Character) rl.Vector3 {
-        return rm.Vector3CrossProduct(self.looking_direction, Constants.up);
+        return rm.Vector3CrossProduct(self.looking_direction, util.Constants.up);
     }
 
     /// Given direction values will be normalized.
@@ -127,7 +118,10 @@ const Character = struct {
     }
 
     fn getTopOfCharacter(self: Character) rl.Vector3 {
-        return rm.Vector3Add(self.position, rl.Vector3{ .x = 0, .y = self.height, .z = 0 });
+        return rm.Vector3Add(
+            self.boundaries.position.toVector3(),
+            rl.Vector3{ .x = 0, .y = self.height, .z = 0 },
+        );
     }
 
     /// To be called once for each tick.
@@ -140,19 +134,38 @@ const Character = struct {
             self.velocity = rm.Vector3Scale(self.velocity, 0.7);
         }
 
-        self.position = rm.Vector3Add(self.position, self.velocity);
+        self.boundaries.position =
+            self.boundaries.position.add(util.FlatVector.fromVector3(self.velocity));
 
         const max_rotation_per_tick = degreesToRadians(5);
         const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
-        self.looking_direction = rm.Vector3RotateByAxisAngle(self.looking_direction, Constants.up, rotation_angle);
+        self.looking_direction =
+            rm.Vector3RotateByAxisAngle(self.looking_direction, util.Constants.up, rotation_angle);
     }
 
     fn draw(self: Character) void {
-        rl.DrawCylinder(self.position, 0, self.width / 2, self.height, 10, self.color);
-        rl.DrawCylinderWires(self.position, 0, self.width / 2, self.height, 10, rl.GRAY);
+        rl.DrawCylinder(
+            self.boundaries.position.toVector3(),
+            0,
+            self.boundaries.radius,
+            self.height,
+            10,
+            self.color,
+        );
+        rl.DrawCylinderWires(
+            self.boundaries.position.toVector3(),
+            0,
+            self.boundaries.radius,
+            self.height,
+            10,
+            rl.GRAY,
+        );
 
-        const direction_line_target = rm.Vector3Add(self.position, rm.Vector3Scale(self.looking_direction, 2));
-        rl.DrawLine3D(self.position, direction_line_target, rl.BLUE);
+        const direction_line_target = rm.Vector3Add(
+            self.boundaries.position.toVector3(),
+            rm.Vector3Scale(self.looking_direction, 2),
+        );
+        rl.DrawLine3D(self.boundaries.position.toVector3(), direction_line_target, rl.BLUE);
     }
 };
 
@@ -210,7 +223,7 @@ const ThirdPersonCamera = struct {
     /// Initialize the camera to look down at the given character from behind.
     fn create(character: Character) ThirdPersonCamera {
         var camera = std.mem.zeroes(rl.Camera);
-        camera.up = Constants.up;
+        camera.up = util.Constants.up;
         camera.fovy = 45;
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
         camera.target = character.getTopOfCharacter();
@@ -318,7 +331,7 @@ const ThirdPersonCamera = struct {
         const character_back_direction = rm.Vector3Negate(character_to_follow.looking_direction);
         const rotation_step = camera_follow_speed *
             computeYRotationAngle(camera_offset, character_back_direction);
-        return rm.Vector3RotateByAxisAngle(camera_offset, Constants.up, rotation_step);
+        return rm.Vector3RotateByAxisAngle(camera_offset, util.Constants.up, rotation_step);
     }
 
     fn updateCameraDistanceFromCharacter(self: *ThirdPersonCamera) void {
@@ -384,18 +397,16 @@ const Player = struct {
         const position_is_zero =
             std.math.fabs(starting_position_x) + std.math.fabs(starting_position_z) < std.math.f32_epsilon;
         const direction_towards_center = if (position_is_zero)
-            rl.Vector2{ .x = 0, .y = 1 }
+            util.FlatVector{ .x = 0, .z = -1 }
         else
-            rm.Vector2Normalize(rl.Vector2{
+            util.FlatVector.normalize(util.FlatVector{
                 .x = -starting_position_x,
-                .y = -starting_position_z,
+                .z = -starting_position_z,
             });
         const character = Character.create(
-            starting_position_x,
-            starting_position_z,
-            direction_towards_center.x,
-            direction_towards_center.y,
-            0.6,
+            util.FlatVector{ .x = starting_position_x, .z = starting_position_z },
+            direction_towards_center,
+            0.3,
             1.8,
             color,
         );
@@ -546,9 +557,9 @@ const LevelGeometry = struct {
 
         /// If the given ray hits the level grid, return the position on the floor.
         fn castRay(self: Floor, ray: rl.Ray) ?rl.Vector3 {
-            const collision = rl.GetRayCollisionMesh(ray, self.mesh, rm.MatrixIdentity());
-            return if (collision.hit)
-                collision.point
+            const ray_collision = rl.GetRayCollisionMesh(ray, self.mesh, rm.MatrixIdentity());
+            return if (ray_collision.hit)
+                ray_collision.point
             else
                 null;
         }
@@ -803,15 +814,15 @@ const LevelGeometry = struct {
     fn castRayToWalls(self: LevelGeometry, ray: rl.Ray) ?RayWallCollision {
         var result: ?RayWallCollision = null;
         for (self.walls.items) |wall| {
-            const collision = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
-            const found_closer_wall = if (!collision.hit)
+            const ray_collision = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
+            const found_closer_wall = if (!ray_collision.hit)
                 false
             else if (result) |existing_result|
-                collision.distance < existing_result.distance
+                ray_collision.distance < existing_result.distance
             else
                 true;
             if (found_closer_wall) {
-                result = RayWallCollision{ .wall_id = wall.id, .distance = collision.distance };
+                result = RayWallCollision{ .wall_id = wall.id, .distance = ray_collision.distance };
             }
         }
         return result;
@@ -861,8 +872,8 @@ const SplitScreenRenderContext = struct {
             .position = camera.target,
             .direction = rm.Vector3Normalize(rm.Vector3Subtract(camera.position, camera.target)),
         };
-        if (level_geometry.castRayToWalls(ray_to_camera)) |collision| {
-            const clamped_camera = clampCameraDistanceFromTarget(camera, collision.distance);
+        if (level_geometry.castRayToWalls(ray_to_camera)) |ray_collision| {
+            const clamped_camera = clampCameraDistanceFromTarget(camera, ray_collision.distance);
             rl.BeginMode3D(clamped_camera);
         } else {
             rl.BeginMode3D(camera);
@@ -1150,10 +1161,10 @@ pub fn main() !void {
                             level_geometry.tintWall(wall.id, LevelGeometry.Wall.Tint.Default);
                             currently_edited_wall = null;
                         }
-                        if (level_geometry.castRayToWalls(ray)) |collision| {
-                            level_geometry.tintWall(collision.wall_id, LevelGeometry.Wall.Tint.Red);
+                        if (level_geometry.castRayToWalls(ray)) |ray_collision| {
+                            level_geometry.tintWall(ray_collision.wall_id, LevelGeometry.Wall.Tint.Red);
                             currently_edited_wall = CurrentlyEditedWall{
-                                .id = collision.wall_id,
+                                .id = ray_collision.wall_id,
                                 .start_position = std.mem.zeroes(rl.Vector3),
                             };
                         }
