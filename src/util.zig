@@ -72,6 +72,14 @@ pub const FlatVector = struct {
         else
             angle;
     }
+
+    pub fn negate(self: FlatVector) FlatVector {
+        return FlatVector{ .x = -self.x, .z = -self.z };
+    }
+
+    pub fn rotateRightBy90Degrees(self: FlatVector) FlatVector {
+        return FlatVector{ .x = -self.z, .z = self.x };
+    }
 };
 
 // TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
