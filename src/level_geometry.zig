@@ -18,8 +18,7 @@ const Floor = struct {
         texture: rl.Texture,
         texture_scale: f32,
     ) !Floor {
-        var material = rl.LoadMaterialDefault();
-        rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), texture);
+        const material = util.makeMaterial(texture);
         errdefer rl.UnloadMaterial(material);
 
         var vertices = try allocator.alloc(f32, 6 * 3);
@@ -201,8 +200,7 @@ pub const Collection = struct {
         floor_texture: rl.Texture,
         texture_scale: f32,
     ) !Collection {
-        var wall_material = rl.LoadMaterialDefault();
-        rl.SetMaterialTexture(&wall_material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), wall_texture);
+        const wall_material = util.makeMaterial(wall_texture);
         errdefer rl.UnloadMaterial(wall_material);
 
         var floor = try Floor.create(allocator, 100, floor_texture, texture_scale);

@@ -137,3 +137,9 @@ pub const TickTimer = struct {
         next_tick_progress: f32,
     };
 };
+
+pub fn makeMaterial(texture: rl.Texture) rl.Material {
+    var material = rl.LoadMaterialDefault();
+    rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), texture);
+    return material;
+}
