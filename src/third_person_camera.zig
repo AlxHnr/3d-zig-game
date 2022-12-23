@@ -10,10 +10,10 @@ const default_angle_from_ground = util.degreesToRadians(15);
 pub const Camera = struct {
     camera: rl.Camera,
     distance_from_object: f32,
-    /// This value will be approached by update().
+    /// This value will be approached by processElapsedTick().
     target_distance_from_object: f32,
     angle_from_ground: f32,
-    /// This value will be approached by update().
+    /// This value will be approached by processElapsedTick().
     target_angle_from_ground: f32,
 
     /// Initialize the camera to look down at the given object from behind.
@@ -121,8 +121,7 @@ pub const Camera = struct {
         return self.camera;
     }
 
-    /// To be called once for each tick.
-    pub fn update(
+    pub fn processElapsedTick(
         self: *Camera,
         target_object_position: rl.Vector3,
         target_object_looking_direction: util.FlatVector,

@@ -95,8 +95,7 @@ const Character = struct {
         }
     }
 
-    /// To be called once for each tick.
-    fn update(self: *Character) void {
+    fn processElapsedTick(self: *Character) void {
         self.boundaries.position = self.boundaries.position.add(self.velocity);
 
         const is_accelerating = self.acceleration_direction.length() > util.Constants.epsilon;
@@ -162,13 +161,15 @@ const Player = struct {
             };
         }
 
-        /// To be called once for each tick.
-        fn update(self: *State, geometry: level_geometry.Collection) void {
+        fn processElapsedTick(self: *State, geometry: level_geometry.Collection) void {
             if (geometry.collidesWithCircle(self.character.boundaries)) |displacement_vector| {
                 self.character.resolveCollision(displacement_vector);
             }
-            self.character.update();
-            self.camera.update(self.character.getTopOfCharacter(), self.character.looking_direction);
+            self.character.processElapsedTick();
+            self.camera.processElapsedTick(
+                self.character.getTopOfCharacter(),
+                self.character.looking_direction,
+            );
         }
     };
 
@@ -260,10 +261,9 @@ const Player = struct {
         self.state_at_next_tick.character.setTurningDirection(0);
     }
 
-    /// To be called once for each tick.
-    fn update(self: *Player, geometry: level_geometry.Collection) void {
+    fn processElapsedTick(self: *Player, geometry: level_geometry.Collection) void {
         self.state_at_previous_tick = self.state_at_next_tick;
-        self.state_at_next_tick.update(geometry);
+        self.state_at_next_tick.processElapsedTick(geometry);
     }
 
     fn draw(self: Player, interval_between_previous_and_current_tick: f32) void {
@@ -503,7 +503,7 @@ pub fn main() !void {
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             for (active_players) |*player| {
-                player.update(geometry);
+                player.processElapsedTick(geometry);
             }
         }
 
