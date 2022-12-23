@@ -3,6 +3,7 @@ const rl = @import("raylib");
 const rm = @import("raylib-math");
 const std = @import("std");
 const util = @import("util.zig");
+const level_geometry = @import("level_geometry.zig");
 
 fn drawFpsCounter() void {
     var string_buffer: [16]u8 = undefined;
@@ -376,8 +377,8 @@ const Player = struct {
         }
 
         /// To be called once for each tick.
-        fn update(self: *State, level_geometry: LevelGeometry) void {
-            if (level_geometry.collidesWithCircle(self.character.boundaries)) |displacement_vector| {
+        fn update(self: *State, geometry: level_geometry.Collection) void {
+            if (geometry.collidesWithCircle(self.character.boundaries)) |displacement_vector| {
                 self.character.resolveCollision(displacement_vector);
             }
             self.character.update();
@@ -478,9 +479,9 @@ const Player = struct {
     }
 
     /// To be called once for each tick.
-    fn update(self: *Player, level_geometry: LevelGeometry) void {
+    fn update(self: *Player, geometry: level_geometry.Collection) void {
         self.state_at_previous_tick = self.state_at_next_tick;
-        self.state_at_next_tick.update(level_geometry);
+        self.state_at_next_tick.update(geometry);
     }
 
     fn draw(self: Player, interval_between_previous_and_current_tick: f32) void {
@@ -495,365 +496,6 @@ const Player = struct {
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
         ).camera;
-    }
-};
-
-const LevelGeometry = struct {
-    const Floor = struct {
-        vertices: []f32,
-        mesh: rl.Mesh,
-        material: rl.Material,
-
-        /// Will own the given texture.
-        fn create(
-            allocator: std.mem.Allocator,
-            side_length: f32,
-            texture: rl.Texture,
-            texture_scale: f32,
-        ) !Floor {
-            var material = rl.LoadMaterialDefault();
-            rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), texture);
-            errdefer rl.UnloadMaterial(material);
-
-            var vertices = try allocator.alloc(f32, 6 * 3);
-            std.mem.copy(f32, vertices, &[6 * 3]f32{
-                -side_length / 2, 0, side_length / 2,
-                side_length / 2,  0, -side_length / 2,
-                -side_length / 2, 0, -side_length / 2,
-                -side_length / 2, 0, side_length / 2,
-                side_length / 2,  0, side_length / 2,
-                side_length / 2,  0, -side_length / 2,
-            });
-            var texcoords = [6 * 2]f32{
-                0,                           0,
-                side_length / texture_scale, side_length / texture_scale,
-                0,                           side_length / texture_scale,
-                0,                           0,
-                side_length / texture_scale, 0,
-                side_length / texture_scale, side_length / texture_scale,
-            };
-
-            var mesh = std.mem.zeroes(rl.Mesh);
-            mesh.vertices = vertices.ptr;
-            mesh.vertexCount = @intCast(c_int, vertices.len / 3);
-            mesh.triangleCount = @intCast(c_int, vertices.len / 9);
-            mesh.texcoords = &texcoords;
-
-            rl.UploadMesh(&mesh, false);
-            mesh.texcoords = null; // Was copied to GPU.
-
-            return Floor{ .vertices = vertices, .mesh = mesh, .material = material };
-        }
-
-        fn destroy(self: *Floor, allocator: std.mem.Allocator) void {
-            allocator.free(self.vertices);
-            self.mesh.vertices = null; // Prevent raylib from freeing our own vertices.
-            rl.UnloadMesh(self.mesh);
-            rl.UnloadMaterial(self.material);
-        }
-
-        fn draw(self: Floor) void {
-            rl.DrawMesh(self.mesh, self.material, rm.MatrixIdentity());
-        }
-
-        /// If the given ray hits the level grid, return the position on the floor.
-        fn castRay(self: Floor, ray: rl.Ray) ?rl.Vector3 {
-            const ray_collision = rl.GetRayCollisionMesh(ray, self.mesh, rm.MatrixIdentity());
-            return if (ray_collision.hit)
-                ray_collision.point
-            else
-                null;
-        }
-    };
-
-    const Wall = struct {
-        id: u64,
-        /// Y will always be 0.
-        start_position: rl.Vector3,
-        mesh: rl.Mesh,
-        precomputed_matrix: rl.Matrix,
-        tint: Tint,
-        boundaries: collision.Rectangle,
-
-        const height: f32 = 5;
-        const thickness: f32 = 1;
-        const Tint = enum { Default, Green, Red };
-
-        /// Keeps a reference to the given wall vertices for its entire lifetime.
-        fn create(
-            id: u64,
-            start_x: f32,
-            start_z: f32,
-            end_x: f32,
-            end_z: f32,
-            shared_wall_vertices: []f32,
-            texture_scale: f32,
-        ) Wall {
-            const start = rl.Vector3{ .x = start_x, .y = 0, .z = start_z };
-            const end = rl.Vector3{ .x = end_x, .y = 0, .z = end_z };
-            const offset = rm.Vector3Subtract(end, start);
-            const width = rm.Vector3Length(offset);
-            const rotation_angle =
-                computeYRotationAngle(rl.Vector3{ .x = 1, .y = 0, .z = 0 }, offset);
-
-            var mesh = std.mem.zeroes(rl.Mesh);
-            mesh.vertices = shared_wall_vertices.ptr;
-            mesh.vertexCount = @intCast(c_int, shared_wall_vertices.len / 3);
-            mesh.triangleCount = @intCast(c_int, shared_wall_vertices.len / 9);
-
-            const texture_corners = [8]rl.Vector2{
-                rl.Vector2{ .x = 0, .y = 0 },
-                rl.Vector2{ .x = width / texture_scale, .y = 0 },
-                rl.Vector2{ .x = width / texture_scale, .y = height / texture_scale },
-                rl.Vector2{ .x = 0, .y = height / texture_scale },
-                rl.Vector2{ .x = thickness / texture_scale, .y = 0 },
-                rl.Vector2{ .x = thickness / texture_scale, .y = height / texture_scale },
-                rl.Vector2{ .x = width / texture_scale, .y = thickness / texture_scale },
-                rl.Vector2{ .x = 0, .y = thickness / texture_scale },
-            };
-            const texture_corner_indices = [30]u3{
-                0, 3, 1, 3, 2, 1, // Front side.
-                4, 0, 3, 4, 3, 5, // Left side.
-                7, 1, 0, 7, 6, 1, // Top side.
-                1, 0, 2, 2, 0, 3, // Back side.
-                0, 3, 4, 4, 3, 5, // Right side.
-            };
-            var texcoords: [computeVertices().len / 3 * 2]f32 = undefined;
-            mesh.texcoords = &texcoords;
-            var index: usize = 0;
-            while (index < texcoords.len) : (index += 2) {
-                texcoords[index] = texture_corners[texture_corner_indices[index / 2]].x;
-                texcoords[index + 1] = texture_corners[texture_corner_indices[index / 2]].y;
-            }
-
-            rl.UploadMesh(&mesh, false);
-            mesh.texcoords = null; // Was copied to GPU.
-
-            const left_side_up_offset = util.FlatVector
-                .normalize(util.FlatVector{ .x = offset.z, .z = -offset.x })
-                .scale(thickness / 2);
-
-            return Wall{
-                .id = id,
-                .start_position = start,
-                .mesh = mesh,
-                .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
-                    rm.MatrixScale(width, 1, 1),
-                    rm.MatrixRotateY(rotation_angle),
-                ), rm.MatrixTranslate(start.x, 0, start.z)),
-                .tint = Tint.Default,
-                .boundaries = collision.Rectangle.create(
-                    util.FlatVector.fromVector3(start).add(left_side_up_offset),
-                    util.FlatVector.fromVector3(start).subtract(left_side_up_offset),
-                    width,
-                ),
-            };
-        }
-
-        fn destroy(self: *Wall) void {
-            self.mesh.vertices = null; // Prevent raylib from freeing our shared mesh.
-            rl.UnloadMesh(self.mesh);
-        }
-
-        // Return the mesh of a wall. It has a fixed width of 1 and must be scaled by individual
-        // transformation matrices to the desired length. This mesh has no bottom.
-        fn computeVertices() [90]f32 {
-            const corners = [8]rl.Vector3{
-                rl.Vector3{ .x = 0, .y = Wall.height, .z = Wall.thickness / 2 },
-                rl.Vector3{ .x = 0, .y = 0, .z = Wall.thickness / 2 },
-                rl.Vector3{ .x = 1, .y = Wall.height, .z = Wall.thickness / 2 },
-                rl.Vector3{ .x = 1, .y = 0, .z = Wall.thickness / 2 },
-                rl.Vector3{ .x = 0, .y = Wall.height, .z = -Wall.thickness / 2 },
-                rl.Vector3{ .x = 0, .y = 0, .z = -Wall.thickness / 2 },
-                rl.Vector3{ .x = 1, .y = Wall.height, .z = -Wall.thickness / 2 },
-                rl.Vector3{ .x = 1, .y = 0, .z = -Wall.thickness / 2 },
-            };
-            const corner_indices = [30]u3{
-                0, 1, 2, 1, 3, 2, // Front side.
-                0, 4, 5, 0, 5, 1, // Left side.
-                0, 6, 4, 0, 2, 6, // Top side.
-                4, 6, 5, 5, 6, 7, // Back side.
-                2, 3, 6, 6, 3, 7, // Right side.
-            };
-
-            var vertices: [90]f32 = undefined;
-            var index: usize = 0;
-            while (index < vertices.len) : (index += 3) {
-                vertices[index] = corners[corner_indices[index / 3]].x;
-                vertices[index + 1] = corners[corner_indices[index / 3]].y;
-                vertices[index + 2] = corners[corner_indices[index / 3]].z;
-            }
-            return vertices;
-        }
-    };
-
-    floor: Floor,
-    wall_id_counter: u64,
-    walls: std.ArrayList(Wall),
-    wall_material: rl.Material,
-    shared_wall_vertices: []f32,
-    wall_texture_scale: f32,
-
-    /// Stores the given allocator internally for its entire lifetime. Will own the given textures.
-    fn create(
-        allocator: std.mem.Allocator,
-        wall_texture: rl.Texture,
-        wall_texture_scale: f32,
-        floor_texture: rl.Texture,
-        floor_texture_scale: f32,
-    ) !LevelGeometry {
-        var wall_material = rl.LoadMaterialDefault();
-        rl.SetMaterialTexture(&wall_material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), wall_texture);
-        errdefer rl.UnloadMaterial(wall_material);
-
-        var floor = try Floor.create(allocator, 100, floor_texture, floor_texture_scale);
-        errdefer floor.destroy(allocator);
-
-        const precomputed_wall_vertices = Wall.computeVertices();
-        var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
-        std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
-
-        return LevelGeometry{
-            .floor = floor,
-            .wall_id_counter = 0,
-            .walls = std.ArrayList(Wall).init(allocator),
-            .wall_material = wall_material,
-            .shared_wall_vertices = shared_wall_vertices,
-            .wall_texture_scale = wall_texture_scale,
-        };
-    }
-
-    fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
-        self.floor.destroy(allocator);
-        for (self.walls.items) |*wall| {
-            wall.destroy();
-        }
-        self.walls.deinit();
-        rl.UnloadMaterial(self.wall_material);
-        allocator.free(self.shared_wall_vertices);
-    }
-
-    fn draw(self: LevelGeometry) void {
-        self.floor.draw();
-
-        const key = @enumToInt(rl.MATERIAL_MAP_DIFFUSE);
-        for (self.walls.items) |wall| {
-            switch (wall.tint) {
-                Wall.Tint.Default => self.wall_material.maps[key].color = rl.WHITE,
-                Wall.Tint.Green => self.wall_material.maps[key].color = rl.GREEN,
-                Wall.Tint.Red => self.wall_material.maps[key].color = rl.RED,
-            }
-            rl.DrawMesh(wall.mesh, self.wall_material, wall.precomputed_matrix);
-        }
-    }
-
-    /// Returns the id of the created wall on success.
-    fn addWall(self: *LevelGeometry, start_x: f32, start_z: f32, end_x: f32, end_z: f32) !u64 {
-        const wall = try self.walls.addOne();
-        wall.* = Wall.create(
-            self.wall_id_counter,
-            start_x,
-            start_z,
-            end_x,
-            end_z,
-            self.shared_wall_vertices,
-            self.wall_texture_scale,
-        );
-        self.wall_id_counter = self.wall_id_counter + 1;
-        return wall.id;
-    }
-
-    /// If the given wall id does not exist, this function will do nothing.
-    fn removeWall(self: *LevelGeometry, wall_id: u64) void {
-        for (self.walls.items) |*wall, index| {
-            if (wall.id == wall_id) {
-                wall.destroy();
-                _ = self.walls.orderedRemove(index);
-                return;
-            }
-        }
-    }
-
-    /// If the given wall id does not exist, this function will do nothing.
-    fn updateWall(self: *LevelGeometry, wall_id: u64, start_x: f32, start_z: f32, end_x: f32, end_z: f32) void {
-        if (self.findWall(wall_id)) |wall| {
-            const tint = wall.tint;
-            wall.destroy();
-            wall.* = Wall.create(
-                wall_id,
-                start_x,
-                start_z,
-                end_x,
-                end_z,
-                self.shared_wall_vertices,
-                self.wall_texture_scale,
-            );
-            wall.tint = tint;
-        }
-    }
-
-    fn tintWall(self: *LevelGeometry, wall_id: u64, tint: Wall.Tint) void {
-        if (self.findWall(wall_id)) |wall| {
-            wall.tint = tint;
-        }
-    }
-
-    fn findWall(self: *LevelGeometry, wall_id: u64) ?*Wall {
-        for (self.walls.items) |*wall| {
-            if (wall.id == wall_id) {
-                return wall;
-            }
-        }
-        return null;
-    }
-
-    /// If the given ray hits the level grid, return the position on the floor.
-    fn castRayToFloor(self: LevelGeometry, ray: rl.Ray) ?rl.Vector3 {
-        return self.floor.castRay(ray);
-    }
-
-    const RayWallCollision = struct {
-        wall_id: u64,
-        distance: f32,
-    };
-
-    /// Find the id of the closest wall hit by the given ray, if available.
-    fn castRayToWalls(self: LevelGeometry, ray: rl.Ray) ?RayWallCollision {
-        var result: ?RayWallCollision = null;
-        for (self.walls.items) |wall| {
-            const ray_collision = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
-            const found_closer_wall = if (!ray_collision.hit)
-                false
-            else if (result) |existing_result|
-                ray_collision.distance < existing_result.distance
-            else
-                true;
-            if (found_closer_wall) {
-                result = RayWallCollision{ .wall_id = wall.id, .distance = ray_collision.distance };
-            }
-        }
-        return result;
-    }
-
-    /// If a collision occurs, return a displacement vector for moving the given circle out of the
-    /// level geometry. The returned displacement vector must be added to the given circles position
-    /// to resolve the collision.
-    fn collidesWithCircle(self: LevelGeometry, circle: collision.Circle) ?util.FlatVector {
-        var found_collision = false;
-        var displaced_circle = circle;
-
-        // Move displaced_circle out of all walls.
-        for (self.walls.items) |wall| {
-            if (displaced_circle.collidesWithRectangle(wall.boundaries)) |displacement_vector| {
-                found_collision = true;
-                displaced_circle.position = displaced_circle.position.add(displacement_vector);
-            }
-        }
-
-        return if (found_collision)
-            displaced_circle.position.subtract(circle.position)
-        else
-            null;
     }
 };
 
@@ -889,7 +531,7 @@ const SplitScreenRenderContext = struct {
         self: *SplitScreenRenderContext,
         players: []const Player,
         current_player: Player,
-        level_geometry: LevelGeometry,
+        geometry: level_geometry.Collection,
         interval_between_previous_and_current_tick: f32,
     ) void {
         rl.BeginTextureMode(self.prerendered_scene);
@@ -900,7 +542,7 @@ const SplitScreenRenderContext = struct {
             .position = camera.target,
             .direction = rm.Vector3Normalize(rm.Vector3Subtract(camera.position, camera.target)),
         };
-        if (level_geometry.castRayToWalls(ray_to_camera)) |ray_collision| {
+        if (geometry.castRayToWalls(ray_to_camera)) |ray_collision| {
             const clamped_camera = clampCameraDistanceFromTarget(camera, ray_collision.distance);
             rl.BeginMode3D(clamped_camera);
         } else {
@@ -908,7 +550,7 @@ const SplitScreenRenderContext = struct {
         }
 
         rl.ClearBackground(rl.Color{ .r = 140, .g = 190, .b = 214, .a = 255 });
-        level_geometry.draw();
+        geometry.draw();
         for (players) |player| {
             player.draw(interval_between_previous_and_current_tick);
         }
@@ -973,7 +615,7 @@ const SplitScreenSetup = struct {
         self: *SplitScreenSetup,
         /// Assumed to be at least as large as screen_splittings passed to create().
         players: []const Player,
-        level_geometry: LevelGeometry,
+        geometry: level_geometry.Collection,
         interval_between_previous_and_current_tick: f32,
     ) void {
         std.debug.assert(players.len >= self.render_contexts.len);
@@ -981,7 +623,7 @@ const SplitScreenSetup = struct {
             context.prerenderScene(
                 players,
                 players[index],
-                level_geometry,
+                geometry,
                 interval_between_previous_and_current_tick,
             );
         }
@@ -1068,14 +710,14 @@ pub fn main() !void {
     defer split_screen_setup.destroy(gpa.allocator());
 
     const known_textures = try loadKnownTextures();
-    var level_geometry = try LevelGeometry.create(
+    var geometry = try level_geometry.Collection.create(
         gpa.allocator(),
         known_textures[0],
         5.0,
         known_textures[1],
         5.0,
     );
-    defer level_geometry.destroy(gpa.allocator());
+    defer geometry.destroy(gpa.allocator());
     var currently_edited_wall: ?CurrentlyEditedWall = null;
 
     var tick_timer = try TickTimer.start(60);
@@ -1084,11 +726,11 @@ pub fn main() !void {
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             for (active_players) |*player| {
-                player.update(level_geometry);
+                player.update(geometry);
             }
         }
 
-        split_screen_setup.prerenderScenes(active_players, level_geometry, lap_result.next_tick_progress);
+        split_screen_setup.prerenderScenes(active_players, geometry, lap_result.next_tick_progress);
 
         rl.BeginDrawing();
         split_screen_setup.drawToScreen();
@@ -1144,7 +786,7 @@ pub fn main() !void {
                     EditMode.DeleteWalls => EditMode.PlaceWalls,
                 };
                 if (currently_edited_wall) |wall| {
-                    level_geometry.tintWall(wall.id, LevelGeometry.Wall.Tint.Default);
+                    geometry.tintWall(wall.id, level_geometry.Tint.Default);
                     currently_edited_wall = null;
                 }
             }
@@ -1155,8 +797,8 @@ pub fn main() !void {
                 EditMode.PlaceWalls => {
                     if (currently_edited_wall) |*wall| {
                         if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
-                            if (level_geometry.castRayToFloor(ray)) |position_on_grid| {
-                                level_geometry.updateWall(
+                            if (geometry.castRayToFloor(ray)) |position_on_grid| {
+                                geometry.updateWall(
                                     wall.id,
                                     wall.start_position.x,
                                     wall.start_position.z,
@@ -1166,18 +808,18 @@ pub fn main() !void {
                             }
                         }
                         if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                            level_geometry.tintWall(wall.id, LevelGeometry.Wall.Tint.Default);
+                            geometry.tintWall(wall.id, level_geometry.Tint.Default);
                             currently_edited_wall = null;
                         }
                     } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                        if (level_geometry.castRayToFloor(ray)) |position_on_grid| {
-                            const wall_id = try level_geometry.addWall(
+                        if (geometry.castRayToFloor(ray)) |position_on_grid| {
+                            const wall_id = try geometry.addWall(
                                 position_on_grid.x,
                                 position_on_grid.z,
                                 position_on_grid.x,
                                 position_on_grid.z,
                             );
-                            level_geometry.tintWall(wall_id, LevelGeometry.Wall.Tint.Green);
+                            geometry.tintWall(wall_id, level_geometry.Tint.Green);
                             currently_edited_wall =
                                 CurrentlyEditedWall{ .id = wall_id, .start_position = position_on_grid };
                         }
@@ -1186,11 +828,11 @@ pub fn main() !void {
                 EditMode.DeleteWalls => {
                     if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
                         if (currently_edited_wall) |wall| {
-                            level_geometry.tintWall(wall.id, LevelGeometry.Wall.Tint.Default);
+                            geometry.tintWall(wall.id, level_geometry.Tint.Default);
                             currently_edited_wall = null;
                         }
-                        if (level_geometry.castRayToWalls(ray)) |ray_collision| {
-                            level_geometry.tintWall(ray_collision.wall_id, LevelGeometry.Wall.Tint.Red);
+                        if (geometry.castRayToWalls(ray)) |ray_collision| {
+                            geometry.tintWall(ray_collision.wall_id, level_geometry.Tint.Red);
                             currently_edited_wall = CurrentlyEditedWall{
                                 .id = ray_collision.wall_id,
                                 .start_position = std.mem.zeroes(rl.Vector3),
@@ -1199,7 +841,7 @@ pub fn main() !void {
                     }
                     if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
                         if (currently_edited_wall) |wall| {
-                            level_geometry.removeWall(wall.id);
+                            geometry.removeWall(wall.id);
                             currently_edited_wall = null;
                         }
                     }
