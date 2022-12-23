@@ -713,7 +713,6 @@ pub fn main() !void {
     var geometry = try level_geometry.Collection.create(
         gpa.allocator(),
         known_textures[0],
-        5.0,
         known_textures[1],
         5.0,
     );

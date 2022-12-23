@@ -198,21 +198,20 @@ pub const Collection = struct {
     walls: std.ArrayList(Wall),
     wall_material: rl.Material,
     shared_wall_vertices: []f32,
-    wall_texture_scale: f32,
+    texture_scale: f32,
 
     /// Stores the given allocator internally for its entire lifetime. Will own the given textures.
     pub fn create(
         allocator: std.mem.Allocator,
         wall_texture: rl.Texture,
-        wall_texture_scale: f32,
         floor_texture: rl.Texture,
-        floor_texture_scale: f32,
+        texture_scale: f32,
     ) !Collection {
         var wall_material = rl.LoadMaterialDefault();
         rl.SetMaterialTexture(&wall_material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), wall_texture);
         errdefer rl.UnloadMaterial(wall_material);
 
-        var floor = try Floor.create(allocator, 100, floor_texture, floor_texture_scale);
+        var floor = try Floor.create(allocator, 100, floor_texture, texture_scale);
         errdefer floor.destroy(allocator);
 
         const precomputed_wall_vertices = Wall.computeVertices();
@@ -225,7 +224,7 @@ pub const Collection = struct {
             .walls = std.ArrayList(Wall).init(allocator),
             .wall_material = wall_material,
             .shared_wall_vertices = shared_wall_vertices,
-            .wall_texture_scale = wall_texture_scale,
+            .texture_scale = texture_scale,
         };
     }
 
@@ -263,7 +262,7 @@ pub const Collection = struct {
             end_x,
             end_z,
             self.shared_wall_vertices,
-            self.wall_texture_scale,
+            self.texture_scale,
         );
         self.wall_id_counter = self.wall_id_counter + 1;
         return wall.id;
@@ -292,7 +291,7 @@ pub const Collection = struct {
                 end_x,
                 end_z,
                 self.shared_wall_vertices,
-                self.wall_texture_scale,
+                self.texture_scale,
             );
             wall.tint = tint;
         }
