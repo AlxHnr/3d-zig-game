@@ -317,15 +317,16 @@ const SplitScreenRenderContext = struct {
         interval_between_previous_and_current_tick: f32,
     ) void {
         rl.BeginTextureMode(self.prerendered_scene);
-        const camera = current_player.getCamera(interval_between_previous_and_current_tick);
+        const lerped_camera = current_player.getCamera(interval_between_previous_and_current_tick);
 
         const max_distance_from_target =
-            if (geometry.cast3DRayToWalls(camera.get3DRayFromTargetToSelf())) |ray_collision|
+            if (geometry.cast3DRayToWalls(lerped_camera.get3DRayFromTargetToSelf())) |ray_collision|
             ray_collision.distance
         else
             null;
-        camera.beginRaylib3DMode(max_distance_from_target);
+        const raylib_camera = lerped_camera.getRaylibCamera(max_distance_from_target);
 
+        rl.BeginMode3D(raylib_camera);
         rl.ClearBackground(rl.Color{ .r = 140, .g = 190, .b = 214, .a = 255 });
         geometry.draw();
         for (players) |player| {

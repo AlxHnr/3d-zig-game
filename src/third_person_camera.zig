@@ -102,14 +102,13 @@ pub const Camera = struct {
         };
     }
 
-    /// Setup raylibs 3d mode to use this camera for rendering. Must be stopped with
-    /// raylib.EndMode3D(). The given optional distance limit will be applied to prevent walls from
-    /// covering the target object.
-    pub fn beginRaylib3DMode(self: Camera, max_distance_from_target: ?f32) void {
+    /// Return a camera for rendering with raylib. Takes an optional distance limit to prevent walls
+    /// from covering the cameras target object.
+    pub fn getRaylibCamera(self: Camera, max_distance_from_target: ?f32) rl.Camera {
         if (max_distance_from_target) |max_distance| {
             const offset = rm.Vector3Subtract(self.camera.position, self.camera.target);
             if (rm.Vector3Length(offset) < max_distance) {
-                return rl.BeginMode3D(self.camera);
+                return self.camera;
             }
 
             var updated_camera = self.camera;
@@ -117,10 +116,9 @@ pub const Camera = struct {
                 self.camera.target,
                 rm.Vector3Scale(rm.Vector3Normalize(offset), max_distance * 0.95),
             );
-            return rl.BeginMode3D(updated_camera);
+            return updated_camera;
         }
-
-        rl.BeginMode3D(self.camera);
+        return self.camera;
     }
 
     /// To be called once for each tick.
