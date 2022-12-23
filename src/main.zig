@@ -35,8 +35,10 @@ fn clampCameraDistanceFromTarget(camera: rl.Camera, max_distance: f32) rl.Camera
         return camera;
     }
     var updated_camera = camera;
-    updated_camera.position =
-        rm.Vector3Add(camera.target, rm.Vector3Scale(rm.Vector3Normalize(offset), max_distance));
+    updated_camera.position = rm.Vector3Add(
+        camera.target,
+        rm.Vector3Scale(rm.Vector3Normalize(offset), max_distance * 0.95),
+    );
     return updated_camera;
 }
 
