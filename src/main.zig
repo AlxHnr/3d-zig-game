@@ -26,14 +26,11 @@ fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
 
 const Character = struct {
     boundaries: collision.Circle,
-    /// Y will always be 0.
-    looking_direction: rl.Vector3,
+    looking_direction: util.FlatVector,
     /// Values from -1 (turning left) to 1 (turning right).
     turning_direction: f32,
-    /// Y will always be 0.
-    acceleration_direction: rl.Vector3,
-    /// Y will always be 0.
-    velocity: rl.Vector3,
+    acceleration_direction: util.FlatVector,
+    velocity: util.FlatVector,
     height: f32,
     color: rl.Color,
 
@@ -46,10 +43,10 @@ const Character = struct {
     ) Character {
         return Character{
             .boundaries = collision.Circle{ .position = position, .radius = radius },
-            .looking_direction = looking_direction.normalize().toVector3(),
+            .looking_direction = looking_direction.normalize(),
             .turning_direction = 0,
-            .acceleration_direction = std.mem.zeroes(rl.Vector3),
-            .velocity = std.mem.zeroes(rl.Vector3),
+            .acceleration_direction = util.FlatVector{ .x = 0, .z = 0 },
+            .velocity = util.FlatVector{ .x = 0, .z = 0 },
             .height = height,
             .color = color,
         };
@@ -61,23 +58,18 @@ const Character = struct {
         const i = std.math.clamp(interval, 0, 1);
         return Character{
             .boundaries = self.boundaries.lerp(other.boundaries, i),
-            .looking_direction = rm.Vector3Lerp(self.looking_direction, other.looking_direction, i),
+            .looking_direction = self.looking_direction.lerp(other.looking_direction, i),
             .turning_direction = rm.Lerp(self.turning_direction, other.turning_direction, i),
-            .acceleration_direction = rm.Vector3Lerp(self.acceleration_direction, other.acceleration_direction, i),
-            .velocity = rm.Vector3Lerp(self.velocity, other.velocity, i),
+            .acceleration_direction = self.acceleration_direction.lerp(other.acceleration_direction, i),
+            .velocity = self.velocity.lerp(other.velocity, i),
             .height = rm.Lerp(self.height, other.height, i),
             .color = lerpColor(self.color, other.color, i),
         };
     }
 
-    fn getRightFromLookingDirection(self: Character) rl.Vector3 {
-        return rm.Vector3CrossProduct(self.looking_direction, util.Constants.up);
-    }
-
     /// Given direction values will be normalized.
-    fn setAcceleration(self: *Character, direction_x: f32, direction_z: f32) void {
-        self.acceleration_direction =
-            rm.Vector3Normalize(rl.Vector3{ .x = direction_x, .y = 0, .z = direction_z });
+    fn setAcceleration(self: *Character, direction: util.FlatVector) void {
+        self.acceleration_direction = direction.normalize();
     }
 
     /// Value from -1 (left) to 1 (right). Will be clamped into this range.
@@ -94,33 +86,32 @@ const Character = struct {
 
     fn resolveCollision(self: *Character, displacement_vector: util.FlatVector) void {
         self.boundaries.position = self.boundaries.position.add(displacement_vector);
-        const dot_product = std.math.clamp(util.FlatVector.fromVector3(self.velocity).normalize()
+        const dot_product = std.math.clamp(self.velocity.normalize()
             .dotProduct(displacement_vector.normalize()), -1, 1);
         const moving_against_displacement_vector =
-            util.FlatVector.fromVector3(self.velocity).dotProduct(displacement_vector) < 0;
+            self.velocity.dotProduct(displacement_vector) < 0;
         if (moving_against_displacement_vector) {
-            self.velocity = rm.Vector3Scale(self.velocity, 1 + dot_product);
+            self.velocity = self.velocity.scale(1 + dot_product);
         }
     }
 
     /// To be called once for each tick.
     fn update(self: *Character) void {
-        self.boundaries.position =
-            self.boundaries.position.add(util.FlatVector.fromVector3(self.velocity));
+        self.boundaries.position = self.boundaries.position.add(self.velocity);
 
-        const is_accelerating =
-            rm.Vector3Length(self.acceleration_direction) > util.Constants.epsilon;
+        const is_accelerating = self.acceleration_direction.length() > util.Constants.epsilon;
         if (is_accelerating) {
-            self.velocity = rm.Vector3Add(self.velocity, rm.Vector3Scale(self.acceleration_direction, 0.03));
-            self.velocity = rm.Vector3ClampValue(self.velocity, 0, 0.2);
+            self.velocity = self.velocity.add(self.acceleration_direction.scale(0.03));
+            if (self.velocity.length() > 0.2) {
+                self.velocity = self.velocity.normalize().scale(0.2);
+            }
         } else {
-            self.velocity = rm.Vector3Scale(self.velocity, 0.7);
+            self.velocity = self.velocity.scale(0.7);
         }
 
         const max_rotation_per_tick = util.degreesToRadians(5);
         const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
-        self.looking_direction =
-            rm.Vector3RotateByAxisAngle(self.looking_direction, util.Constants.up, rotation_angle);
+        self.looking_direction = self.looking_direction.rotate(rotation_angle);
     }
 
     fn draw(self: Character) void {
@@ -141,11 +132,11 @@ const Character = struct {
             rl.GRAY,
         );
 
-        const direction_line_target = rm.Vector3Add(
+        rl.DrawLine3D(
             self.boundaries.position.toVector3(),
-            rm.Vector3Scale(self.looking_direction, 2),
+            self.boundaries.position.add(self.looking_direction.scale(2)).toVector3(),
+            rl.BLUE,
         );
-        rl.DrawLine3D(self.boundaries.position.toVector3(), direction_line_target, rl.BLUE);
     }
 };
 
@@ -177,10 +168,7 @@ const Player = struct {
                 self.character.resolveCollision(displacement_vector);
             }
             self.character.update();
-            self.camera.update(
-                self.character.getTopOfCharacter(),
-                util.FlatVector.fromVector3(self.character.looking_direction),
-            );
+            self.camera.update(self.character.getTopOfCharacter(), self.character.looking_direction);
         }
     };
 
@@ -214,7 +202,7 @@ const Player = struct {
             .character = character,
             .camera = ThirdPersonCamera.create(
                 character.getTopOfCharacter(),
-                util.FlatVector.fromVector3(character.looking_direction),
+                character.looking_direction,
             ),
         };
         return Player{
@@ -232,13 +220,12 @@ const Player = struct {
             interval_between_previous_and_current_tick,
         );
 
-        var acceleration_direction = std.mem.zeroes(rl.Vector3);
+        var acceleration_direction = util.FlatVector{ .x = 0, .z = 0 };
         var turning_direction: f32 = 0;
         if (rl.IsKeyDown(self.input_configuration.left)) {
             if (rl.IsKeyDown(self.input_configuration.strafe)) {
-                acceleration_direction = rm.Vector3Subtract(
-                    acceleration_direction,
-                    state_rendered_to_screen.character.getRightFromLookingDirection(),
+                acceleration_direction = acceleration_direction.subtract(
+                    state_rendered_to_screen.character.looking_direction.rotateRightBy90Degrees(),
                 );
             } else {
                 turning_direction -= 1;
@@ -246,36 +233,30 @@ const Player = struct {
         }
         if (rl.IsKeyDown(self.input_configuration.right)) {
             if (rl.IsKeyDown(self.input_configuration.strafe)) {
-                acceleration_direction = rm.Vector3Add(
-                    acceleration_direction,
-                    state_rendered_to_screen.character.getRightFromLookingDirection(),
+                acceleration_direction = acceleration_direction.add(
+                    state_rendered_to_screen.character.looking_direction.rotateRightBy90Degrees(),
                 );
             } else {
                 turning_direction += 1;
             }
         }
         if (rl.IsKeyDown(self.input_configuration.move_forward)) {
-            acceleration_direction = rm.Vector3Add(
-                acceleration_direction,
+            acceleration_direction = acceleration_direction.add(
                 state_rendered_to_screen.character.looking_direction,
             );
         }
         if (rl.IsKeyDown(self.input_configuration.move_backwards)) {
-            acceleration_direction = rm.Vector3Subtract(
-                acceleration_direction,
+            acceleration_direction = acceleration_direction.subtract(
                 state_rendered_to_screen.character.looking_direction,
             );
         }
-        self.state_at_next_tick.character.setAcceleration(
-            acceleration_direction.x,
-            acceleration_direction.z,
-        );
+        self.state_at_next_tick.character.setAcceleration(acceleration_direction);
         self.state_at_next_tick.character.setTurningDirection(turning_direction);
     }
 
     /// Behaves like letting go of all buttons/keys for this player.
     fn resetInputs(self: *Player) void {
-        self.state_at_next_tick.character.setAcceleration(0, 0);
+        self.state_at_next_tick.character.setAcceleration(util.FlatVector{ .x = 0, .z = 0 });
         self.state_at_next_tick.character.setTurningDirection(0);
     }
 
@@ -619,7 +600,7 @@ pub fn main() !void {
                             geometry.tintWall(ray_collision.wall_id, level_geometry.Tint.Red);
                             currently_edited_wall = CurrentlyEditedWall{
                                 .id = ray_collision.wall_id,
-                                .start_position = std.mem.zeroes(util.FlatVector),
+                                .start_position = util.FlatVector{ .x = 0, .z = 0 },
                             };
                         }
                     }

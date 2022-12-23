@@ -77,6 +77,12 @@ pub const FlatVector = struct {
         return FlatVector{ .x = -self.x, .z = -self.z };
     }
 
+    pub fn rotate(self: FlatVector, angle: f32) FlatVector {
+        const sin = math.sin(angle);
+        const cos = math.cos(angle);
+        return FlatVector{ .x = self.x * cos + self.z * sin, .z = -self.x * sin + self.z * cos };
+    }
+
     pub fn rotateRightBy90Degrees(self: FlatVector) FlatVector {
         return FlatVector{ .x = -self.z, .z = self.x };
     }
