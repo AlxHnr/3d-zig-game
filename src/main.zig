@@ -339,7 +339,7 @@ const SplitScreenRenderContext = struct {
         const camera = current_player.getCamera(interval_between_previous_and_current_tick);
 
         const max_distance_from_target =
-            if (geometry.castRayToWalls(camera.get3DRayFromTargetToSelf())) |ray_collision|
+            if (geometry.cast3DRayToWalls(camera.get3DRayFromTargetToSelf())) |ray_collision|
             ray_collision.distance
         else
             null;
@@ -479,7 +479,7 @@ const EditMode = enum {
     DeleteWalls,
 };
 
-const CurrentlyEditedWall = struct { id: u64, start_position: rl.Vector3 };
+const CurrentlyEditedWall = struct { id: u64, start_position: util.FlatVector };
 
 pub fn main() !void {
     var screen_width: u16 = 1200;
@@ -592,14 +592,8 @@ pub fn main() !void {
                 EditMode.PlaceWalls => {
                     if (currently_edited_wall) |*wall| {
                         if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
-                            if (geometry.castRayToFloor(ray)) |position_on_grid| {
-                                geometry.updateWall(
-                                    wall.id,
-                                    wall.start_position.x,
-                                    wall.start_position.z,
-                                    position_on_grid.x,
-                                    position_on_grid.z,
-                                );
+                            if (geometry.cast3DRayToGround(ray)) |position_on_grid| {
+                                geometry.updateWall(wall.id, wall.start_position, position_on_grid);
                             }
                         }
                         if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
@@ -607,13 +601,8 @@ pub fn main() !void {
                             currently_edited_wall = null;
                         }
                     } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                        if (geometry.castRayToFloor(ray)) |position_on_grid| {
-                            const wall_id = try geometry.addWall(
-                                position_on_grid.x,
-                                position_on_grid.z,
-                                position_on_grid.x,
-                                position_on_grid.z,
-                            );
+                        if (geometry.cast3DRayToGround(ray)) |position_on_grid| {
+                            const wall_id = try geometry.addWall(position_on_grid, position_on_grid);
                             geometry.tintWall(wall_id, level_geometry.Tint.Green);
                             currently_edited_wall =
                                 CurrentlyEditedWall{ .id = wall_id, .start_position = position_on_grid };
@@ -626,11 +615,11 @@ pub fn main() !void {
                             geometry.tintWall(wall.id, level_geometry.Tint.Default);
                             currently_edited_wall = null;
                         }
-                        if (geometry.castRayToWalls(ray)) |ray_collision| {
+                        if (geometry.cast3DRayToWalls(ray)) |ray_collision| {
                             geometry.tintWall(ray_collision.wall_id, level_geometry.Tint.Red);
                             currently_edited_wall = CurrentlyEditedWall{
                                 .id = ray_collision.wall_id,
-                                .start_position = std.mem.zeroes(rl.Vector3),
+                                .start_position = std.mem.zeroes(util.FlatVector),
                             };
                         }
                     }

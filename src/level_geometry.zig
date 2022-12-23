@@ -63,11 +63,11 @@ const Floor = struct {
         rl.DrawMesh(self.mesh, self.material, rm.MatrixIdentity());
     }
 
-    /// If the given ray hits the level grid, return the position on the floor.
-    fn castRay(self: Floor, ray: rl.Ray) ?rl.Vector3 {
+    /// If the given ray hits this object, return the position on the floor.
+    fn cast3DRay(self: Floor, ray: rl.Ray) ?util.FlatVector {
         const ray_collision = rl.GetRayCollisionMesh(ray, self.mesh, rm.MatrixIdentity());
         return if (ray_collision.hit)
-            ray_collision.point
+            util.FlatVector.fromVector3(ray_collision.point)
         else
             null;
     }
@@ -75,7 +75,6 @@ const Floor = struct {
 
 const Wall = struct {
     id: u64,
-    start_position: util.FlatVector,
     mesh: rl.Mesh,
     precomputed_matrix: rl.Matrix,
     tint: Tint,
@@ -87,16 +86,12 @@ const Wall = struct {
     /// Keeps a reference to the given wall vertices for its entire lifetime.
     fn create(
         id: u64,
-        start_x: f32,
-        start_z: f32,
-        end_x: f32,
-        end_z: f32,
+        start_position: util.FlatVector,
+        end_position: util.FlatVector,
         shared_wall_vertices: []f32,
         texture_scale: f32,
     ) Wall {
-        const start = util.FlatVector{ .x = start_x, .z = start_z };
-        const end = util.FlatVector{ .x = end_x, .z = end_z };
-        const offset = end.subtract(start);
+        const offset = end_position.subtract(start_position);
         const width = offset.length();
         const x_axis = util.FlatVector{ .x = 1, .z = 0 };
         const rotation_angle = x_axis.computeRotationToOtherVector(offset);
@@ -140,16 +135,15 @@ const Wall = struct {
 
         return Wall{
             .id = id,
-            .start_position = start,
             .mesh = mesh,
             .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
                 rm.MatrixScale(width, 1, 1),
                 rm.MatrixRotateY(rotation_angle),
-            ), rm.MatrixTranslate(start.x, 0, start.z)),
+            ), rm.MatrixTranslate(start_position.x, 0, start_position.z)),
             .tint = Tint.Default,
             .boundaries = collision.Rectangle.create(
-                start.add(side_a_up_offset),
-                start.subtract(side_a_up_offset),
+                start_position.add(side_a_up_offset),
+                start_position.subtract(side_a_up_offset),
                 width,
             ),
         };
@@ -253,14 +247,16 @@ pub const Collection = struct {
     }
 
     /// Returns the id of the created wall on success.
-    pub fn addWall(self: *Collection, start_x: f32, start_z: f32, end_x: f32, end_z: f32) !u64 {
+    pub fn addWall(
+        self: *Collection,
+        start_position: util.FlatVector,
+        end_position: util.FlatVector,
+    ) !u64 {
         const wall = try self.walls.addOne();
         wall.* = Wall.create(
             self.wall_id_counter,
-            start_x,
-            start_z,
-            end_x,
-            end_z,
+            start_position,
+            end_position,
             self.shared_wall_vertices,
             self.texture_scale,
         );
@@ -280,16 +276,19 @@ pub const Collection = struct {
     }
 
     /// If the given wall id does not exist, this function will do nothing.
-    pub fn updateWall(self: *Collection, wall_id: u64, start_x: f32, start_z: f32, end_x: f32, end_z: f32) void {
+    pub fn updateWall(
+        self: *Collection,
+        wall_id: u64,
+        start_position: util.FlatVector,
+        end_position: util.FlatVector,
+    ) void {
         if (self.findWall(wall_id)) |wall| {
             const tint = wall.tint;
             wall.destroy();
             wall.* = Wall.create(
                 wall_id,
-                start_x,
-                start_z,
-                end_x,
-                end_z,
+                start_position,
+                end_position,
                 self.shared_wall_vertices,
                 self.texture_scale,
             );
@@ -313,8 +312,8 @@ pub const Collection = struct {
     }
 
     /// If the given ray hits the level grid, return the position on the floor.
-    pub fn castRayToFloor(self: Collection, ray: rl.Ray) ?rl.Vector3 {
-        return self.floor.castRay(ray);
+    pub fn cast3DRayToGround(self: Collection, ray: rl.Ray) ?util.FlatVector {
+        return self.floor.cast3DRay(ray);
     }
 
     const RayWallCollision = struct {
@@ -323,7 +322,7 @@ pub const Collection = struct {
     };
 
     /// Find the id of the closest wall hit by the given ray, if available.
-    pub fn castRayToWalls(self: Collection, ray: rl.Ray) ?RayWallCollision {
+    pub fn cast3DRayToWalls(self: Collection, ray: rl.Ray) ?RayWallCollision {
         var result: ?RayWallCollision = null;
         for (self.walls.items) |wall| {
             const ray_collision = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
