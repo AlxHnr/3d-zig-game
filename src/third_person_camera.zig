@@ -95,6 +95,34 @@ pub const Camera = struct {
         return rl.GetMouseRay(mouse_position_on_screen, self.camera);
     }
 
+    pub fn get3DRayFromTargetToSelf(self: Camera) rl.Ray {
+        return rl.Ray{
+            .position = self.camera.target,
+            .direction = rm.Vector3Normalize(rm.Vector3Subtract(self.camera.position, self.camera.target)),
+        };
+    }
+
+    /// Setup raylibs 3d mode to use this camera for rendering. Must be stopped with
+    /// raylib.EndMode3D(). The given optional distance limit will be applied to prevent walls from
+    /// covering the target object.
+    pub fn beginRaylib3DMode(self: Camera, max_distance_from_target: ?f32) void {
+        if (max_distance_from_target) |max_distance| {
+            const offset = rm.Vector3Subtract(self.camera.position, self.camera.target);
+            if (rm.Vector3Length(offset) < max_distance) {
+                return rl.BeginMode3D(self.camera);
+            }
+
+            var updated_camera = self.camera;
+            updated_camera.position = rm.Vector3Add(
+                self.camera.target,
+                rm.Vector3Scale(rm.Vector3Normalize(offset), max_distance * 0.95),
+            );
+            return rl.BeginMode3D(updated_camera);
+        }
+
+        rl.BeginMode3D(self.camera);
+    }
+
     /// To be called once for each tick.
     pub fn update(
         self: *Camera,

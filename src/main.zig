@@ -24,19 +24,6 @@ fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
     };
 }
 
-fn clampCameraDistanceFromTarget(camera: rl.Camera, max_distance: f32) rl.Camera {
-    const offset = rm.Vector3Subtract(camera.position, camera.target);
-    if (rm.Vector3Length(offset) < max_distance) {
-        return camera;
-    }
-    var updated_camera = camera;
-    updated_camera.position = rm.Vector3Add(
-        camera.target,
-        rm.Vector3Scale(rm.Vector3Normalize(offset), max_distance * 0.95),
-    );
-    return updated_camera;
-}
-
 const Character = struct {
     boundaries: collision.Circle,
     /// Y will always be 0.
@@ -349,19 +336,14 @@ const SplitScreenRenderContext = struct {
         interval_between_previous_and_current_tick: f32,
     ) void {
         rl.BeginTextureMode(self.prerendered_scene);
+        const camera = current_player.getCamera(interval_between_previous_and_current_tick);
 
-        // Handle walls between character and camera.
-        const camera = current_player.getCamera(interval_between_previous_and_current_tick).camera;
-        const ray_to_camera = rl.Ray{
-            .position = camera.target,
-            .direction = rm.Vector3Normalize(rm.Vector3Subtract(camera.position, camera.target)),
-        };
-        if (geometry.castRayToWalls(ray_to_camera)) |ray_collision| {
-            const clamped_camera = clampCameraDistanceFromTarget(camera, ray_collision.distance);
-            rl.BeginMode3D(clamped_camera);
-        } else {
-            rl.BeginMode3D(camera);
-        }
+        const max_distance_from_target =
+            if (geometry.castRayToWalls(camera.get3DRayFromTargetToSelf())) |ray_collision|
+            ray_collision.distance
+        else
+            null;
+        camera.beginRaylib3DMode(max_distance_from_target);
 
         rl.ClearBackground(rl.Color{ .r = 140, .g = 190, .b = 214, .a = 255 });
         geometry.draw();
