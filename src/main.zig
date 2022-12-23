@@ -108,8 +108,22 @@ const Character = struct {
         );
     }
 
+    fn resolveCollision(self: *Character, displacement_vector: util.FlatVector) void {
+        self.boundaries.position = self.boundaries.position.add(displacement_vector);
+        const dot_product = std.math.clamp(util.FlatVector.fromVector3(self.velocity).normalize()
+            .dotProduct(displacement_vector.normalize()), -1, 1);
+        const moving_against_displacement_vector =
+            util.FlatVector.fromVector3(self.velocity).dotProduct(displacement_vector) < 0;
+        if (moving_against_displacement_vector) {
+            self.velocity = rm.Vector3Scale(self.velocity, 1 + dot_product);
+        }
+    }
+
     /// To be called once for each tick.
     fn update(self: *Character) void {
+        self.boundaries.position =
+            self.boundaries.position.add(util.FlatVector.fromVector3(self.velocity));
+
         const is_accelerating =
             rm.Vector3Length(self.acceleration_direction) > util.Constants.epsilon;
         if (is_accelerating) {
@@ -118,9 +132,6 @@ const Character = struct {
         } else {
             self.velocity = rm.Vector3Scale(self.velocity, 0.7);
         }
-
-        self.boundaries.position =
-            self.boundaries.position.add(util.FlatVector.fromVector3(self.velocity));
 
         const max_rotation_per_tick = util.degreesToRadians(5);
         const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
@@ -363,7 +374,10 @@ const Player = struct {
         }
 
         /// To be called once for each tick.
-        fn update(self: *State) void {
+        fn update(self: *State, level_geometry: LevelGeometry) void {
+            if (level_geometry.collidesWithCircle(self.character.boundaries)) |displacement_vector| {
+                self.character.resolveCollision(displacement_vector);
+            }
             self.character.update();
             self.camera.update(self.character);
         }
@@ -462,9 +476,9 @@ const Player = struct {
     }
 
     /// To be called once for each tick.
-    fn update(self: *Player) void {
+    fn update(self: *Player, level_geometry: LevelGeometry) void {
         self.state_at_previous_tick = self.state_at_next_tick;
-        self.state_at_next_tick.update();
+        self.state_at_next_tick.update(level_geometry);
     }
 
     fn draw(self: Player, interval_between_previous_and_current_tick: f32) void {
@@ -551,19 +565,17 @@ const LevelGeometry = struct {
     };
 
     const Wall = struct {
-        const Tint = enum { Default, Green, Red };
-
         id: u64,
         /// Y will always be 0.
         start_position: rl.Vector3,
-        /// Y will always be 0.
-        end_position: rl.Vector3,
         mesh: rl.Mesh,
         precomputed_matrix: rl.Matrix,
         tint: Tint,
+        boundaries: collision.Rectangle,
 
         const height: f32 = 5;
         const thickness: f32 = 1;
+        const Tint = enum { Default, Green, Red };
 
         /// Keeps a reference to the given wall vertices for its entire lifetime.
         fn create(
@@ -615,16 +627,24 @@ const LevelGeometry = struct {
             rl.UploadMesh(&mesh, false);
             mesh.texcoords = null; // Was copied to GPU.
 
+            const left_side_up_offset = util.FlatVector
+                .normalize(util.FlatVector{ .x = offset.z, .z = -offset.x })
+                .scale(thickness / 2);
+
             return Wall{
                 .id = id,
                 .start_position = start,
-                .end_position = end,
                 .mesh = mesh,
                 .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
                     rm.MatrixScale(width, 1, 1),
                     rm.MatrixRotateY(rotation_angle),
                 ), rm.MatrixTranslate(start.x, 0, start.z)),
                 .tint = Tint.Default,
+                .boundaries = collision.Rectangle.create(
+                    util.FlatVector.fromVector3(start).add(left_side_up_offset),
+                    util.FlatVector.fromVector3(start).subtract(left_side_up_offset),
+                    width,
+                ),
             };
         }
 
@@ -811,6 +831,27 @@ const LevelGeometry = struct {
             }
         }
         return result;
+    }
+
+    /// If a collision occurs, return a displacement vector for moving the given circle out of the
+    /// level geometry. The returned displacement vector must be added to the given circles position
+    /// to resolve the collision.
+    fn collidesWithCircle(self: LevelGeometry, circle: collision.Circle) ?util.FlatVector {
+        var found_collision = false;
+        var displaced_circle = circle;
+
+        // Move displaced_circle out of all walls.
+        for (self.walls.items) |wall| {
+            if (displaced_circle.collidesWithRectangle(wall.boundaries)) |displacement_vector| {
+                found_collision = true;
+                displaced_circle.position = displaced_circle.position.add(displacement_vector);
+            }
+        }
+
+        return if (found_collision)
+            displaced_circle.position.subtract(circle.position)
+        else
+            null;
     }
 };
 
@@ -1041,7 +1082,7 @@ pub fn main() !void {
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             for (active_players) |*player| {
-                player.update();
+                player.update(level_geometry);
             }
         }
 
