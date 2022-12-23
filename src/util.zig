@@ -54,13 +54,19 @@ pub const FlatVector = struct {
         return self.x * self.x + self.z * self.z;
     }
 
+    pub fn dotProduct(self: FlatVector, other: FlatVector) f32 {
+        return rm.Vector2DotProduct(
+            rl.Vector2{ .x = self.x, .y = self.z },
+            rl.Vector2{ .x = other.x, .y = other.z },
+        );
+    }
+
     /// Get the angle needed to rotate this vector to have the same direction as another vector. The
     /// given vectors don't need to be normalized.
     pub fn computeRotationToOtherVector(self: FlatVector, other: FlatVector) f32 {
-        const self_v2 = rm.Vector2Normalize(rl.Vector2{ .x = self.x, .y = self.z });
-        const other_v2 = rm.Vector2Normalize(rl.Vector2{ .x = other.x, .y = other.z });
-        const angle = math.acos(math.clamp(rm.Vector2DotProduct(self_v2, other_v2), -1, 1));
-        return if (rm.Vector2DotProduct(other_v2, rl.Vector2{ .x = self.z, .y = -self.x }) < 0)
+        const other_normalized = other.normalize();
+        const angle = math.acos(math.clamp(self.normalize().dotProduct(other_normalized), -1, 1));
+        return if (other_normalized.dotProduct(FlatVector{ .x = self.z, .z = -self.x }) < 0)
             -angle
         else
             angle;
