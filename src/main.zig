@@ -8,15 +8,6 @@ const level_geometry = @import("level_geometry.zig");
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const loadBillboardShader = @import("billboard_shader.zig").load;
 
-fn drawFpsCounter() void {
-    var string_buffer: [16]u8 = undefined;
-    if (std.fmt.bufPrintZ(string_buffer[0..], "FPS: {}", .{rl.GetFPS()})) |slice| {
-        rl.DrawText(slice, 5, 5, 20, rl.BLACK);
-    } else |_| {
-        unreachable;
-    }
-}
-
 fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
     return rl.Color{
         .r = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.r), @intToFloat(f32, b.r), interval)),
@@ -180,6 +171,7 @@ const Player = struct {
     state_at_next_tick: State,
     state_at_previous_tick: State,
     input_configuration: InputConfiguration,
+    gem_count: u64,
 
     fn create(
         id: u64,
@@ -216,6 +208,7 @@ const Player = struct {
             .state_at_next_tick = state,
             .state_at_previous_tick = state,
             .input_configuration = input_configuration,
+            .gem_count = 0,
         };
     }
 
@@ -274,7 +267,7 @@ const Player = struct {
     ) void {
         self.state_at_previous_tick = self.state_at_next_tick;
         self.state_at_next_tick.processElapsedTick(geometry);
-        _ = gem_collection.processCollision(gems.CollisionObject{
+        self.gem_count = self.gem_count + gem_collection.processCollision(gems.CollisionObject{
             .id = self.id,
             .boundaries = self.state_at_next_tick.character.boundaries,
         });
@@ -367,6 +360,12 @@ const SplitScreenRenderContext = struct {
             player.draw(interval_between_previous_and_current_tick);
         }
         rl.EndMode3D();
+
+        drawGemCount(
+            self.prerendered_scene.texture,
+            gem_collection.getGemTexture(),
+            current_player.gem_count,
+        );
         rl.EndTextureMode();
     }
 
@@ -382,6 +381,28 @@ const SplitScreenRenderContext = struct {
             source_rectangle,
             rl.Vector2{ .x = self.destination_on_screen.x, .y = self.destination_on_screen.y },
             rl.WHITE,
+        );
+    }
+
+    fn drawGemCount(render_target: rl.Texture, gem_texture: rl.Texture, gem_count: u64) void {
+        const scale = 3;
+        const on_screen_width = gem_texture.width * scale;
+        const on_screen_height = gem_texture.height * scale;
+        const margin_from_borders = 8;
+        const gem_on_screen_position = rl.Vector2{
+            .x = margin_from_borders,
+            .y = @intToFloat(f32, render_target.height - margin_from_borders - on_screen_height),
+        };
+        var string_buffer: [16]u8 = undefined;
+        const count_string = std.fmt.bufPrintZ(string_buffer[0..], "x{}", .{gem_count}) catch "";
+
+        rl.DrawTextureEx(gem_texture, gem_on_screen_position, 0, scale, rl.WHITE);
+        rl.DrawText(
+            count_string,
+            @floatToInt(c_int, gem_on_screen_position.x) + on_screen_width + margin_from_borders,
+            @floatToInt(c_int, gem_on_screen_position.y),
+            @floatToInt(c_int, 17.5 * @intToFloat(f32, scale)),
+            rl.BLACK,
         );
     }
 };
@@ -562,7 +583,9 @@ pub fn main() !void {
 
         rl.BeginDrawing();
         split_screen_setup.drawToScreen();
-        drawFpsCounter();
+        var string_buffer: [16]u8 = undefined;
+        const fps_string = std.fmt.bufPrintZ(string_buffer[0..], "FPS: {}", .{rl.GetFPS()}) catch "";
+        rl.DrawText(fps_string, 5, 5, 20, rl.BLACK);
         rl.EndDrawing();
 
         for (controllable_players) |*player| {

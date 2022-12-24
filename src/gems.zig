@@ -89,6 +89,10 @@ pub const Collection = struct {
         }
         return gems_collected;
     }
+
+    pub fn getGemTexture(self: Collection) rl.Texture {
+        return self.gem_texture;
+    }
 };
 
 const Gem = struct {
