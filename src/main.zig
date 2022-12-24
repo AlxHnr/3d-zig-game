@@ -281,22 +281,19 @@ const Player = struct {
     }
 };
 
-const RaylibError = error{
-    UnableToCreateRenderTexture,
-    FailedToLoadTextureFile,
 };
 
 const SplitScreenRenderContext = struct {
     prerendered_scene: rl.RenderTexture,
     destination_on_screen: rl.Rectangle,
 
-    fn create(destination_on_screen: rl.Rectangle) RaylibError!SplitScreenRenderContext {
+    fn create(destination_on_screen: rl.Rectangle) util.RaylibError!SplitScreenRenderContext {
         const prerendered_scene = rl.LoadRenderTexture(
             @floatToInt(c_int, destination_on_screen.width),
             @floatToInt(c_int, destination_on_screen.height),
         );
         return if (prerendered_scene.id == 0)
-            RaylibError.UnableToCreateRenderTexture
+            util.RaylibError.UnableToCreateRenderTexture
         else
             SplitScreenRenderContext{
                 .prerendered_scene = prerendered_scene,
@@ -414,10 +411,10 @@ const SplitScreenSetup = struct {
     }
 };
 
-fn loadTexture(path: [*:0]const u8) RaylibError!rl.Texture {
+fn loadTexture(path: [*:0]const u8) util.RaylibError!rl.Texture {
     const texture = rl.LoadTexture(path);
     if (texture.id == 0) {
-        return RaylibError.FailedToLoadTextureFile;
+        return util.RaylibError.FailedToLoadTextureFile;
     }
     return texture;
 }

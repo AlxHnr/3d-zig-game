@@ -143,3 +143,8 @@ pub fn makeMaterial(texture: rl.Texture) rl.Material {
     rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), texture);
     return material;
 }
+
+pub const RaylibError = error{
+    UnableToCreateRenderTexture,
+    FailedToLoadTextureFile,
+};
