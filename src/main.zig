@@ -3,8 +3,10 @@ const rl = @import("raylib");
 const rm = @import("raylib-math");
 const std = @import("std");
 const util = @import("util.zig");
+const gems = @import("gems.zig");
 const level_geometry = @import("level_geometry.zig");
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
+const loadBillboardShader = @import("billboard_shader.zig").load;
 
 fn drawFpsCounter() void {
     var string_buffer: [16]u8 = undefined;
@@ -173,11 +175,14 @@ const Player = struct {
         }
     };
 
+    /// Unique identifier distinct from all other players.
+    id: u64,
     state_at_next_tick: State,
     state_at_previous_tick: State,
     input_configuration: InputConfiguration,
 
     fn create(
+        id: u64,
         starting_position_x: f32,
         starting_position_z: f32,
         color: rl.Color,
@@ -207,6 +212,7 @@ const Player = struct {
             ),
         };
         return Player{
+            .id = id,
             .state_at_next_tick = state,
             .state_at_previous_tick = state,
             .input_configuration = input_configuration,
@@ -261,9 +267,17 @@ const Player = struct {
         self.state_at_next_tick.character.setTurningDirection(0);
     }
 
-    fn processElapsedTick(self: *Player, geometry: level_geometry.Collection) void {
+    fn processElapsedTick(
+        self: *Player,
+        geometry: level_geometry.Collection,
+        gem_collection: *gems.Collection,
+    ) void {
         self.state_at_previous_tick = self.state_at_next_tick;
         self.state_at_next_tick.processElapsedTick(geometry);
+        _ = gem_collection.processCollision(gems.CollisionObject{
+            .id = self.id,
+            .boundaries = self.state_at_next_tick.character.boundaries,
+        });
     }
 
     fn draw(self: Player, interval_between_previous_and_current_tick: f32) void {
@@ -279,8 +293,16 @@ const Player = struct {
             interval_between_previous_and_current_tick,
         ).camera;
     }
-};
 
+    fn getLerpedBoundaries(
+        self: Player,
+        interval_between_previous_and_current_tick: f32,
+    ) collision.Circle {
+        return self.state_at_previous_tick.lerp(
+            self.state_at_next_tick,
+            interval_between_previous_and_current_tick,
+        ).character.boundaries;
+    }
 };
 
 const SplitScreenRenderContext = struct {
@@ -311,6 +333,7 @@ const SplitScreenRenderContext = struct {
         players: []const Player,
         current_player: Player,
         geometry: level_geometry.Collection,
+        gem_collection: gems.Collection,
         interval_between_previous_and_current_tick: f32,
     ) void {
         rl.BeginTextureMode(self.prerendered_scene);
@@ -326,6 +349,20 @@ const SplitScreenRenderContext = struct {
         rl.BeginMode3D(raylib_camera);
         rl.ClearBackground(rl.Color{ .r = 140, .g = 190, .b = 214, .a = 255 });
         geometry.draw();
+
+        var collision_objects: [4]gems.CollisionObject = undefined;
+        std.debug.assert(players.len <= collision_objects.len);
+        for (players) |player, index| {
+            collision_objects[index].id = player.id;
+            collision_objects[index].boundaries =
+                player.getLerpedBoundaries(interval_between_previous_and_current_tick);
+        }
+        gem_collection.draw(
+            raylib_camera,
+            collision_objects[0..players.len],
+            interval_between_previous_and_current_tick,
+        );
+
         for (players) |player| {
             player.draw(interval_between_previous_and_current_tick);
         }
@@ -391,6 +428,7 @@ const SplitScreenSetup = struct {
         /// Assumed to be at least as large as screen_splittings passed to create().
         players: []const Player,
         geometry: level_geometry.Collection,
+        gem_collection: gems.Collection,
         interval_between_previous_and_current_tick: f32,
     ) void {
         std.debug.assert(players.len >= self.render_contexts.len);
@@ -399,6 +437,7 @@ const SplitScreenSetup = struct {
                 players,
                 players[index],
                 geometry,
+                gem_collection,
                 interval_between_previous_and_current_tick,
             );
         }
@@ -461,8 +500,8 @@ const EditMode = enum {
 const CurrentlyEditedWall = struct { id: u64, start_position: util.FlatVector };
 
 pub fn main() !void {
-    var screen_width: u16 = 1200;
-    var screen_height: u16 = 850;
+    var screen_width: u16 = 1280;
+    var screen_height: u16 = 720;
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
@@ -471,9 +510,9 @@ pub fn main() !void {
 
     var available_players = [_]Player{
         // Admin for map editing.
-        Player.create(0, 0, rl.Color{ .r = 140, .g = 17, .b = 39, .a = 150 }, InputPresets.ArrowKeys),
-        Player.create(28, 28, rl.Color{ .r = 154, .g = 205, .b = 50, .a = 150 }, InputPresets.Wasd),
-        Player.create(12, 34, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 150 }, InputPresets.ArrowKeys),
+        Player.create(0, 30, 30, rl.Color{ .r = 140, .g = 17, .b = 39, .a = 150 }, InputPresets.ArrowKeys),
+        Player.create(1, 28, 28, rl.Color{ .r = 154, .g = 205, .b = 50, .a = 150 }, InputPresets.Wasd),
+        Player.create(2, 5, 14, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 150 }, InputPresets.ArrowKeys),
     };
 
     var program_mode = ProgramMode.TwoPlayerSplitScreen;
@@ -494,17 +533,32 @@ pub fn main() !void {
     defer geometry.destroy(gpa.allocator());
     var currently_edited_wall: ?CurrentlyEditedWall = null;
 
+    const billboard_shader = try loadBillboardShader();
+    defer rl.UnloadShader(billboard_shader);
+    var gem_collection = gems.Collection.create(
+        gpa.allocator(),
+        try loadTexture("assets/gem.png"),
+        billboard_shader,
+    );
+    defer gem_collection.destroy();
+
     var tick_timer = try util.TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
         const lap_result = tick_timer.lap();
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             for (active_players) |*player| {
-                player.processElapsedTick(geometry);
+                player.processElapsedTick(geometry, &gem_collection);
+                gem_collection.processElapsedTick();
             }
         }
 
-        split_screen_setup.prerenderScenes(active_players, geometry, lap_result.next_tick_progress);
+        split_screen_setup.prerenderScenes(
+            active_players,
+            geometry,
+            gem_collection,
+            lap_result.next_tick_progress,
+        );
 
         rl.BeginDrawing();
         split_screen_setup.drawToScreen();

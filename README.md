@@ -10,10 +10,14 @@ Install zig 0.9.1 and run `zig build run` inside the projects directory.
 
 # Assets used
 
-### [Seamless Wall](https://opengameart.org/content/seamless-wall)
+### [Seamless wall](https://opengameart.org/content/seamless-wall)
 * **Author**: GrumpyDiamond
 * **License**: CC0
 
 ### [Grass tile](https://opengameart.org/content/32x32-tile-pixel-art-tilesheet)
 * **Author**: Cough-E
 * **License**: CC0
+
+### [Red gem (modified)](https://opengameart.org/content/roguelikerpg-items)
+* **Author**: Joe Williamson
+* **License**: CC-BY-SA 3.0
