@@ -6,6 +6,180 @@ const util = @import("util.zig");
 
 pub const Tint = enum { Default, Green, Red };
 
+pub const Collection = struct {
+    floor: Floor,
+    wall_id_counter: u64,
+    walls: std.ArrayList(Wall),
+    wall_material: rl.Material,
+    shared_wall_vertices: []f32,
+    texture_scale: f32,
+
+    /// Stores the given allocator internally for its entire lifetime. Will own the given textures.
+    pub fn create(
+        allocator: std.mem.Allocator,
+        wall_texture: rl.Texture,
+        floor_texture: rl.Texture,
+        texture_scale: f32,
+    ) !Collection {
+        const wall_material = util.makeMaterial(wall_texture);
+        errdefer rl.UnloadMaterial(wall_material);
+
+        var floor = try Floor.create(allocator, 100, floor_texture, texture_scale);
+        errdefer floor.destroy(allocator);
+
+        const precomputed_wall_vertices = Wall.computeVertices();
+        var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
+        std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
+
+        return Collection{
+            .floor = floor,
+            .wall_id_counter = 0,
+            .walls = std.ArrayList(Wall).init(allocator),
+            .wall_material = wall_material,
+            .shared_wall_vertices = shared_wall_vertices,
+            .texture_scale = texture_scale,
+        };
+    }
+
+    pub fn destroy(self: *Collection, allocator: std.mem.Allocator) void {
+        self.floor.destroy(allocator);
+        for (self.walls.items) |*wall| {
+            wall.destroy();
+        }
+        self.walls.deinit();
+        rl.UnloadMaterial(self.wall_material);
+        allocator.free(self.shared_wall_vertices);
+    }
+
+    pub fn draw(self: Collection) void {
+        self.floor.draw();
+
+        const key = @enumToInt(rl.MATERIAL_MAP_DIFFUSE);
+        for (self.walls.items) |wall| {
+            switch (wall.tint) {
+                Tint.Default => self.wall_material.maps[key].color = rl.WHITE,
+                Tint.Green => self.wall_material.maps[key].color = rl.GREEN,
+                Tint.Red => self.wall_material.maps[key].color = rl.RED,
+            }
+            rl.DrawMesh(wall.mesh, self.wall_material, wall.precomputed_matrix);
+        }
+    }
+
+    /// Returns the id of the created wall on success.
+    pub fn addWall(
+        self: *Collection,
+        start_position: util.FlatVector,
+        end_position: util.FlatVector,
+    ) !u64 {
+        const wall = try self.walls.addOne();
+        wall.* = Wall.create(
+            self.wall_id_counter,
+            start_position,
+            end_position,
+            self.shared_wall_vertices,
+            self.texture_scale,
+        );
+        self.wall_id_counter = self.wall_id_counter + 1;
+        return wall.id;
+    }
+
+    /// If the given wall id does not exist, this function will do nothing.
+    pub fn removeWall(self: *Collection, wall_id: u64) void {
+        for (self.walls.items) |*wall, index| {
+            if (wall.id == wall_id) {
+                wall.destroy();
+                _ = self.walls.orderedRemove(index);
+                return;
+            }
+        }
+    }
+
+    /// If the given wall id does not exist, this function will do nothing.
+    pub fn updateWall(
+        self: *Collection,
+        wall_id: u64,
+        start_position: util.FlatVector,
+        end_position: util.FlatVector,
+    ) void {
+        if (self.findWall(wall_id)) |wall| {
+            const tint = wall.tint;
+            wall.destroy();
+            wall.* = Wall.create(
+                wall_id,
+                start_position,
+                end_position,
+                self.shared_wall_vertices,
+                self.texture_scale,
+            );
+            wall.tint = tint;
+        }
+    }
+
+    pub fn tintWall(self: *Collection, wall_id: u64, tint: Tint) void {
+        if (self.findWall(wall_id)) |wall| {
+            wall.tint = tint;
+        }
+    }
+
+    /// If the given ray hits the level grid, return the position on the floor.
+    pub fn cast3DRayToGround(self: Collection, ray: rl.Ray) ?util.FlatVector {
+        return self.floor.cast3DRay(ray);
+    }
+
+    pub const RayWallCollision = struct {
+        wall_id: u64,
+        distance: f32,
+    };
+
+    /// Find the id of the closest wall hit by the given ray, if available.
+    pub fn cast3DRayToWalls(self: Collection, ray: rl.Ray) ?RayWallCollision {
+        var result: ?RayWallCollision = null;
+        for (self.walls.items) |wall| {
+            const ray_collision = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
+            const found_closer_wall = if (!ray_collision.hit)
+                false
+            else if (result) |existing_result|
+                ray_collision.distance < existing_result.distance
+            else
+                true;
+            if (found_closer_wall) {
+                result = RayWallCollision{ .wall_id = wall.id, .distance = ray_collision.distance };
+            }
+        }
+        return result;
+    }
+
+    /// If a collision occurs, return a displacement vector for moving the given circle out of the
+    /// level geometry. The returned displacement vector must be added to the given circles position
+    /// to resolve the collision.
+    pub fn collidesWithCircle(self: Collection, circle: collision.Circle) ?util.FlatVector {
+        var found_collision = false;
+        var displaced_circle = circle;
+
+        // Move displaced_circle out of all walls.
+        for (self.walls.items) |wall| {
+            if (displaced_circle.collidesWithRectangle(wall.boundaries)) |displacement_vector| {
+                found_collision = true;
+                displaced_circle.position = displaced_circle.position.add(displacement_vector);
+            }
+        }
+
+        return if (found_collision)
+            displaced_circle.position.subtract(circle.position)
+        else
+            null;
+    }
+
+    fn findWall(self: *Collection, wall_id: u64) ?*Wall {
+        for (self.walls.items) |*wall| {
+            if (wall.id == wall_id) {
+                return wall;
+            }
+        }
+        return null;
+    }
+};
+
 const Floor = struct {
     vertices: []f32,
     mesh: rl.Mesh,
@@ -182,179 +356,5 @@ const Wall = struct {
             vertices[index + 2] = corners[corner_indices[index / 3]].z;
         }
         return vertices;
-    }
-};
-
-pub const Collection = struct {
-    floor: Floor,
-    wall_id_counter: u64,
-    walls: std.ArrayList(Wall),
-    wall_material: rl.Material,
-    shared_wall_vertices: []f32,
-    texture_scale: f32,
-
-    /// Stores the given allocator internally for its entire lifetime. Will own the given textures.
-    pub fn create(
-        allocator: std.mem.Allocator,
-        wall_texture: rl.Texture,
-        floor_texture: rl.Texture,
-        texture_scale: f32,
-    ) !Collection {
-        const wall_material = util.makeMaterial(wall_texture);
-        errdefer rl.UnloadMaterial(wall_material);
-
-        var floor = try Floor.create(allocator, 100, floor_texture, texture_scale);
-        errdefer floor.destroy(allocator);
-
-        const precomputed_wall_vertices = Wall.computeVertices();
-        var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
-        std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
-
-        return Collection{
-            .floor = floor,
-            .wall_id_counter = 0,
-            .walls = std.ArrayList(Wall).init(allocator),
-            .wall_material = wall_material,
-            .shared_wall_vertices = shared_wall_vertices,
-            .texture_scale = texture_scale,
-        };
-    }
-
-    pub fn destroy(self: *Collection, allocator: std.mem.Allocator) void {
-        self.floor.destroy(allocator);
-        for (self.walls.items) |*wall| {
-            wall.destroy();
-        }
-        self.walls.deinit();
-        rl.UnloadMaterial(self.wall_material);
-        allocator.free(self.shared_wall_vertices);
-    }
-
-    pub fn draw(self: Collection) void {
-        self.floor.draw();
-
-        const key = @enumToInt(rl.MATERIAL_MAP_DIFFUSE);
-        for (self.walls.items) |wall| {
-            switch (wall.tint) {
-                Tint.Default => self.wall_material.maps[key].color = rl.WHITE,
-                Tint.Green => self.wall_material.maps[key].color = rl.GREEN,
-                Tint.Red => self.wall_material.maps[key].color = rl.RED,
-            }
-            rl.DrawMesh(wall.mesh, self.wall_material, wall.precomputed_matrix);
-        }
-    }
-
-    /// Returns the id of the created wall on success.
-    pub fn addWall(
-        self: *Collection,
-        start_position: util.FlatVector,
-        end_position: util.FlatVector,
-    ) !u64 {
-        const wall = try self.walls.addOne();
-        wall.* = Wall.create(
-            self.wall_id_counter,
-            start_position,
-            end_position,
-            self.shared_wall_vertices,
-            self.texture_scale,
-        );
-        self.wall_id_counter = self.wall_id_counter + 1;
-        return wall.id;
-    }
-
-    /// If the given wall id does not exist, this function will do nothing.
-    pub fn removeWall(self: *Collection, wall_id: u64) void {
-        for (self.walls.items) |*wall, index| {
-            if (wall.id == wall_id) {
-                wall.destroy();
-                _ = self.walls.orderedRemove(index);
-                return;
-            }
-        }
-    }
-
-    /// If the given wall id does not exist, this function will do nothing.
-    pub fn updateWall(
-        self: *Collection,
-        wall_id: u64,
-        start_position: util.FlatVector,
-        end_position: util.FlatVector,
-    ) void {
-        if (self.findWall(wall_id)) |wall| {
-            const tint = wall.tint;
-            wall.destroy();
-            wall.* = Wall.create(
-                wall_id,
-                start_position,
-                end_position,
-                self.shared_wall_vertices,
-                self.texture_scale,
-            );
-            wall.tint = tint;
-        }
-    }
-
-    pub fn tintWall(self: *Collection, wall_id: u64, tint: Tint) void {
-        if (self.findWall(wall_id)) |wall| {
-            wall.tint = tint;
-        }
-    }
-
-    pub fn findWall(self: *Collection, wall_id: u64) ?*Wall {
-        for (self.walls.items) |*wall| {
-            if (wall.id == wall_id) {
-                return wall;
-            }
-        }
-        return null;
-    }
-
-    /// If the given ray hits the level grid, return the position on the floor.
-    pub fn cast3DRayToGround(self: Collection, ray: rl.Ray) ?util.FlatVector {
-        return self.floor.cast3DRay(ray);
-    }
-
-    const RayWallCollision = struct {
-        wall_id: u64,
-        distance: f32,
-    };
-
-    /// Find the id of the closest wall hit by the given ray, if available.
-    pub fn cast3DRayToWalls(self: Collection, ray: rl.Ray) ?RayWallCollision {
-        var result: ?RayWallCollision = null;
-        for (self.walls.items) |wall| {
-            const ray_collision = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
-            const found_closer_wall = if (!ray_collision.hit)
-                false
-            else if (result) |existing_result|
-                ray_collision.distance < existing_result.distance
-            else
-                true;
-            if (found_closer_wall) {
-                result = RayWallCollision{ .wall_id = wall.id, .distance = ray_collision.distance };
-            }
-        }
-        return result;
-    }
-
-    /// If a collision occurs, return a displacement vector for moving the given circle out of the
-    /// level geometry. The returned displacement vector must be added to the given circles position
-    /// to resolve the collision.
-    pub fn collidesWithCircle(self: Collection, circle: collision.Circle) ?util.FlatVector {
-        var found_collision = false;
-        var displaced_circle = circle;
-
-        // Move displaced_circle out of all walls.
-        for (self.walls.items) |wall| {
-            if (displaced_circle.collidesWithRectangle(wall.boundaries)) |displacement_vector| {
-                found_collision = true;
-                displaced_circle.position = displaced_circle.position.add(displacement_vector);
-            }
-        }
-
-        return if (found_collision)
-            displaced_circle.position.subtract(circle.position)
-        else
-            null;
     }
 };
