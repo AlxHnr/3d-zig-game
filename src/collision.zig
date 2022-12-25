@@ -53,6 +53,27 @@ pub const Rectangle = struct {
             .inverse_rotation = Rotation.create(-rotation_angle),
         };
     }
+
+    /// Check if this rectangle collides with the given line (game-world coordinates).
+    pub fn collidesWithLine(self: Rectangle, line_start: util.FlatVector, line_end: util.FlatVector) bool {
+        const start = self.rotation.rotate(line_start);
+        const end = self.rotation.rotate(line_end);
+        const second_corner = util.FlatVector{ .x = self.third_corner.x, .z = self.first_corner.z };
+        const fourth_corner = util.FlatVector{ .x = self.first_corner.x, .z = self.third_corner.z };
+        return self.collidesWithRotatedPoint(start) or
+            self.collidesWithRotatedPoint(end) or
+            lineCollidesWithLine(start, end, self.first_corner, fourth_corner) or
+            lineCollidesWithLine(start, end, self.first_corner, second_corner) or
+            lineCollidesWithLine(start, end, fourth_corner, self.third_corner) or
+            lineCollidesWithLine(start, end, self.third_corner, second_corner);
+    }
+
+    fn collidesWithRotatedPoint(self: Rectangle, rotated_point: util.FlatVector) bool {
+        return rotated_point.x > self.first_corner.x and
+            rotated_point.x < self.third_corner_corner.x and
+            rotated_point.z < self.first_corner.z and
+            rotated_point.z > self.third_corner_corner.z;
+    }
 };
 
 pub const Circle = struct {
