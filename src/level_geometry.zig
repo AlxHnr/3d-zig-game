@@ -163,6 +163,16 @@ pub const LevelGeometry = struct {
             null;
     }
 
+    /// Check if the given line (game-world coordinates) collides with the level geometry.
+    pub fn collidesWithLine(self: LevelGeometry, line_start: util.FlatVector, line_end: util.FlatVector) bool {
+        for (self.walls.items) |wall| {
+            if (wall.boundaries.collidesWithLine(line_start, line_end)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     fn findWall(self: *LevelGeometry, wall_id: u64) ?*Wall {
         for (self.walls.items) |*wall| {
             if (wall.id == wall_id) {

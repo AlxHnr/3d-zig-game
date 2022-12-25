@@ -270,7 +270,7 @@ const Player = struct {
         self.gem_count = self.gem_count + gem_collection.processCollision(gems.CollisionObject{
             .id = self.id,
             .boundaries = self.state_at_next_tick.character.boundaries,
-        });
+        }, level_geometry);
     }
 
     fn draw(self: Player, interval_between_previous_and_current_tick: f32) void {

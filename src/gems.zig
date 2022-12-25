@@ -5,6 +5,7 @@ const rl = @import("raylib");
 const rm = @import("raylib-math");
 const std = @import("std");
 const util = @import("util.zig");
+const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 
 pub const CollisionObject = struct {
     /// Unique identifier, distinct from all other collision objects.
@@ -80,10 +81,14 @@ pub const Collection = struct {
     }
 
     /// Count how many gems collide with the given object. All colliding gems will be consumed.
-    pub fn processCollision(self: *Collection, collision_object: CollisionObject) usize {
+    pub fn processCollision(
+        self: *Collection,
+        collision_object: CollisionObject,
+        level_geometry: LevelGeometry,
+    ) usize {
         var gems_collected: usize = 0;
         for (self.gems.items) |*gem| {
-            if (gem.state_at_next_tick.processCollision(collision_object)) {
+            if (gem.state_at_next_tick.processCollision(collision_object, level_geometry)) {
                 gems_collected = gems_collected + 1;
             }
         }
@@ -169,9 +174,11 @@ const Gem = struct {
     }
 
     /// If a collision was found it will return true and start the pickup animation.
-    fn processCollision(self: *Gem, collision_object: CollisionObject) bool {
+    fn processCollision(self: *Gem, collision_object: CollisionObject, level_geometry: LevelGeometry) bool {
+        const collision_object_position = collision_object.boundaries.position;
         if (self.pickup_animation_progress == null and
-            self.boundaries.collidesWithCircle(collision_object.boundaries) != null)
+            self.boundaries.collidesWithCircle(collision_object.boundaries) != null and
+            !level_geometry.collidesWithLine(self.boundaries.position, collision_object_position))
         {
             self.pickup_animation_progress = 0;
             self.collided_object_id = collision_object.id;
