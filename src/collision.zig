@@ -70,9 +70,9 @@ pub const Rectangle = struct {
 
     fn collidesWithRotatedPoint(self: Rectangle, rotated_point: util.FlatVector) bool {
         return rotated_point.x > self.first_corner.x and
-            rotated_point.x < self.third_corner_corner.x and
+            rotated_point.x < self.third_corner.x and
             rotated_point.z < self.first_corner.z and
-            rotated_point.z > self.third_corner_corner.z;
+            rotated_point.z > self.third_corner.z;
     }
 };
 
