@@ -133,3 +133,38 @@ pub const Circle = struct {
         return rectangle.inverse_rotation.rotate(displacement_vector);
     }
 };
+
+pub fn lineCollidesWithLine(
+    first_line_start: util.FlatVector,
+    first_line_end: util.FlatVector,
+    second_line_start: util.FlatVector,
+    second_line_end: util.FlatVector,
+) bool {
+    const first_line_lengths = util.FlatVector{
+        .x = first_line_end.x - first_line_start.x,
+        .z = first_line_end.z - first_line_start.z,
+    };
+    const second_line_lengths = util.FlatVector{
+        .x = second_line_end.x - second_line_start.x,
+        .z = second_line_end.z - second_line_start.z,
+    };
+    const divisor =
+        second_line_lengths.z * first_line_lengths.x -
+        second_line_lengths.x * first_line_lengths.z;
+    if (math.fabs(divisor) < util.Constants.epsilon) {
+        return false;
+    }
+
+    const line_start_offsets = util.FlatVector{
+        .x = first_line_start.x - second_line_start.x,
+        .z = first_line_start.z - second_line_start.z,
+    };
+    const x =
+        (second_line_lengths.x * line_start_offsets.z -
+        second_line_lengths.z * line_start_offsets.x) / divisor;
+    const y =
+        (first_line_lengths.x * line_start_offsets.z -
+        first_line_lengths.z * line_start_offsets.x) / divisor;
+
+    return x > 0 and x < 1 and y > 0 and y < 1;
+}

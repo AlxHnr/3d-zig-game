@@ -1,8 +1,10 @@
 //! Contains various test cases.
 
-const collision = @import("collision.zig");
 const std = @import("std");
+const expect = std.testing.expect;
 const expectApproxEqRel = std.testing.expectApproxEqRel;
+
+const collision = @import("collision.zig");
 const util = @import("util.zig");
 const epsilon = util.Constants.epsilon;
 
@@ -21,4 +23,44 @@ test "Create collision rectangle" {
     try expectApproxEqRel(std.math.cos(expected_angle), rectangle.rotation.cosine, epsilon);
     try expectApproxEqRel(std.math.sin(-expected_angle), rectangle.inverse_rotation.sine, epsilon);
     try expectApproxEqRel(std.math.cos(-expected_angle), rectangle.inverse_rotation.cosine, epsilon);
+}
+
+test "Collisions between lines" {
+    try expect(collision.lineCollidesWithLine(
+        util.FlatVector{ .x = -1, .z = -3 },
+        util.FlatVector{ .x = 2.5, .z = -0.5 },
+        util.FlatVector{ .x = 2, .z = -1.5 },
+        util.FlatVector{ .x = 0.5, .z = 2 },
+    ));
+    try expect(collision.lineCollidesWithLine(
+        util.FlatVector{ .x = 2.5, .z = -0.5 },
+        util.FlatVector{ .x = -1, .z = -3 },
+        util.FlatVector{ .x = 2, .z = -1.5 },
+        util.FlatVector{ .x = 0.5, .z = 2 },
+    ));
+    try expect(collision.lineCollidesWithLine(
+        util.FlatVector{ .x = 2.5, .z = -0.5 },
+        util.FlatVector{ .x = -1, .z = -3 },
+        util.FlatVector{ .x = 0.5, .z = 2 },
+        util.FlatVector{ .x = 2, .z = -1.5 },
+    ));
+    try expect(collision.lineCollidesWithLine(
+        util.FlatVector{ .x = -1, .z = -3 },
+        util.FlatVector{ .x = 2.5, .z = -0.5 },
+        util.FlatVector{ .x = 0.5, .z = 2 },
+        util.FlatVector{ .x = 2, .z = -1.5 },
+    ));
+
+    try expect(!collision.lineCollidesWithLine(
+        util.FlatVector{ .x = -1, .z = -3 },
+        util.FlatVector{ .x = 2.5, .z = -0.5 },
+        util.FlatVector{ .x = 0.5, .z = 2 },
+        util.FlatVector{ .x = -2, .z = -1.5 },
+    ));
+    try expect(!collision.lineCollidesWithLine(
+        util.FlatVector{ .x = -1.5, .z = 7 },
+        util.FlatVector{ .x = 1.5, .z = 7 },
+        util.FlatVector{ .x = -2.5, .z = 8 },
+        util.FlatVector{ .x = 2.5, .z = 8 },
+    ));
 }
