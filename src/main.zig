@@ -4,7 +4,7 @@ const rm = @import("raylib-math");
 const std = @import("std");
 const util = @import("util.zig");
 const gems = @import("gems.zig");
-const level_geometry = @import("level_geometry.zig");
+const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const loadBillboardShader = @import("billboard_shader.zig").load;
 
@@ -154,8 +154,8 @@ const Player = struct {
             };
         }
 
-        fn processElapsedTick(self: *State, geometry: level_geometry.Collection) void {
-            if (geometry.collidesWithCircle(self.character.boundaries)) |displacement_vector| {
+        fn processElapsedTick(self: *State, level_geometry: LevelGeometry) void {
+            if (level_geometry.collidesWithCircle(self.character.boundaries)) |displacement_vector| {
                 self.character.resolveCollision(displacement_vector);
             }
             self.character.processElapsedTick();
@@ -262,11 +262,11 @@ const Player = struct {
 
     fn processElapsedTick(
         self: *Player,
-        geometry: level_geometry.Collection,
+        level_geometry: LevelGeometry,
         gem_collection: *gems.Collection,
     ) void {
         self.state_at_previous_tick = self.state_at_next_tick;
-        self.state_at_next_tick.processElapsedTick(geometry);
+        self.state_at_next_tick.processElapsedTick(level_geometry);
         self.gem_count = self.gem_count + gem_collection.processCollision(gems.CollisionObject{
             .id = self.id,
             .boundaries = self.state_at_next_tick.character.boundaries,
@@ -325,7 +325,7 @@ const SplitScreenRenderContext = struct {
         self: *SplitScreenRenderContext,
         players: []const Player,
         current_player: Player,
-        geometry: level_geometry.Collection,
+        level_geometry: LevelGeometry,
         gem_collection: gems.Collection,
         interval_between_previous_and_current_tick: f32,
     ) void {
@@ -333,7 +333,7 @@ const SplitScreenRenderContext = struct {
         const lerped_camera = current_player.getCamera(interval_between_previous_and_current_tick);
 
         const max_distance_from_target =
-            if (geometry.cast3DRayToWalls(lerped_camera.get3DRayFromTargetToSelf())) |ray_collision|
+            if (level_geometry.cast3DRayToWalls(lerped_camera.get3DRayFromTargetToSelf())) |ray_collision|
             ray_collision.distance
         else
             null;
@@ -341,7 +341,7 @@ const SplitScreenRenderContext = struct {
 
         rl.BeginMode3D(raylib_camera);
         rl.ClearBackground(rl.Color{ .r = 140, .g = 190, .b = 214, .a = 255 });
-        geometry.draw();
+        level_geometry.draw();
 
         var collision_objects: [4]gems.CollisionObject = undefined;
         std.debug.assert(players.len <= collision_objects.len);
@@ -448,7 +448,7 @@ const SplitScreenSetup = struct {
         self: *SplitScreenSetup,
         /// Assumed to be at least as large as screen_splittings passed to create().
         players: []const Player,
-        geometry: level_geometry.Collection,
+        level_geometry: LevelGeometry,
         gem_collection: gems.Collection,
         interval_between_previous_and_current_tick: f32,
     ) void {
@@ -457,7 +457,7 @@ const SplitScreenSetup = struct {
             context.prerenderScene(
                 players,
                 players[index],
-                geometry,
+                level_geometry,
                 gem_collection,
                 interval_between_previous_and_current_tick,
             );
@@ -545,13 +545,13 @@ pub fn main() !void {
     defer split_screen_setup.destroy(gpa.allocator());
 
     const known_textures = try loadKnownTextures();
-    var geometry = try level_geometry.Collection.create(
+    var level_geometry = try LevelGeometry.create(
         gpa.allocator(),
         known_textures[0],
         known_textures[1],
         5.0,
     );
-    defer geometry.destroy(gpa.allocator());
+    defer level_geometry.destroy(gpa.allocator());
     var currently_edited_wall: ?CurrentlyEditedWall = null;
 
     const billboard_shader = try loadBillboardShader();
@@ -569,14 +569,14 @@ pub fn main() !void {
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             for (active_players) |*player| {
-                player.processElapsedTick(geometry, &gem_collection);
+                player.processElapsedTick(level_geometry, &gem_collection);
                 gem_collection.processElapsedTick();
             }
         }
 
         split_screen_setup.prerenderScenes(
             active_players,
-            geometry,
+            level_geometry,
             gem_collection,
             lap_result.next_tick_progress,
         );
@@ -637,7 +637,7 @@ pub fn main() !void {
                     EditMode.DeleteWalls => EditMode.PlaceWalls,
                 };
                 if (currently_edited_wall) |wall| {
-                    geometry.tintWall(wall.id, level_geometry.Tint.Default);
+                    level_geometry.tintWall(wall.id, rl.WHITE);
                     currently_edited_wall = null;
                 }
             }
@@ -648,18 +648,18 @@ pub fn main() !void {
                 EditMode.PlaceWalls => {
                     if (currently_edited_wall) |*wall| {
                         if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
-                            if (geometry.cast3DRayToGround(ray)) |position_on_grid| {
-                                geometry.updateWall(wall.id, wall.start_position, position_on_grid);
+                            if (level_geometry.cast3DRayToGround(ray)) |position_on_grid| {
+                                level_geometry.updateWall(wall.id, wall.start_position, position_on_grid);
                             }
                         }
                         if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                            geometry.tintWall(wall.id, level_geometry.Tint.Default);
+                            level_geometry.tintWall(wall.id, rl.WHITE);
                             currently_edited_wall = null;
                         }
                     } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                        if (geometry.cast3DRayToGround(ray)) |position_on_grid| {
-                            const wall_id = try geometry.addWall(position_on_grid, position_on_grid);
-                            geometry.tintWall(wall_id, level_geometry.Tint.Green);
+                        if (level_geometry.cast3DRayToGround(ray)) |position_on_grid| {
+                            const wall_id = try level_geometry.addWall(position_on_grid, position_on_grid);
+                            level_geometry.tintWall(wall_id, rl.GREEN);
                             currently_edited_wall =
                                 CurrentlyEditedWall{ .id = wall_id, .start_position = position_on_grid };
                         }
@@ -668,11 +668,11 @@ pub fn main() !void {
                 EditMode.DeleteWalls => {
                     if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
                         if (currently_edited_wall) |wall| {
-                            geometry.tintWall(wall.id, level_geometry.Tint.Default);
+                            level_geometry.tintWall(wall.id, rl.WHITE);
                             currently_edited_wall = null;
                         }
-                        if (geometry.cast3DRayToWalls(ray)) |ray_collision| {
-                            geometry.tintWall(ray_collision.wall_id, level_geometry.Tint.Red);
+                        if (level_geometry.cast3DRayToWalls(ray)) |ray_collision| {
+                            level_geometry.tintWall(ray_collision.wall_id, rl.RED);
                             currently_edited_wall = CurrentlyEditedWall{
                                 .id = ray_collision.wall_id,
                                 .start_position = util.FlatVector{ .x = 0, .z = 0 },
@@ -681,7 +681,7 @@ pub fn main() !void {
                     }
                     if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
                         if (currently_edited_wall) |wall| {
-                            geometry.removeWall(wall.id);
+                            level_geometry.removeWall(wall.id);
                             currently_edited_wall = null;
                         }
                     }

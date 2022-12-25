@@ -4,9 +4,7 @@ const rm = @import("raylib-math");
 const std = @import("std");
 const util = @import("util.zig");
 
-pub const Tint = enum { Default, Green, Red };
-
-pub const Collection = struct {
+pub const LevelGeometry = struct {
     floor: Floor,
     wall_id_counter: u64,
     walls: std.ArrayList(Wall),
@@ -20,7 +18,7 @@ pub const Collection = struct {
         wall_texture: rl.Texture,
         floor_texture: rl.Texture,
         texture_scale: f32,
-    ) !Collection {
+    ) !LevelGeometry {
         const wall_material = util.makeMaterial(wall_texture);
         errdefer rl.UnloadMaterial(wall_material);
 
@@ -31,7 +29,7 @@ pub const Collection = struct {
         var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
         std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
 
-        return Collection{
+        return LevelGeometry{
             .floor = floor,
             .wall_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
@@ -41,7 +39,7 @@ pub const Collection = struct {
         };
     }
 
-    pub fn destroy(self: *Collection, allocator: std.mem.Allocator) void {
+    pub fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
         self.floor.destroy(allocator);
         for (self.walls.items) |*wall| {
             wall.destroy();
@@ -51,23 +49,18 @@ pub const Collection = struct {
         allocator.free(self.shared_wall_vertices);
     }
 
-    pub fn draw(self: Collection) void {
+    pub fn draw(self: LevelGeometry) void {
         self.floor.draw();
-
         const key = @enumToInt(rl.MATERIAL_MAP_DIFFUSE);
         for (self.walls.items) |wall| {
-            switch (wall.tint) {
-                Tint.Default => self.wall_material.maps[key].color = rl.WHITE,
-                Tint.Green => self.wall_material.maps[key].color = rl.GREEN,
-                Tint.Red => self.wall_material.maps[key].color = rl.RED,
-            }
+            self.wall_material.maps[key].color = wall.tint;
             rl.DrawMesh(wall.mesh, self.wall_material, wall.precomputed_matrix);
         }
     }
 
     /// Returns the id of the created wall on success.
     pub fn addWall(
-        self: *Collection,
+        self: *LevelGeometry,
         start_position: util.FlatVector,
         end_position: util.FlatVector,
     ) !u64 {
@@ -84,7 +77,7 @@ pub const Collection = struct {
     }
 
     /// If the given wall id does not exist, this function will do nothing.
-    pub fn removeWall(self: *Collection, wall_id: u64) void {
+    pub fn removeWall(self: *LevelGeometry, wall_id: u64) void {
         for (self.walls.items) |*wall, index| {
             if (wall.id == wall_id) {
                 wall.destroy();
@@ -96,7 +89,7 @@ pub const Collection = struct {
 
     /// If the given wall id does not exist, this function will do nothing.
     pub fn updateWall(
-        self: *Collection,
+        self: *LevelGeometry,
         wall_id: u64,
         start_position: util.FlatVector,
         end_position: util.FlatVector,
@@ -115,14 +108,14 @@ pub const Collection = struct {
         }
     }
 
-    pub fn tintWall(self: *Collection, wall_id: u64, tint: Tint) void {
+    pub fn tintWall(self: *LevelGeometry, wall_id: u64, tint: rl.Color) void {
         if (self.findWall(wall_id)) |wall| {
             wall.tint = tint;
         }
     }
 
     /// If the given ray hits the level grid, return the position on the floor.
-    pub fn cast3DRayToGround(self: Collection, ray: rl.Ray) ?util.FlatVector {
+    pub fn cast3DRayToGround(self: LevelGeometry, ray: rl.Ray) ?util.FlatVector {
         return self.floor.cast3DRay(ray);
     }
 
@@ -132,7 +125,7 @@ pub const Collection = struct {
     };
 
     /// Find the id of the closest wall hit by the given ray, if available.
-    pub fn cast3DRayToWalls(self: Collection, ray: rl.Ray) ?RayWallCollision {
+    pub fn cast3DRayToWalls(self: LevelGeometry, ray: rl.Ray) ?RayWallCollision {
         var result: ?RayWallCollision = null;
         for (self.walls.items) |wall| {
             const ray_collision = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
@@ -152,7 +145,7 @@ pub const Collection = struct {
     /// If a collision occurs, return a displacement vector for moving the given circle out of the
     /// level geometry. The returned displacement vector must be added to the given circles position
     /// to resolve the collision.
-    pub fn collidesWithCircle(self: Collection, circle: collision.Circle) ?util.FlatVector {
+    pub fn collidesWithCircle(self: LevelGeometry, circle: collision.Circle) ?util.FlatVector {
         var found_collision = false;
         var displaced_circle = circle;
 
@@ -170,7 +163,7 @@ pub const Collection = struct {
             null;
     }
 
-    fn findWall(self: *Collection, wall_id: u64) ?*Wall {
+    fn findWall(self: *LevelGeometry, wall_id: u64) ?*Wall {
         for (self.walls.items) |*wall| {
             if (wall.id == wall_id) {
                 return wall;
@@ -250,7 +243,7 @@ const Wall = struct {
     id: u64,
     mesh: rl.Mesh,
     precomputed_matrix: rl.Matrix,
-    tint: Tint,
+    tint: rl.Color,
     boundaries: collision.Rectangle,
 
     const height: f32 = 5;
@@ -313,7 +306,7 @@ const Wall = struct {
                 rm.MatrixScale(width, 1, 1),
                 rm.MatrixRotateY(rotation_angle),
             ), rm.MatrixTranslate(start_position.x, 0, start_position.z)),
-            .tint = Tint.Default,
+            .tint = rl.WHITE,
             .boundaries = collision.Rectangle.create(
                 start_position.add(side_a_up_offset),
                 start_position.subtract(side_a_up_offset),
