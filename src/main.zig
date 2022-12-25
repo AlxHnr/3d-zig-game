@@ -141,31 +141,6 @@ const InputConfiguration = struct {
 };
 
 const Player = struct {
-    const State = struct {
-        character: Character,
-        camera: ThirdPersonCamera,
-
-        /// Interpolate between this players state and another players state based on the given
-        /// interval from 0 to 1.
-        fn lerp(self: State, other: State, interval: f32) State {
-            return State{
-                .character = self.character.lerp(other.character, interval),
-                .camera = self.camera.lerp(other.camera, interval),
-            };
-        }
-
-        fn processElapsedTick(self: *State, level_geometry: LevelGeometry) void {
-            if (level_geometry.collidesWithCircle(self.character.boundaries)) |displacement_vector| {
-                self.character.resolveCollision(displacement_vector);
-            }
-            self.character.processElapsedTick();
-            self.camera.processElapsedTick(
-                self.character.getTopOfCharacter(),
-                self.character.looking_direction,
-            );
-        }
-    };
-
     /// Unique identifier distinct from all other players.
     id: u64,
     state_at_next_tick: State,
@@ -296,6 +271,31 @@ const Player = struct {
             interval_between_previous_and_current_tick,
         ).character.boundaries;
     }
+
+    const State = struct {
+        character: Character,
+        camera: ThirdPersonCamera,
+
+        /// Interpolate between this players state and another players state based on the given
+        /// interval from 0 to 1.
+        fn lerp(self: State, other: State, interval: f32) State {
+            return State{
+                .character = self.character.lerp(other.character, interval),
+                .camera = self.camera.lerp(other.camera, interval),
+            };
+        }
+
+        fn processElapsedTick(self: *State, level_geometry: LevelGeometry) void {
+            if (level_geometry.collidesWithCircle(self.character.boundaries)) |displacement_vector| {
+                self.character.resolveCollision(displacement_vector);
+            }
+            self.character.processElapsedTick();
+            self.camera.processElapsedTick(
+                self.character.getTopOfCharacter(),
+                self.character.looking_direction,
+            );
+        }
+    };
 };
 
 const SplitScreenRenderContext = struct {
