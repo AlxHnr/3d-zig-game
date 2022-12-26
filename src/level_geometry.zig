@@ -9,7 +9,7 @@ pub const LevelGeometry = struct {
     ground: Floor,
     level_boundaries: [4]Wall,
 
-    wall_id_counter: u64,
+    object_id_counter: u64,
     walls: std.ArrayList(Wall),
     shared_wall_vertices: []f32,
 
@@ -29,18 +29,19 @@ pub const LevelGeometry = struct {
             util.FlatVector{ .x = half_size, .z = -half_size },
             util.FlatVector{ .x = -half_size, .z = -half_size },
         };
+        const wall_type = WallType.SmallWall;
         const level_boundaries = [4]Wall{
-            // Wall id is not relevant here.
-            Wall.create(0, level_corners[0], level_corners[1], shared_wall_vertices),
-            Wall.create(0, level_corners[1], level_corners[2], shared_wall_vertices),
-            Wall.create(0, level_corners[2], level_corners[3], shared_wall_vertices),
-            Wall.create(0, level_corners[3], level_corners[0], shared_wall_vertices),
+            // Object id is not relevant here.
+            Wall.create(0, level_corners[0], level_corners[1], wall_type, shared_wall_vertices),
+            Wall.create(0, level_corners[1], level_corners[2], wall_type, shared_wall_vertices),
+            Wall.create(0, level_corners[2], level_corners[3], wall_type, shared_wall_vertices),
+            Wall.create(0, level_corners[3], level_corners[0], wall_type, shared_wall_vertices),
         };
 
         return LevelGeometry{
             .ground = ground,
             .level_boundaries = level_boundaries,
-            .wall_id_counter = 0,
+            .object_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
             .shared_wall_vertices = shared_wall_vertices,
         };
@@ -70,27 +71,37 @@ pub const LevelGeometry = struct {
         self.ground.draw(texture_collection.get(textures.Name.floor).material);
     }
 
+    pub const WallType = enum {
+        SmallWall,
+        MediumWall,
+        CastleWall,
+        CastleTower,
+        GigaWall,
+    };
+
     /// Returns the id of the created wall on success.
     pub fn addWall(
         self: *LevelGeometry,
         start_position: util.FlatVector,
         end_position: util.FlatVector,
+        wall_type: WallType,
     ) !u64 {
         const wall = try self.walls.addOne();
         wall.* = Wall.create(
-            self.wall_id_counter,
+            self.object_id_counter,
             start_position,
             end_position,
+            wall_type,
             self.shared_wall_vertices,
         );
-        self.wall_id_counter = self.wall_id_counter + 1;
-        return wall.id;
+        self.object_id_counter = self.object_id_counter + 1;
+        return wall.object_id;
     }
 
-    /// If the given wall id does not exist, this function will do nothing.
-    pub fn removeWall(self: *LevelGeometry, wall_id: u64) void {
+    /// If the given object id does not exist, this function will do nothing.
+    pub fn removeWall(self: *LevelGeometry, object_id: u64) void {
         for (self.walls.items) |*wall, index| {
-            if (wall.id == wall_id) {
+            if (wall.object_id == object_id) {
                 wall.destroy();
                 _ = self.walls.orderedRemove(index);
                 return;
@@ -98,29 +109,37 @@ pub const LevelGeometry = struct {
         }
     }
 
-    /// If the given wall id does not exist, this function will do nothing.
+    /// If the given object id does not exist, this function will do nothing.
     pub fn updateWall(
         self: *LevelGeometry,
-        wall_id: u64,
+        object_id: u64,
         start_position: util.FlatVector,
         end_position: util.FlatVector,
     ) void {
-        if (self.findWall(wall_id)) |wall| {
+        if (self.findWall(object_id)) |wall| {
             const tint = wall.tint;
+            const wall_type = wall.wall_type;
             wall.destroy();
             wall.* = Wall.create(
-                wall_id,
+                object_id,
                 start_position,
                 end_position,
+                wall_type,
                 self.shared_wall_vertices,
             );
             wall.tint = tint;
         }
     }
 
-    pub fn tintWall(self: *LevelGeometry, wall_id: u64, tint: rl.Color) void {
-        if (self.findWall(wall_id)) |wall| {
+    pub fn tintWall(self: *LevelGeometry, object_id: u64, tint: rl.Color) void {
+        if (self.findWall(object_id)) |wall| {
             wall.tint = tint;
+        }
+    }
+
+    pub fn untintWall(self: *LevelGeometry, object_id: u64) void {
+        if (self.findWall(object_id)) |wall| {
+            wall.tint = Wall.getDefaultTint(wall.wall_type);
         }
     }
 
@@ -129,14 +148,14 @@ pub const LevelGeometry = struct {
         return self.ground.cast3DRay(ray);
     }
 
-    pub const RayWallCollision = struct {
-        wall_id: u64,
+    pub const RayCollision = struct {
+        object_id: u64,
         distance: f32,
     };
 
     /// Find the id of the closest wall hit by the given ray, if available.
-    pub fn cast3DRayToWalls(self: LevelGeometry, ray: rl.Ray) ?RayWallCollision {
-        var result: ?RayWallCollision = null;
+    pub fn cast3DRayToWalls(self: LevelGeometry, ray: rl.Ray) ?RayCollision {
+        var result: ?RayCollision = null;
         for (self.walls.items) |wall| {
             const ray_collision = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
             const found_closer_wall = if (!ray_collision.hit)
@@ -146,7 +165,7 @@ pub const LevelGeometry = struct {
             else
                 true;
             if (found_closer_wall) {
-                result = RayWallCollision{ .wall_id = wall.id, .distance = ray_collision.distance };
+                result = RayCollision{ .object_id = wall.object_id, .distance = ray_collision.distance };
             }
         }
         return result;
@@ -188,9 +207,9 @@ pub const LevelGeometry = struct {
         return false;
     }
 
-    fn findWall(self: *LevelGeometry, wall_id: u64) ?*Wall {
+    fn findWall(self: *LevelGeometry, object_id: u64) ?*Wall {
         for (self.walls.items) |*wall| {
-            if (wall.id == wall_id) {
+            if (wall.object_id == object_id) {
                 return wall;
             }
         }
@@ -265,23 +284,23 @@ const Floor = struct {
 };
 
 const Wall = struct {
-    id: u64,
+    object_id: u64,
     mesh: rl.Mesh,
     precomputed_matrix: rl.Matrix,
     tint: rl.Color,
     boundaries: collision.Rectangle,
-
-    const height: f32 = 10;
-    const thickness: f32 = 1;
+    wall_type: LevelGeometry.WallType,
 
     /// Keeps a reference to the given wall vertices for its entire lifetime.
     fn create(
-        id: u64,
+        object_id: u64,
         start_position: util.FlatVector,
         end_position: util.FlatVector,
+        wall_type: LevelGeometry.WallType,
         shared_wall_vertices: []f32,
     ) Wall {
-        const offset = end_position.subtract(start_position);
+        const wall_type_properties = getWallTypeProperties(start_position, end_position, wall_type);
+        const offset = wall_type_properties.corrected_end_position.subtract(start_position);
         const width = offset.length();
         const x_axis = util.FlatVector{ .x = 1, .z = 0 };
         const rotation_angle = x_axis.computeRotationToOtherVector(offset);
@@ -291,7 +310,9 @@ const Wall = struct {
         mesh.vertexCount = @intCast(c_int, shared_wall_vertices.len / 3);
         mesh.triangleCount = @intCast(c_int, shared_wall_vertices.len / 9);
 
-        const texture_scale = 5.0;
+        const height = wall_type_properties.height;
+        const thickness = wall_type_properties.thickness;
+        const texture_scale = wall_type_properties.texture_scale;
         const texture_corners = [8]rl.Vector2{
             rl.Vector2{ .x = 0, .y = 0 },
             rl.Vector2{ .x = width / texture_scale, .y = 0 },
@@ -325,18 +346,19 @@ const Wall = struct {
             .scale(thickness / 2);
 
         return Wall{
-            .id = id,
+            .object_id = object_id,
             .mesh = mesh,
             .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
-                rm.MatrixScale(width, 1, 1),
+                rm.MatrixScale(width, height, thickness),
                 rm.MatrixRotateY(rotation_angle),
             ), rm.MatrixTranslate(start_position.x, 0, start_position.z)),
-            .tint = rl.WHITE,
+            .tint = Wall.getDefaultTint(wall_type),
             .boundaries = collision.Rectangle.create(
                 start_position.add(side_a_up_offset),
                 start_position.subtract(side_a_up_offset),
                 width,
             ),
+            .wall_type = wall_type,
         };
     }
 
@@ -345,18 +367,18 @@ const Wall = struct {
         rl.UnloadMesh(self.mesh);
     }
 
-    // Return the mesh of a wall. It has a fixed width of 1 and must be scaled by individual
-    // transformation matrices to the desired length. This mesh has no bottom.
+    // Return the mesh of a wall. It has fixed dimensions of 1 and must be scaled by individual
+    // transformation matrices to the desired size. This mesh has no bottom.
     fn computeVertices() [90]f32 {
         const corners = [8]rl.Vector3{
-            rl.Vector3{ .x = 0, .y = Wall.height, .z = Wall.thickness / 2 },
-            rl.Vector3{ .x = 0, .y = 0, .z = Wall.thickness / 2 },
-            rl.Vector3{ .x = 1, .y = Wall.height, .z = Wall.thickness / 2 },
-            rl.Vector3{ .x = 1, .y = 0, .z = Wall.thickness / 2 },
-            rl.Vector3{ .x = 0, .y = Wall.height, .z = -Wall.thickness / 2 },
-            rl.Vector3{ .x = 0, .y = 0, .z = -Wall.thickness / 2 },
-            rl.Vector3{ .x = 1, .y = Wall.height, .z = -Wall.thickness / 2 },
-            rl.Vector3{ .x = 1, .y = 0, .z = -Wall.thickness / 2 },
+            rl.Vector3{ .x = 0, .y = 1, .z = 0.5 },
+            rl.Vector3{ .x = 0, .y = 0, .z = 0.5 },
+            rl.Vector3{ .x = 1, .y = 1, .z = 0.5 },
+            rl.Vector3{ .x = 1, .y = 0, .z = 0.5 },
+            rl.Vector3{ .x = 0, .y = 1, .z = -0.5 },
+            rl.Vector3{ .x = 0, .y = 0, .z = -0.5 },
+            rl.Vector3{ .x = 1, .y = 1, .z = -0.5 },
+            rl.Vector3{ .x = 1, .y = 0, .z = -0.5 },
         };
         const corner_indices = [30]u3{
             0, 1, 2, 1, 3, 2, // Front side.
@@ -374,5 +396,71 @@ const Wall = struct {
             vertices[index + 2] = corners[corner_indices[index / 3]].z;
         }
         return vertices;
+    }
+
+    const WallTypeProperties = struct {
+        corrected_end_position: util.FlatVector,
+        height: f32,
+        thickness: f32,
+        texture_scale: f32,
+    };
+
+    fn getWallTypeProperties(
+        start_position: util.FlatVector,
+        end_position: util.FlatVector,
+        wall_type: LevelGeometry.WallType,
+    ) WallTypeProperties {
+        return switch (wall_type) {
+            LevelGeometry.WallType.SmallWall => {
+                return WallTypeProperties{
+                    .corrected_end_position = end_position,
+                    .height = 5,
+                    .thickness = 0.25,
+                    .texture_scale = 5.0,
+                };
+            },
+            LevelGeometry.WallType.MediumWall => {
+                return WallTypeProperties{
+                    .corrected_end_position = end_position,
+                    .height = 10,
+                    .thickness = 1,
+                    .texture_scale = 5.0,
+                };
+            },
+            LevelGeometry.WallType.CastleWall => {
+                return WallTypeProperties{
+                    .corrected_end_position = end_position,
+                    .height = 15,
+                    .thickness = 2,
+                    .texture_scale = 7.5,
+                };
+            },
+            LevelGeometry.WallType.CastleTower => {
+                const side_length = 6;
+                const rescaled_offset = end_position.subtract(start_position).normalize().scale(side_length);
+                return WallTypeProperties{
+                    .corrected_end_position = start_position.add(rescaled_offset),
+                    .height = 18,
+                    .thickness = side_length,
+                    .texture_scale = 9,
+                };
+            },
+            LevelGeometry.WallType.GigaWall => {
+                return WallTypeProperties{
+                    .corrected_end_position = end_position,
+                    .height = 140,
+                    .thickness = 6,
+                    .texture_scale = 16.0,
+                };
+            },
+        };
+    }
+
+    fn getDefaultTint(wall_type: LevelGeometry.WallType) rl.Color {
+        return switch (wall_type) {
+            LevelGeometry.WallType.CastleTower => rl.Color{ .r = 248, .g = 248, .b = 248, .a = 255 },
+            LevelGeometry.WallType.GigaWall => rl.Color{ .r = 170, .g = 170, .b = 170, .a = 255 },
+            else => rl.WHITE,
+        };
     }
 };

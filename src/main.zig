@@ -348,6 +348,7 @@ fn drawEverything(
     gem_collection: gems.Collection,
     texture_collection: textures.Collection,
     billboard_shader: rl.Shader,
+    wall_type_to_create: LevelGeometry.WallType,
     interval_between_previous_and_current_tick: f32,
 ) void {
     const lerped_camera = current_player.getCamera(interval_between_previous_and_current_tick);
@@ -395,9 +396,17 @@ fn drawEverything(
         current_player.gem_count,
     );
 
-    var string_buffer: [16]u8 = undefined;
+    var string_buffer: [32]u8 = undefined;
+    const wall_type_string = std.fmt.bufPrintZ(
+        string_buffer[0..],
+        "Wall to create: {s}",
+        .{@tagName(wall_type_to_create)},
+    ) catch "";
+    rl.DrawText(wall_type_string, 5, 5, 20, rl.BLACK);
+
     const fps_string = std.fmt.bufPrintZ(string_buffer[0..], "FPS: {}", .{rl.GetFPS()}) catch "";
-    rl.DrawText(fps_string, 5, 5, 20, rl.BLACK);
+    rl.DrawText(fps_string, 5, 25, 20, rl.BLACK);
+
     rl.EndDrawing();
 }
 
@@ -462,6 +471,7 @@ pub fn main() !void {
 
     var edit_mode_view = EditModeView.from_behind;
     var edit_mode = EditMode.place_walls;
+    var wall_type_to_create = LevelGeometry.WallType.SmallWall;
 
     var level_geometry = try LevelGeometry.create(gpa.allocator(), 100);
     defer level_geometry.destroy(gpa.allocator());
@@ -491,6 +501,7 @@ pub fn main() !void {
             gem_collection,
             texture_collection,
             billboard_shader,
+            wall_type_to_create,
             lap_result.next_tick_progress,
         );
 
@@ -535,13 +546,20 @@ pub fn main() !void {
                 EditMode.delete_walls => EditMode.place_walls,
             };
             if (currently_edited_wall) |wall| {
-                level_geometry.tintWall(wall.id, rl.WHITE);
+                level_geometry.untintWall(wall.id);
                 currently_edited_wall = null;
             }
         }
 
         const ray = players[controllable_player_index].getCamera(lap_result.next_tick_progress)
             .get3DRay(rl.GetMousePosition());
+        if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_RIGHT)) {
+            wall_type_to_create =
+                @intToEnum(LevelGeometry.WallType, @mod(
+                @enumToInt(wall_type_to_create) + 1,
+                @typeInfo(LevelGeometry.WallType).Enum.fields.len,
+            ));
+        }
         switch (edit_mode) {
             EditMode.place_walls => {
                 if (currently_edited_wall) |*wall| {
@@ -551,12 +569,16 @@ pub fn main() !void {
                         }
                     }
                     if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                        level_geometry.tintWall(wall.id, rl.WHITE);
+                        level_geometry.untintWall(wall.id);
                         currently_edited_wall = null;
                     }
                 } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
                     if (level_geometry.cast3DRayToGround(ray)) |position_on_grid| {
-                        const wall_id = try level_geometry.addWall(position_on_grid, position_on_grid);
+                        const wall_id = try level_geometry.addWall(
+                            position_on_grid,
+                            position_on_grid,
+                            wall_type_to_create,
+                        );
                         level_geometry.tintWall(wall_id, rl.GREEN);
                         currently_edited_wall =
                             CurrentlyEditedWall{ .id = wall_id, .start_position = position_on_grid };
@@ -566,13 +588,13 @@ pub fn main() !void {
             EditMode.delete_walls => {
                 if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
                     if (currently_edited_wall) |wall| {
-                        level_geometry.tintWall(wall.id, rl.WHITE);
+                        level_geometry.untintWall(wall.id);
                         currently_edited_wall = null;
                     }
                     if (level_geometry.cast3DRayToWalls(ray)) |ray_collision| {
-                        level_geometry.tintWall(ray_collision.wall_id, rl.RED);
+                        level_geometry.tintWall(ray_collision.object_id, rl.RED);
                         currently_edited_wall = CurrentlyEditedWall{
-                            .id = ray_collision.wall_id,
+                            .id = ray_collision.object_id,
                             .start_position = util.FlatVector{ .x = 0, .z = 0 },
                         };
                     }
