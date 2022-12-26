@@ -21,3 +21,7 @@ Install zig 0.9.1 and run `zig build run` inside the projects directory.
 ### [Red gem (modified)](https://opengameart.org/content/roguelikerpg-items)
 * **Author**: Joe Williamson
 * **License**: CC-BY-SA 3.0
+
+### [Blue mage sprite (modified)](https://opengameart.org/content/mage-0)
+* **Author**: Sollision & Jordan Irwin (AntumDeluge)
+* **License**: CC0

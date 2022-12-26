@@ -25,14 +25,12 @@ const Character = struct {
     acceleration_direction: util.FlatVector,
     velocity: util.FlatVector,
     height: f32,
-    color: rl.Color,
 
     fn create(
         position: util.FlatVector,
         looking_direction: util.FlatVector,
         radius: f32,
         height: f32,
-        color: rl.Color,
     ) Character {
         return Character{
             .boundaries = collision.Circle{ .position = position, .radius = radius },
@@ -41,7 +39,6 @@ const Character = struct {
             .acceleration_direction = util.FlatVector{ .x = 0, .z = 0 },
             .velocity = util.FlatVector{ .x = 0, .z = 0 },
             .height = height,
-            .color = color,
         };
     }
 
@@ -56,7 +53,6 @@ const Character = struct {
             .acceleration_direction = self.acceleration_direction.lerp(other.acceleration_direction, i),
             .velocity = self.velocity.lerp(other.velocity, i),
             .height = rm.Lerp(self.height, other.height, i),
-            .color = lerpColor(self.color, other.color, i),
         };
     }
 
@@ -105,31 +101,6 @@ const Character = struct {
         const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
         self.looking_direction = self.looking_direction.rotate(rotation_angle);
     }
-
-    fn draw(self: Character) void {
-        rl.DrawCylinder(
-            self.boundaries.position.toVector3(),
-            0,
-            self.boundaries.radius,
-            self.height,
-            10,
-            self.color,
-        );
-        rl.DrawCylinderWires(
-            self.boundaries.position.toVector3(),
-            0,
-            self.boundaries.radius,
-            self.height,
-            10,
-            rl.GRAY,
-        );
-
-        rl.DrawLine3D(
-            self.boundaries.position.toVector3(),
-            self.boundaries.position.add(self.looking_direction.scale(2)).toVector3(),
-            rl.BLUE,
-        );
-    }
 };
 
 const InputConfiguration = struct {
@@ -152,7 +123,7 @@ const Player = struct {
         id: u64,
         starting_position_x: f32,
         starting_position_z: f32,
-        color: rl.Color,
+        spritesheet: rl.Texture,
         input_configuration: InputConfiguration,
     ) Player {
         const position_is_zero = std.math.fabs(starting_position_x) +
@@ -164,12 +135,14 @@ const Player = struct {
                 .x = -starting_position_x,
                 .z = -starting_position_z,
             });
+
+        const in_game_heigth = 1.8;
+        const frame_ratio = getFrameHeight(spritesheet) / getFrameWidth(spritesheet);
         const character = Character.create(
             util.FlatVector{ .x = starting_position_x, .z = starting_position_z },
             direction_towards_center,
-            0.3,
-            1.8,
-            color,
+            in_game_heigth / frame_ratio / 2.0,
+            in_game_heigth,
         );
         const state = State{
             .character = character,
@@ -177,6 +150,7 @@ const Player = struct {
                 character.getTopOfCharacter(),
                 character.looking_direction,
             ),
+            .animation_cycle = 0,
         };
         return Player{
             .id = id,
@@ -248,11 +222,38 @@ const Player = struct {
         }, level_geometry);
     }
 
-    fn draw(self: Player, interval_between_previous_and_current_tick: f32) void {
-        self.state_at_previous_tick.lerp(
+    fn draw(
+        self: Player,
+        camera: rl.Camera,
+        spritesheet: rl.Texture,
+        is_main_character: bool,
+        interval_between_previous_and_current_tick: f32,
+    ) void {
+        const state_to_render = self.state_at_previous_tick.lerp(
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
-        ).character.draw();
+        );
+        const direction = if (is_main_character)
+            Direction.Back
+        else
+            Direction.Front;
+
+        const render_position_3d = rl.Vector3{
+            .x = state_to_render.character.boundaries.position.x,
+            .y = state_to_render.character.height / 2,
+            .z = state_to_render.character.boundaries.position.z,
+        };
+        rl.DrawBillboardRec(
+            camera,
+            spritesheet,
+            getSpritesheetSource(state_to_render, spritesheet, direction),
+            render_position_3d,
+            rl.Vector2{
+                .x = state_to_render.character.height, // Render width is derived from source width.
+                .y = state_to_render.character.height,
+            },
+            rl.WHITE,
+        );
     }
 
     fn getCamera(self: Player, interval_between_previous_and_current_tick: f32) ThirdPersonCamera {
@@ -270,11 +271,41 @@ const Player = struct {
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
         ).character.boundaries;
+
+    const Direction = enum { Front, Back };
+
+    fn getSpritesheetSource(state_to_render: State, spritesheet: rl.Texture, side: Direction) rl.Rectangle {
+        const w = getFrameWidth(spritesheet);
+        const h = getFrameHeight(spritesheet);
+
+        // Loop from 0 -> 1 -> 2 -> 1 -> 0.
+        const animation_step = std.math.clamp(std.math.floor(state_to_render.animation_cycle * 4), 0, 3);
+        const min_velocity_for_animation = 0.02;
+        const animation_frame =
+            if (state_to_render.character.velocity.length() < min_velocity_for_animation or
+            animation_step > 2 + util.Constants.epsilon)
+            1
+        else
+            animation_step;
+        const x = w * animation_frame;
+        return switch (side) {
+            Direction.Front => rl.Rectangle{ .x = x, .y = h, .width = w, .height = h },
+            Direction.Back => rl.Rectangle{ .x = x, .y = 0, .width = w, .height = h },
+        };
+    }
+
+    fn getFrameWidth(spritesheet: rl.Texture) f32 {
+        return @intToFloat(f32, @divTrunc(spritesheet.width, 3));
+    }
+    fn getFrameHeight(spritesheet: rl.Texture) f32 {
+        return @intToFloat(f32, @divTrunc(spritesheet.height, 2));
     }
 
     const State = struct {
         character: Character,
         camera: ThirdPersonCamera,
+        /// Loops from 0 to 1 and wraps around to 0.
+        animation_cycle: f32,
 
         /// Interpolate between this players state and another players state based on the given
         /// interval from 0 to 1.
@@ -282,6 +313,7 @@ const Player = struct {
             return State{
                 .character = self.character.lerp(other.character, interval),
                 .camera = self.camera.lerp(other.camera, interval),
+                .animation_cycle = rm.Lerp(self.animation_cycle, other.animation_cycle, interval),
             };
         }
 
@@ -294,6 +326,8 @@ const Player = struct {
                 self.character.getTopOfCharacter(),
                 self.character.looking_direction,
             );
+            self.animation_cycle =
+                @mod(self.animation_cycle + self.character.velocity.length() / 5, 1);
         }
     };
 };
@@ -325,8 +359,10 @@ const SplitScreenRenderContext = struct {
         self: *SplitScreenRenderContext,
         players: []const Player,
         current_player: Player,
+        player_spritesheet: rl.Texture,
         level_geometry: LevelGeometry,
         gem_collection: gems.Collection,
+        billboard_shader: rl.Shader,
         interval_between_previous_and_current_tick: f32,
     ) void {
         rl.BeginTextureMode(self.prerendered_scene);
@@ -356,9 +392,16 @@ const SplitScreenRenderContext = struct {
             interval_between_previous_and_current_tick,
         );
 
-        for (players) |player| {
-            player.draw(interval_between_previous_and_current_tick);
+        rl.BeginShaderMode(billboard_shader);
+        for (players) |*player| {
+            player.draw(
+                raylib_camera,
+                player_spritesheet,
+                player.id == current_player.id,
+                interval_between_previous_and_current_tick,
+            );
         }
+        rl.EndShaderMode();
         rl.EndMode3D();
 
         drawGemCount(
@@ -409,13 +452,22 @@ const SplitScreenRenderContext = struct {
 
 const SplitScreenSetup = struct {
     render_contexts: []SplitScreenRenderContext,
+    player_spritesheet: rl.Texture,
+    /// Not owned by this struct.
+    billboard_shader: rl.Shader,
 
+    /// Will own the given texture. Will keep a reference to the given shader for the rest of its
+    /// lifetime.
     fn create(
         allocator: std.mem.Allocator,
         screen_width: u16,
         screen_height: u16,
         screen_splittings: u3,
+        player_spritesheet: rl.Texture,
+        billboard_shader: rl.Shader,
     ) !SplitScreenSetup {
+        errdefer rl.UnloadTexture(player_spritesheet);
+
         const render_contexts = try allocator.alloc(SplitScreenRenderContext, screen_splittings);
         errdefer allocator.free(render_contexts);
 
@@ -434,7 +486,11 @@ const SplitScreenSetup = struct {
                 return err;
             };
         }
-        return SplitScreenSetup{ .render_contexts = render_contexts };
+        return SplitScreenSetup{
+            .render_contexts = render_contexts,
+            .player_spritesheet = player_spritesheet,
+            .billboard_shader = billboard_shader,
+        };
     }
 
     fn destroy(self: *SplitScreenSetup, allocator: std.mem.Allocator) void {
@@ -442,6 +498,7 @@ const SplitScreenSetup = struct {
             context.destroy();
         }
         allocator.free(self.render_contexts);
+        rl.UnloadTexture(self.player_spritesheet);
     }
 
     fn prerenderScenes(
@@ -457,8 +514,10 @@ const SplitScreenSetup = struct {
             context.prerenderScene(
                 players,
                 players[index],
+                self.player_spritesheet,
                 level_geometry,
                 gem_collection,
+                self.billboard_shader,
                 interval_between_previous_and_current_tick,
             );
         }
@@ -529,11 +588,23 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
+    const billboard_shader = try loadBillboardShader();
+    defer rl.UnloadShader(billboard_shader);
+    var split_screen_setup = try SplitScreenSetup.create(
+        gpa.allocator(),
+        screen_width,
+        screen_height,
+        2,
+        try loadTexture("assets/player.png"),
+        billboard_shader,
+    );
+    defer split_screen_setup.destroy(gpa.allocator());
+
     var available_players = [_]Player{
         // Admin for map editing.
-        Player.create(0, 30, 30, rl.Color{ .r = 140, .g = 17, .b = 39, .a = 150 }, InputPresets.ArrowKeys),
-        Player.create(1, 28, 28, rl.Color{ .r = 154, .g = 205, .b = 50, .a = 150 }, InputPresets.Wasd),
-        Player.create(2, 5, 14, rl.Color{ .r = 142, .g = 223, .b = 255, .a = 150 }, InputPresets.ArrowKeys),
+        Player.create(0, 30, 30, split_screen_setup.player_spritesheet, InputPresets.ArrowKeys),
+        Player.create(1, 28, 28, split_screen_setup.player_spritesheet, InputPresets.Wasd),
+        Player.create(2, 5, 14, split_screen_setup.player_spritesheet, InputPresets.ArrowKeys),
     };
 
     var program_mode = ProgramMode.TwoPlayerSplitScreen;
@@ -541,8 +612,6 @@ pub fn main() !void {
     var edit_mode = EditMode.PlaceWalls;
     var active_players: []Player = available_players[1..];
     var controllable_players: []Player = active_players;
-    var split_screen_setup = try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, 2);
-    defer split_screen_setup.destroy(gpa.allocator());
 
     const known_textures = try loadKnownTextures();
     var level_geometry = try LevelGeometry.create(
@@ -554,8 +623,6 @@ pub fn main() !void {
     defer level_geometry.destroy(gpa.allocator());
     var currently_edited_wall: ?CurrentlyEditedWall = null;
 
-    const billboard_shader = try loadBillboardShader();
-    defer rl.UnloadShader(billboard_shader);
     var gem_collection = gems.Collection.create(
         gpa.allocator(),
         try loadTexture("assets/gem.png"),
@@ -709,8 +776,14 @@ pub fn main() !void {
                 ProgramMode.TwoPlayerSplitScreen => 2,
                 ProgramMode.Edit => 1,
             };
-            const new_split_screen_setup =
-                try SplitScreenSetup.create(gpa.allocator(), screen_width, screen_height, screen_splittings);
+            const new_split_screen_setup = try SplitScreenSetup.create(
+                gpa.allocator(),
+                screen_width,
+                screen_height,
+                screen_splittings,
+                try loadTexture("assets/player.png"),
+                billboard_shader,
+            );
             split_screen_setup.destroy(gpa.allocator());
             split_screen_setup = new_split_screen_setup;
         }
