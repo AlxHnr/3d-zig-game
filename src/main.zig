@@ -4,6 +4,8 @@ const rm = @import("raylib-math");
 const std = @import("std");
 const util = @import("util.zig");
 const gems = @import("gems.zig");
+const textures = @import("textures.zig");
+
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const loadBillboardShader = @import("billboard_shader.zig").load;
@@ -342,10 +344,9 @@ fn drawEverything(
     screen_height: u16,
     players: []const Player,
     current_player: Player,
-    player_spritesheet: rl.Texture,
     level_geometry: LevelGeometry,
     gem_collection: gems.Collection,
-    gem_texture: rl.Texture,
+    texture_collection: textures.Collection,
     billboard_shader: rl.Shader,
     interval_between_previous_and_current_tick: f32,
 ) void {
@@ -361,7 +362,7 @@ fn drawEverything(
     rl.BeginDrawing();
     rl.BeginMode3D(raylib_camera);
     rl.ClearBackground(rl.Color{ .r = 140, .g = 190, .b = 214, .a = 255 });
-    level_geometry.draw();
+    level_geometry.draw(texture_collection);
 
     var collision_objects: [4]gems.CollisionObject = undefined;
     std.debug.assert(players.len <= collision_objects.len);
@@ -373,14 +374,14 @@ fn drawEverything(
     rl.BeginShaderMode(billboard_shader);
     gem_collection.draw(
         raylib_camera,
-        gem_texture,
+        texture_collection.get(textures.Name.gem).texture,
         collision_objects[0..players.len],
         interval_between_previous_and_current_tick,
     );
     for (players) |*player| {
         player.draw(
             raylib_camera,
-            player_spritesheet,
+            texture_collection.get(textures.Name.player).texture,
             player.id == current_player.id,
             interval_between_previous_and_current_tick,
         );
@@ -388,7 +389,11 @@ fn drawEverything(
     rl.EndShaderMode();
     rl.EndMode3D();
 
-    drawGemCount(screen_height, gem_texture, current_player.gem_count);
+    drawGemCount(
+        screen_height,
+        texture_collection.get(textures.Name.gem).texture,
+        current_player.gem_count,
+    );
 
     var string_buffer: [16]u8 = undefined;
     const fps_string = std.fmt.bufPrintZ(string_buffer[0..], "FPS: {}", .{rl.GetFPS()}) catch "";
@@ -422,27 +427,6 @@ fn drawGemCount(
     );
 }
 
-fn loadTexture(path: [*:0]const u8) util.RaylibError!rl.Texture {
-    const texture = rl.LoadTexture(path);
-    if (texture.id == 0) {
-        return util.RaylibError.FailedToLoadTextureFile;
-    }
-    return texture;
-}
-
-fn loadKnownTextures() ![4]rl.Texture {
-    const wall_texture = try loadTexture("assets/wall.png");
-    errdefer rl.UnloadTexture(wall_texture);
-    const floor_texture = try loadTexture("assets/floor.png");
-    errdefer rl.UnloadTexture(floor_texture);
-    const player_texture = try loadTexture("assets/player.png");
-    errdefer rl.UnloadTexture(player_texture);
-    const gem_texture = try loadTexture("assets/gem.png");
-    errdefer rl.UnloadTexture(gem_texture);
-
-    return [_]rl.Texture{ wall_texture, floor_texture, player_texture, gem_texture };
-}
-
 const EditModeView = enum {
     from_behind,
     top_down,
@@ -467,24 +451,19 @@ pub fn main() !void {
     const billboard_shader = try loadBillboardShader();
     defer rl.UnloadShader(billboard_shader);
 
-    const known_textures = try loadKnownTextures();
-    defer rl.UnloadTexture(known_textures[2]);
-    defer rl.UnloadTexture(known_textures[3]);
+    var texture_collection = try textures.Collection.loadFromDisk();
+    defer texture_collection.destroy();
+
     var players = [_]Player{
-        Player.create(1, 28, 28, known_textures[2]),
-        Player.create(2, 5, 14, known_textures[2]),
+        Player.create(1, 28, 28, texture_collection.get(textures.Name.player).texture),
+        Player.create(2, 5, 14, texture_collection.get(textures.Name.player).texture),
     };
     var controllable_player_index: usize = 0;
 
     var edit_mode_view = EditModeView.from_behind;
     var edit_mode = EditMode.place_walls;
 
-    var level_geometry = try LevelGeometry.create(
-        gpa.allocator(),
-        known_textures[0],
-        known_textures[1],
-        5.0,
-    );
+    var level_geometry = try LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy(gpa.allocator());
     var currently_edited_wall: ?CurrentlyEditedWall = null;
 
@@ -508,10 +487,9 @@ pub fn main() !void {
             screen_height,
             players[0..],
             players[controllable_player_index],
-            known_textures[2],
             level_geometry,
             gem_collection,
-            known_textures[3],
+            texture_collection,
             billboard_shader,
             lap_result.next_tick_progress,
         );

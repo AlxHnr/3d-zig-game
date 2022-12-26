@@ -138,12 +138,6 @@ pub const TickTimer = struct {
     };
 };
 
-pub fn makeMaterial(texture: rl.Texture) rl.Material {
-    var material = rl.LoadMaterialDefault();
-    rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), texture);
-    return material;
-}
-
 pub const RaylibError = error{
     FailedToLoadTextureFile,
     FailedToCompileAndLinkShader,

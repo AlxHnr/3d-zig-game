@@ -3,26 +3,17 @@ const rl = @import("raylib");
 const rm = @import("raylib-math");
 const std = @import("std");
 const util = @import("util.zig");
+const textures = @import("textures.zig");
 
 pub const LevelGeometry = struct {
     floor: Floor,
     wall_id_counter: u64,
     walls: std.ArrayList(Wall),
-    wall_material: rl.Material,
     shared_wall_vertices: []f32,
-    texture_scale: f32,
 
-    /// Stores the given allocator internally for its entire lifetime. Will own the given textures.
-    pub fn create(
-        allocator: std.mem.Allocator,
-        wall_texture: rl.Texture,
-        floor_texture: rl.Texture,
-        texture_scale: f32,
-    ) !LevelGeometry {
-        const wall_material = util.makeMaterial(wall_texture);
-        errdefer rl.UnloadMaterial(wall_material);
-
-        var floor = try Floor.create(allocator, 100, floor_texture, texture_scale);
+    /// Stores the given allocator internally for its entire lifetime.
+    pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
+        var floor = try Floor.create(allocator, 100);
         errdefer floor.destroy(allocator);
 
         const precomputed_wall_vertices = Wall.computeVertices();
@@ -33,9 +24,7 @@ pub const LevelGeometry = struct {
             .floor = floor,
             .wall_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
-            .wall_material = wall_material,
             .shared_wall_vertices = shared_wall_vertices,
-            .texture_scale = texture_scale,
         };
     }
 
@@ -45,17 +34,19 @@ pub const LevelGeometry = struct {
             wall.destroy();
         }
         self.walls.deinit();
-        rl.UnloadMaterial(self.wall_material);
         allocator.free(self.shared_wall_vertices);
     }
 
-    pub fn draw(self: LevelGeometry) void {
-        self.floor.draw();
-        const key = @enumToInt(rl.MATERIAL_MAP_DIFFUSE);
+    pub fn draw(self: LevelGeometry, texture_collection: textures.Collection) void {
+        self.floor.draw(texture_collection.get(textures.Name.floor).material);
+
+        const material = texture_collection.get(textures.Name.wall).material;
+        const current_tint = material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color;
         for (self.walls.items) |wall| {
-            self.wall_material.maps[key].color = wall.tint;
-            rl.DrawMesh(wall.mesh, self.wall_material, wall.precomputed_matrix);
+            material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = wall.tint;
+            rl.DrawMesh(wall.mesh, material, wall.precomputed_matrix);
         }
+        material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = current_tint;
     }
 
     /// Returns the id of the created wall on success.
@@ -70,7 +61,6 @@ pub const LevelGeometry = struct {
             start_position,
             end_position,
             self.shared_wall_vertices,
-            self.texture_scale,
         );
         self.wall_id_counter = self.wall_id_counter + 1;
         return wall.id;
@@ -102,7 +92,6 @@ pub const LevelGeometry = struct {
                 start_position,
                 end_position,
                 self.shared_wall_vertices,
-                self.texture_scale,
             );
             wall.tint = tint;
         }
@@ -186,18 +175,8 @@ pub const LevelGeometry = struct {
 const Floor = struct {
     vertices: []f32,
     mesh: rl.Mesh,
-    material: rl.Material,
 
-    /// Will own the given texture.
-    fn create(
-        allocator: std.mem.Allocator,
-        side_length: f32,
-        texture: rl.Texture,
-        texture_scale: f32,
-    ) !Floor {
-        const material = util.makeMaterial(texture);
-        errdefer rl.UnloadMaterial(material);
-
+    fn create(allocator: std.mem.Allocator, side_length: f32) !Floor {
         var vertices = try allocator.alloc(f32, 6 * 3);
         std.mem.copy(f32, vertices, &[6 * 3]f32{
             -side_length / 2, 0, side_length / 2,
@@ -207,6 +186,8 @@ const Floor = struct {
             side_length / 2,  0, side_length / 2,
             side_length / 2,  0, -side_length / 2,
         });
+
+        const texture_scale = 5.0;
         var texcoords = [6 * 2]f32{
             0,                           0,
             side_length / texture_scale, side_length / texture_scale,
@@ -225,18 +206,17 @@ const Floor = struct {
         rl.UploadMesh(&mesh, false);
         mesh.texcoords = null; // Was copied to GPU.
 
-        return Floor{ .vertices = vertices, .mesh = mesh, .material = material };
+        return Floor{ .vertices = vertices, .mesh = mesh };
     }
 
     fn destroy(self: *Floor, allocator: std.mem.Allocator) void {
         allocator.free(self.vertices);
         self.mesh.vertices = null; // Prevent raylib from freeing our own vertices.
         rl.UnloadMesh(self.mesh);
-        rl.UnloadMaterial(self.material);
     }
 
-    fn draw(self: Floor) void {
-        rl.DrawMesh(self.mesh, self.material, rm.MatrixIdentity());
+    fn draw(self: Floor, material: rl.Material) void {
+        rl.DrawMesh(self.mesh, material, rm.MatrixIdentity());
     }
 
     /// If the given ray hits this object, return the position on the floor.
@@ -265,7 +245,6 @@ const Wall = struct {
         start_position: util.FlatVector,
         end_position: util.FlatVector,
         shared_wall_vertices: []f32,
-        texture_scale: f32,
     ) Wall {
         const offset = end_position.subtract(start_position);
         const width = offset.length();
@@ -277,6 +256,7 @@ const Wall = struct {
         mesh.vertexCount = @intCast(c_int, shared_wall_vertices.len / 3);
         mesh.triangleCount = @intCast(c_int, shared_wall_vertices.len / 9);
 
+        const texture_scale = 5.0;
         const texture_corners = [8]rl.Vector2{
             rl.Vector2{ .x = 0, .y = 0 },
             rl.Vector2{ .x = width / texture_scale, .y = 0 },
