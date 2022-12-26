@@ -368,13 +368,13 @@ fn drawEverything(
         collision_objects[index] =
             player.getLerpedCollisionObject(interval_between_previous_and_current_tick);
     }
+
+    rl.BeginShaderMode(billboard_shader);
     gem_collection.draw(
         raylib_camera,
         collision_objects[0..players.len],
         interval_between_previous_and_current_tick,
     );
-
-    rl.BeginShaderMode(billboard_shader);
     for (players) |*player| {
         player.draw(
             raylib_camera,
@@ -483,11 +483,7 @@ pub fn main() !void {
     defer level_geometry.destroy(gpa.allocator());
     var currently_edited_wall: ?CurrentlyEditedWall = null;
 
-    var gem_collection = gems.Collection.create(
-        gpa.allocator(),
-        try loadTexture("assets/gem.png"),
-        billboard_shader,
-    );
+    var gem_collection = gems.Collection.create(gpa.allocator(), try loadTexture("assets/gem.png"));
     defer gem_collection.destroy();
 
     var prng = std.rand.DefaultPrng.init(0);

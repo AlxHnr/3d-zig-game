@@ -18,20 +18,16 @@ pub const CollisionObject = struct {
 pub const Collection = struct {
     gems: std.ArrayList(InterpolatableGem),
     gem_texture: rl.Texture,
-    /// Not owned by this collection.
-    billboard_shader: rl.Shader,
 
     /// Keeps a reference to the given allocator and shader for its entire lifetime. Will own the
     /// given texture.
     pub fn create(
         allocator: std.mem.Allocator,
         gem_texture: rl.Texture,
-        billboard_shader: rl.Shader,
     ) Collection {
         return Collection{
             .gems = std.ArrayList(InterpolatableGem).init(allocator),
             .gem_texture = gem_texture,
-            .billboard_shader = billboard_shader,
         };
     }
 
@@ -46,14 +42,12 @@ pub const Collection = struct {
         collision_objects: []const CollisionObject,
         interval_between_previous_and_current_tick: f32,
     ) void {
-        rl.BeginShaderMode(self.billboard_shader);
         for (self.gems.items) |gem| {
             gem.state_at_previous_tick.lerp(
                 gem.state_at_next_tick,
                 interval_between_previous_and_current_tick,
             ).draw(camera, self.gem_texture, collision_objects);
         }
-        rl.EndShaderMode();
     }
 
     pub fn processElapsedTick(self: *Collection) void {
