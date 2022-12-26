@@ -226,9 +226,9 @@ const Player = struct {
             interval_between_previous_and_current_tick,
         );
         const direction = if (is_main_character)
-            Direction.Back
+            Direction.back
         else
-            Direction.Front;
+            Direction.front;
 
         const render_position_3d = rl.Vector3{
             .x = state_to_render.character.boundaries.position.x,
@@ -270,7 +270,7 @@ const Player = struct {
         };
     }
 
-    const Direction = enum { Front, Back };
+    const Direction = enum { front, back };
 
     fn getSpritesheetSource(state_to_render: State, spritesheet: rl.Texture, side: Direction) rl.Rectangle {
         const w = getFrameWidth(spritesheet);
@@ -286,8 +286,8 @@ const Player = struct {
             state_to_render.animation_frame;
         const x = w * @intToFloat(f32, animation_frame);
         return switch (side) {
-            Direction.Front => rl.Rectangle{ .x = x, .y = h, .width = w, .height = h },
-            Direction.Back => rl.Rectangle{ .x = x, .y = 0, .width = w, .height = h },
+            Direction.front => rl.Rectangle{ .x = x, .y = h, .width = w, .height = h },
+            Direction.back => rl.Rectangle{ .x = x, .y = 0, .width = w, .height = h },
         };
     }
 
@@ -444,13 +444,13 @@ fn loadKnownTextures() ![4]rl.Texture {
 }
 
 const EditModeView = enum {
-    FromBehind,
-    TopDown,
+    from_behind,
+    top_down,
 };
 
 const EditMode = enum {
-    PlaceWalls,
-    DeleteWalls,
+    place_walls,
+    delete_walls,
 };
 
 const CurrentlyEditedWall = struct { id: u64, start_position: util.FlatVector };
@@ -476,8 +476,8 @@ pub fn main() !void {
     };
     var controllable_player_index: usize = 0;
 
-    var edit_mode_view = EditModeView.FromBehind;
-    var edit_mode = EditMode.PlaceWalls;
+    var edit_mode_view = EditModeView.from_behind;
+    var edit_mode = EditMode.place_walls;
 
     var level_geometry = try LevelGeometry.create(
         gpa.allocator(),
@@ -539,13 +539,13 @@ pub fn main() !void {
         }
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_T)) {
             switch (edit_mode_view) {
-                EditModeView.FromBehind => {
-                    edit_mode_view = EditModeView.TopDown;
+                EditModeView.from_behind => {
+                    edit_mode_view = EditModeView.top_down;
                     players[controllable_player_index].state_at_next_tick.camera
                         .setAngleFromGround(util.degreesToRadians(90));
                 },
-                EditModeView.TopDown => {
-                    edit_mode_view = EditModeView.FromBehind;
+                EditModeView.top_down => {
+                    edit_mode_view = EditModeView.from_behind;
                     players[controllable_player_index].state_at_next_tick.camera
                         .resetAngleFromGround();
                 },
@@ -553,8 +553,8 @@ pub fn main() !void {
         }
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_DELETE)) {
             edit_mode = switch (edit_mode) {
-                EditMode.PlaceWalls => EditMode.DeleteWalls,
-                EditMode.DeleteWalls => EditMode.PlaceWalls,
+                EditMode.place_walls => EditMode.delete_walls,
+                EditMode.delete_walls => EditMode.place_walls,
             };
             if (currently_edited_wall) |wall| {
                 level_geometry.tintWall(wall.id, rl.WHITE);
@@ -565,7 +565,7 @@ pub fn main() !void {
         const ray = players[controllable_player_index].getCamera(lap_result.next_tick_progress)
             .get3DRay(rl.GetMousePosition());
         switch (edit_mode) {
-            EditMode.PlaceWalls => {
+            EditMode.place_walls => {
                 if (currently_edited_wall) |*wall| {
                     if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
                         if (level_geometry.cast3DRayToGround(ray)) |position_on_grid| {
@@ -585,7 +585,7 @@ pub fn main() !void {
                     }
                 }
             },
-            EditMode.DeleteWalls => {
+            EditMode.delete_walls => {
                 if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
                     if (currently_edited_wall) |wall| {
                         level_geometry.tintWall(wall.id, rl.WHITE);
