@@ -145,7 +145,6 @@ pub fn makeMaterial(texture: rl.Texture) rl.Material {
 }
 
 pub const RaylibError = error{
-    UnableToCreateRenderTexture,
     FailedToLoadTextureFile,
     FailedToCompileAndLinkShader,
 };
