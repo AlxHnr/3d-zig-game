@@ -563,6 +563,8 @@ pub fn main() !void {
     );
     defer gem_collection.destroy();
 
+    var prng = std.rand.DefaultPrng.init(0);
+
     var tick_timer = try util.TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
         const lap_result = tick_timer.lap();
@@ -610,6 +612,15 @@ pub fn main() !void {
 
             for (available_players) |*player| {
                 player.resetInputs();
+            }
+        }
+        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_BACKSPACE)) {
+            var counter: usize = 0;
+            while (counter < 500) : (counter += 1) {
+                _ = try gem_collection.addGem(util.FlatVector{
+                    .x = (std.rand.Random.float(prng.random(), f32) - 0.5) * 10,
+                    .z = (std.rand.Random.float(prng.random(), f32) - 0.5) * 10,
+                });
             }
         }
         if (program_mode == ProgramMode.Edit) {
