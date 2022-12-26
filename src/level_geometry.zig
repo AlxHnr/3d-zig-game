@@ -300,7 +300,9 @@ const Wall = struct {
         shared_wall_vertices: []f32,
     ) Wall {
         const wall_type_properties = getWallTypeProperties(start_position, end_position, wall_type);
-        const offset = wall_type_properties.corrected_end_position.subtract(start_position);
+        const offset = wall_type_properties.corrected_end_position.subtract(
+            wall_type_properties.corrected_start_position,
+        );
         const width = offset.length();
         const x_axis = util.FlatVector{ .x = 1, .z = 0 };
         const rotation_angle = x_axis.computeRotationToOtherVector(offset);
@@ -351,11 +353,15 @@ const Wall = struct {
             .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
                 rm.MatrixScale(width, height, thickness),
                 rm.MatrixRotateY(rotation_angle),
-            ), rm.MatrixTranslate(start_position.x, 0, start_position.z)),
+            ), rm.MatrixTranslate(
+                wall_type_properties.corrected_start_position.x,
+                0,
+                wall_type_properties.corrected_start_position.z,
+            )),
             .tint = Wall.getDefaultTint(wall_type),
             .boundaries = collision.Rectangle.create(
-                start_position.add(side_a_up_offset),
-                start_position.subtract(side_a_up_offset),
+                wall_type_properties.corrected_start_position.add(side_a_up_offset),
+                wall_type_properties.corrected_start_position.subtract(side_a_up_offset),
                 width,
             ),
             .wall_type = wall_type,
@@ -399,6 +405,7 @@ const Wall = struct {
     }
 
     const WallTypeProperties = struct {
+        corrected_start_position: util.FlatVector,
         corrected_end_position: util.FlatVector,
         height: f32,
         thickness: f32,
@@ -413,6 +420,7 @@ const Wall = struct {
         return switch (wall_type) {
             LevelGeometry.WallType.SmallWall => {
                 return WallTypeProperties{
+                    .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
                     .height = 5,
                     .thickness = 0.25,
@@ -421,6 +429,7 @@ const Wall = struct {
             },
             LevelGeometry.WallType.MediumWall => {
                 return WallTypeProperties{
+                    .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
                     .height = 10,
                     .thickness = 1,
@@ -429,6 +438,7 @@ const Wall = struct {
             },
             LevelGeometry.WallType.CastleWall => {
                 return WallTypeProperties{
+                    .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
                     .height = 15,
                     .thickness = 2,
@@ -436,17 +446,20 @@ const Wall = struct {
                 };
             },
             LevelGeometry.WallType.CastleTower => {
-                const side_length = 6;
-                const rescaled_offset = end_position.subtract(start_position).normalize().scale(side_length);
+                const half_side_length = 3;
+                const rescaled_offset =
+                    end_position.subtract(start_position).normalize().scale(half_side_length);
                 return WallTypeProperties{
+                    .corrected_start_position = start_position.subtract(rescaled_offset),
                     .corrected_end_position = start_position.add(rescaled_offset),
                     .height = 18,
-                    .thickness = side_length,
+                    .thickness = half_side_length * 2,
                     .texture_scale = 9,
                 };
             },
             LevelGeometry.WallType.GigaWall => {
                 return WallTypeProperties{
+                    .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
                     .height = 140,
                     .thickness = 6,
