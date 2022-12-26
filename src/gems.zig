@@ -17,28 +17,20 @@ pub const CollisionObject = struct {
 
 pub const Collection = struct {
     gems: std.ArrayList(InterpolatableGem),
-    gem_texture: rl.Texture,
 
-    /// Keeps a reference to the given allocator and shader for its entire lifetime. Will own the
-    /// given texture.
-    pub fn create(
-        allocator: std.mem.Allocator,
-        gem_texture: rl.Texture,
-    ) Collection {
-        return Collection{
-            .gems = std.ArrayList(InterpolatableGem).init(allocator),
-            .gem_texture = gem_texture,
-        };
+    /// Keeps a reference to the given allocator.
+    pub fn create(allocator: std.mem.Allocator) Collection {
+        return Collection{ .gems = std.ArrayList(InterpolatableGem).init(allocator) };
     }
 
     pub fn destroy(self: *Collection) void {
         self.gems.deinit();
-        rl.UnloadTexture(self.gem_texture);
     }
 
     pub fn draw(
         self: Collection,
         camera: rl.Camera,
+        gem_texture: rl.Texture,
         collision_objects: []const CollisionObject,
         interval_between_previous_and_current_tick: f32,
     ) void {
@@ -46,7 +38,7 @@ pub const Collection = struct {
             gem.state_at_previous_tick.lerp(
                 gem.state_at_next_tick,
                 interval_between_previous_and_current_tick,
-            ).draw(camera, self.gem_texture, collision_objects);
+            ).draw(camera, gem_texture, collision_objects);
         }
     }
 
@@ -89,10 +81,6 @@ pub const Collection = struct {
             }
         }
         return gems_collected;
-    }
-
-    pub fn getGemTexture(self: Collection) rl.Texture {
-        return self.gem_texture;
     }
 };
 

@@ -345,6 +345,7 @@ fn drawEverything(
     player_spritesheet: rl.Texture,
     level_geometry: LevelGeometry,
     gem_collection: gems.Collection,
+    gem_texture: rl.Texture,
     billboard_shader: rl.Shader,
     interval_between_previous_and_current_tick: f32,
 ) void {
@@ -372,6 +373,7 @@ fn drawEverything(
     rl.BeginShaderMode(billboard_shader);
     gem_collection.draw(
         raylib_camera,
+        gem_texture,
         collision_objects[0..players.len],
         interval_between_previous_and_current_tick,
     );
@@ -386,7 +388,7 @@ fn drawEverything(
     rl.EndShaderMode();
     rl.EndMode3D();
 
-    drawGemCount(screen_height, gem_collection.getGemTexture(), current_player.gem_count);
+    drawGemCount(screen_height, gem_texture, current_player.gem_count);
 
     var string_buffer: [16]u8 = undefined;
     const fps_string = std.fmt.bufPrintZ(string_buffer[0..], "FPS: {}", .{rl.GetFPS()}) catch "";
@@ -428,15 +430,17 @@ fn loadTexture(path: [*:0]const u8) util.RaylibError!rl.Texture {
     return texture;
 }
 
-fn loadKnownTextures() ![3]rl.Texture {
+fn loadKnownTextures() ![4]rl.Texture {
     const wall_texture = try loadTexture("assets/wall.png");
     errdefer rl.UnloadTexture(wall_texture);
     const floor_texture = try loadTexture("assets/floor.png");
     errdefer rl.UnloadTexture(floor_texture);
     const player_texture = try loadTexture("assets/player.png");
     errdefer rl.UnloadTexture(player_texture);
+    const gem_texture = try loadTexture("assets/gem.png");
+    errdefer rl.UnloadTexture(gem_texture);
 
-    return [_]rl.Texture{ wall_texture, floor_texture, player_texture };
+    return [_]rl.Texture{ wall_texture, floor_texture, player_texture, gem_texture };
 }
 
 const EditModeView = enum {
@@ -465,6 +469,7 @@ pub fn main() !void {
 
     const known_textures = try loadKnownTextures();
     defer rl.UnloadTexture(known_textures[2]);
+    defer rl.UnloadTexture(known_textures[3]);
     var players = [_]Player{
         Player.create(1, 28, 28, known_textures[2]),
         Player.create(2, 5, 14, known_textures[2]),
@@ -483,7 +488,7 @@ pub fn main() !void {
     defer level_geometry.destroy(gpa.allocator());
     var currently_edited_wall: ?CurrentlyEditedWall = null;
 
-    var gem_collection = gems.Collection.create(gpa.allocator(), try loadTexture("assets/gem.png"));
+    var gem_collection = gems.Collection.create(gpa.allocator());
     defer gem_collection.destroy();
 
     var prng = std.rand.DefaultPrng.init(0);
@@ -506,6 +511,7 @@ pub fn main() !void {
             known_textures[2],
             level_geometry,
             gem_collection,
+            known_textures[3],
             billboard_shader,
             lap_result.next_tick_progress,
         );
