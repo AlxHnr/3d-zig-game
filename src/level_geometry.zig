@@ -256,7 +256,7 @@ const Wall = struct {
     tint: rl.Color,
     boundaries: collision.Rectangle,
 
-    const height: f32 = 5;
+    const height: f32 = 10;
     const thickness: f32 = 1;
 
     /// Keeps a reference to the given wall vertices for its entire lifetime.

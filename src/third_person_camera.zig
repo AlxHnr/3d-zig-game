@@ -4,7 +4,7 @@ const rm = @import("raylib-math");
 const util = @import("util.zig");
 
 const camera_follow_speed = 0.15;
-const default_angle_from_ground = util.degreesToRadians(15);
+const default_angle_from_ground = util.degreesToRadians(10);
 
 /// Camera which smoothly follows an object and auto-rotates across the Y axis.
 pub const Camera = struct {
@@ -25,7 +25,7 @@ pub const Camera = struct {
         camera.up = util.Constants.up;
         camera.fovy = 45;
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
-        camera.target = target_object_position;
+        camera.target = scaleTargetPosition(target_object_position);
 
         const distance_from_object = 10;
         const back_direction = target_object_looking_direction.negate();
@@ -131,7 +131,7 @@ pub const Camera = struct {
             self.computeYRotatedCameraOffset(target_object_looking_direction);
         self.camera.target = rm.Vector3Lerp(
             self.camera.target,
-            target_object_position,
+            scaleTargetPosition(target_object_position),
             camera_follow_speed,
         );
         self.camera.position = rm.Vector3Add(self.camera.target, y_rotated_camera_offset);
@@ -190,5 +190,9 @@ pub const Camera = struct {
         const rescaled_camera_offset =
             rm.Vector3Scale(rm.Vector3Normalize(camera_offset), self.distance_from_object);
         self.camera.position = rm.Vector3Add(self.camera.target, rescaled_camera_offset);
+    }
+
+    fn scaleTargetPosition(target_object_position: rl.Vector3) rl.Vector3 {
+        return rm.Vector3Add(target_object_position, rm.Vector3Scale(util.Constants.up, 3));
     }
 };

@@ -66,13 +66,6 @@ const Character = struct {
         self.turning_direction = rm.Clamp(turning_direction, -1, 1);
     }
 
-    fn getTopOfCharacter(self: Character) rl.Vector3 {
-        return rm.Vector3Add(
-            self.boundaries.position.toVector3(),
-            rl.Vector3{ .x = 0, .y = self.height, .z = 0 },
-        );
-    }
-
     fn resolveCollision(self: *Character, displacement_vector: util.FlatVector) void {
         self.boundaries.position = self.boundaries.position.add(displacement_vector);
         const dot_product = std.math.clamp(self.velocity.normalize()
@@ -147,7 +140,7 @@ const Player = struct {
         const state = State{
             .character = character,
             .camera = ThirdPersonCamera.create(
-                character.getTopOfCharacter(),
+                character.boundaries.position.toVector3(),
                 character.looking_direction,
             ),
             .animation_cycle = 0,
@@ -336,7 +329,7 @@ const Player = struct {
             }
             self.character.processElapsedTick();
             self.camera.processElapsedTick(
-                self.character.getTopOfCharacter(),
+                self.character.boundaries.position.toVector3(),
                 self.character.looking_direction,
             );
             self.animation_cycle = self.animation_cycle + self.character.velocity.length() * 0.75;
