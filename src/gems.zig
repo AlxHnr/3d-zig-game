@@ -106,6 +106,10 @@ const Gem = struct {
     /// Width and height of the gem in the game world.
     side_length: f32,
     boundaries: collision.Circle,
+
+    /// This value will progress from 0 to 1. Only then the following values will be considered.
+    spawn_animation_progress: f32,
+
     /// This value will progress from 0 to 1 when the object gets picked up.
     pickup_animation_progress: ?f32,
     /// Contains the id of the object which collided with this gem. Only used when
@@ -119,6 +123,7 @@ const Gem = struct {
                 .position = position,
                 .radius = 1.2, // Larger than side_length to make picking up gems easier.
             },
+            .spawn_animation_progress = 0,
             .pickup_animation_progress = null,
             .collided_object_id = 0,
         };
@@ -130,6 +135,11 @@ const Gem = struct {
         return Gem{
             .side_length = rm.Lerp(self.side_length, other.side_length, interval),
             .boundaries = self.boundaries.lerp(other.boundaries, interval),
+            .spawn_animation_progress = rm.Lerp(
+                self.spawn_animation_progress,
+                other.spawn_animation_progress,
+                interval,
+            ),
             .pickup_animation_progress = if (self.pickup_animation_progress == null and
                 other.pickup_animation_progress == null)
                 null
@@ -148,7 +158,19 @@ const Gem = struct {
         texture: rl.Texture,
         collision_objects: []const CollisionObject,
     ) void {
-        if (self.pickup_animation_progress) |progress| {
+        if (self.spawn_animation_progress < 1) {
+            const jump_heigth = 1.5;
+            const length = self.side_length * self.spawn_animation_progress;
+            const t = (self.spawn_animation_progress - 0.5) * 2;
+            const y = (1 - t * t + length / 2) * jump_heigth;
+            // std.debug.print("{d:.10}\n", .{y});
+            const position_3d = rl.Vector3{
+                .x = self.boundaries.position.x,
+                .y = y,
+                .z = self.boundaries.position.z,
+            };
+            rl.DrawBillboard(camera, texture, position_3d, length, rl.WHITE);
+        } else if (self.pickup_animation_progress) |progress| {
             const lerp_destination = for (collision_objects) |object| {
                 if (object.id == self.collided_object_id) {
                     break rl.Vector3{
@@ -158,8 +180,13 @@ const Gem = struct {
                     };
                 }
             } else self.boundaries.position.toVector3();
-            const position_3d =
-                rm.Vector3Lerp(self.boundaries.position.toVector3(), lerp_destination, progress);
+
+            const lerp_start = rl.Vector3{
+                .x = self.boundaries.position.x,
+                .y = self.side_length / 2,
+                .z = self.boundaries.position.z,
+            };
+            const position_3d = rm.Vector3Lerp(lerp_start, lerp_destination, progress);
             const length = self.side_length * (1 - progress);
             rl.DrawBillboard(camera, texture, position_3d, length, rl.WHITE);
         } else {
@@ -173,13 +200,19 @@ const Gem = struct {
     }
 
     fn processElapsedTick(self: *Gem) void {
-        if (self.pickup_animation_progress) |*progress| {
+        if (self.spawn_animation_progress < 1) {
+            self.spawn_animation_progress = self.spawn_animation_progress + 0.02;
+        } else if (self.pickup_animation_progress) |*progress| {
             progress.* = progress.* + 0.02;
         }
     }
 
     /// If a collision was found it will return true and start the pickup animation.
     fn processCollision(self: *Gem, collision_object: CollisionObject, level_geometry: LevelGeometry) bool {
+        if (self.spawn_animation_progress < 1) {
+            return false;
+        }
+
         const collision_object_position = collision_object.boundaries.position;
         if (self.pickup_animation_progress == null and
             self.boundaries.collidesWithCircle(collision_object.boundaries) != null and
