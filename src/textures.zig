@@ -10,13 +10,18 @@ pub const RaylibAssets = struct { texture: rl.Texture, material: rl.Material };
 pub const Collection = struct {
     asset_mappings: std.EnumArray(Name, RaylibAssets),
 
-    pub fn loadFromDisk() util.RaylibError!Collection {
-        const paths = getNameToPathMappings();
+    pub fn loadFromDisk() !Collection {
         var asset_mappings = std.EnumArray(Name, RaylibAssets).initUndefined();
-
         var iterator = asset_mappings.iterator();
         while (iterator.next()) |mapping| {
-            const texture = rl.LoadTexture(paths.get(mapping.key));
+            var asset_path_buffer: [64]u8 = undefined;
+            const asset_path = try std.fmt.bufPrintZ(
+                asset_path_buffer[0..],
+                "assets/{s}.png",
+                .{@tagName(mapping.key)},
+            );
+
+            const texture = rl.LoadTexture(asset_path);
             if (texture.id == 0) {
                 var cleanup_iterator = asset_mappings.iterator();
                 while (cleanup_iterator.next()) |mapping_to_destroy| {
@@ -46,14 +51,5 @@ pub const Collection = struct {
     /// The returned assets should not be freed by the caller.
     pub fn get(self: Collection, name: Name) RaylibAssets {
         return self.asset_mappings.get(name);
-    }
-
-    fn getNameToPathMappings() std.EnumArray(Name, [:0]const u8) {
-        var paths = std.EnumArray(Name, [:0]const u8).initUndefined();
-        paths.set(Name.floor, "assets/floor.png");
-        paths.set(Name.gem, "assets/gem.png");
-        paths.set(Name.player, "assets/player.png");
-        paths.set(Name.wall, "assets/wall.png");
-        return paths;
     }
 };
