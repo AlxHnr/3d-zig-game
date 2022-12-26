@@ -6,22 +6,40 @@ const util = @import("util.zig");
 const textures = @import("textures.zig");
 
 pub const LevelGeometry = struct {
-    floor: Floor,
+    ground: Floor,
+    level_boundaries: [4]Wall,
+
     wall_id_counter: u64,
     walls: std.ArrayList(Wall),
     shared_wall_vertices: []f32,
 
     /// Stores the given allocator internally for its entire lifetime.
-    pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
-        var floor = try Floor.create(allocator, 100);
-        errdefer floor.destroy(allocator);
+    pub fn create(allocator: std.mem.Allocator, max_width_and_heigth: f32) !LevelGeometry {
+        var ground = try Floor.create(allocator, max_width_and_heigth);
+        errdefer ground.destroy(allocator);
 
         const precomputed_wall_vertices = Wall.computeVertices();
         var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
         std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
 
+        const half_size = max_width_and_heigth / 2;
+        const level_corners = [4]util.FlatVector{
+            util.FlatVector{ .x = -half_size, .z = half_size },
+            util.FlatVector{ .x = half_size, .z = half_size },
+            util.FlatVector{ .x = half_size, .z = -half_size },
+            util.FlatVector{ .x = -half_size, .z = -half_size },
+        };
+        const level_boundaries = [4]Wall{
+            // Wall id is not relevant here.
+            Wall.create(0, level_corners[0], level_corners[1], shared_wall_vertices),
+            Wall.create(0, level_corners[1], level_corners[2], shared_wall_vertices),
+            Wall.create(0, level_corners[2], level_corners[3], shared_wall_vertices),
+            Wall.create(0, level_corners[3], level_corners[0], shared_wall_vertices),
+        };
+
         return LevelGeometry{
-            .floor = floor,
+            .ground = ground,
+            .level_boundaries = level_boundaries,
             .wall_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
             .shared_wall_vertices = shared_wall_vertices,
@@ -29,7 +47,10 @@ pub const LevelGeometry = struct {
     }
 
     pub fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
-        self.floor.destroy(allocator);
+        self.ground.destroy(allocator);
+        for (self.level_boundaries) |*level_boundary| {
+            level_boundary.destroy();
+        }
         for (self.walls.items) |*wall| {
             wall.destroy();
         }
@@ -38,8 +59,6 @@ pub const LevelGeometry = struct {
     }
 
     pub fn draw(self: LevelGeometry, texture_collection: textures.Collection) void {
-        self.floor.draw(texture_collection.get(textures.Name.floor).material);
-
         const material = texture_collection.get(textures.Name.wall).material;
         const current_tint = material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color;
         for (self.walls.items) |wall| {
@@ -47,6 +66,8 @@ pub const LevelGeometry = struct {
             rl.DrawMesh(wall.mesh, material, wall.precomputed_matrix);
         }
         material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = current_tint;
+
+        self.ground.draw(texture_collection.get(textures.Name.floor).material);
     }
 
     /// Returns the id of the created wall on success.
@@ -103,9 +124,9 @@ pub const LevelGeometry = struct {
         }
     }
 
-    /// If the given ray hits the level grid, return the position on the floor.
+    /// If the given ray hits the level grid, return the position on the ground.
     pub fn cast3DRayToGround(self: LevelGeometry, ray: rl.Ray) ?util.FlatVector {
-        return self.floor.cast3DRay(ray);
+        return self.ground.cast3DRay(ray);
     }
 
     pub const RayWallCollision = struct {
@@ -139,11 +160,11 @@ pub const LevelGeometry = struct {
         var displaced_circle = circle;
 
         // Move displaced_circle out of all walls.
+        for (self.level_boundaries) |level_boundary| {
+            updateDisplacedCircle(level_boundary, &displaced_circle, &found_collision);
+        }
         for (self.walls.items) |wall| {
-            if (displaced_circle.collidesWithRectangle(wall.boundaries)) |displacement_vector| {
-                found_collision = true;
-                displaced_circle.position = displaced_circle.position.add(displacement_vector);
-            }
+            updateDisplacedCircle(wall, &displaced_circle, &found_collision);
         }
 
         return if (found_collision)
@@ -154,6 +175,11 @@ pub const LevelGeometry = struct {
 
     /// Check if the given line (game-world coordinates) collides with the level geometry.
     pub fn collidesWithLine(self: LevelGeometry, line_start: util.FlatVector, line_end: util.FlatVector) bool {
+        for (self.level_boundaries) |level_boundary| {
+            if (level_boundary.boundaries.collidesWithLine(line_start, line_end)) {
+                return true;
+            }
+        }
         for (self.walls.items) |wall| {
             if (wall.boundaries.collidesWithLine(line_start, line_end)) {
                 return true;
@@ -169,6 +195,15 @@ pub const LevelGeometry = struct {
             }
         }
         return null;
+    }
+
+    /// If the given wall collides with the circle, move the circle out of the wall and set
+    /// found_collision to true. Without a collision this boolean will remain unchanged.
+    fn updateDisplacedCircle(wall: Wall, circle: *collision.Circle, found_collision: *bool) void {
+        if (circle.collidesWithRectangle(wall.boundaries)) |displacement_vector| {
+            circle.position = circle.position.add(displacement_vector);
+            found_collision.* = true;
+        }
     }
 };
 

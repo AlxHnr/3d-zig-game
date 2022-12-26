@@ -463,7 +463,7 @@ pub fn main() !void {
     var edit_mode_view = EditModeView.from_behind;
     var edit_mode = EditMode.place_walls;
 
-    var level_geometry = try LevelGeometry.create(gpa.allocator());
+    var level_geometry = try LevelGeometry.create(gpa.allocator(), 100);
     defer level_geometry.destroy(gpa.allocator());
     var currently_edited_wall: ?CurrentlyEditedWall = null;
 
