@@ -11,6 +11,8 @@ pub const CollisionObject = struct {
     /// Unique identifier, distinct from all other collision objects.
     id: u64,
     boundaries: collision.Circle,
+    /// Height of the object colliding with the gem. Needed for animations.
+    height: f32,
 };
 
 pub const Collection = struct {
@@ -149,12 +151,15 @@ const Gem = struct {
         if (self.pickup_animation_progress) |progress| {
             const lerp_destination = for (collision_objects) |object| {
                 if (object.id == self.collided_object_id) {
-                    break object.boundaries.position;
+                    break rl.Vector3{
+                        .x = object.boundaries.position.x,
+                        .y = object.height / 2,
+                        .z = object.boundaries.position.z,
+                    };
                 }
-            } else self.boundaries.position;
-            const position = self.boundaries.position.lerp(lerp_destination, progress);
+            } else self.boundaries.position.toVector3();
             const position_3d =
-                rl.Vector3{ .x = position.x, .y = self.side_length / 2, .z = position.z };
+                rm.Vector3Lerp(self.boundaries.position.toVector3(), lerp_destination, progress);
             const length = self.side_length * (1 - progress);
             rl.DrawBillboard(camera, texture, position_3d, length, rl.WHITE);
         } else {

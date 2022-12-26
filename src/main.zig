@@ -219,6 +219,7 @@ const Player = struct {
         self.gem_count = self.gem_count + gem_collection.processCollision(gems.CollisionObject{
             .id = self.id,
             .boundaries = self.state_at_next_tick.character.boundaries,
+            .height = self.state_at_next_tick.character.height,
         }, level_geometry);
     }
 
@@ -263,14 +264,20 @@ const Player = struct {
         ).camera;
     }
 
-    fn getLerpedBoundaries(
+    fn getLerpedCollisionObject(
         self: Player,
         interval_between_previous_and_current_tick: f32,
-    ) collision.Circle {
-        return self.state_at_previous_tick.lerp(
+    ) gems.CollisionObject {
+        const character = self.state_at_previous_tick.lerp(
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
-        ).character.boundaries;
+        ).character;
+        return gems.CollisionObject{
+            .id = self.id,
+            .boundaries = character.boundaries,
+            .height = character.height,
+        };
+    }
 
     const Direction = enum { Front, Back };
 
@@ -382,9 +389,8 @@ const SplitScreenRenderContext = struct {
         var collision_objects: [4]gems.CollisionObject = undefined;
         std.debug.assert(players.len <= collision_objects.len);
         for (players) |player, index| {
-            collision_objects[index].id = player.id;
-            collision_objects[index].boundaries =
-                player.getLerpedBoundaries(interval_between_previous_and_current_tick);
+            collision_objects[index] =
+                player.getLerpedCollisionObject(interval_between_previous_and_current_tick);
         }
         gem_collection.draw(
             raylib_camera,
