@@ -40,6 +40,13 @@ pub const LevelGeometry = struct {
             util.FlatVector{ .x = half_size, .z = -half_size },
             util.FlatVector{ .x = -half_size, .z = -half_size },
         };
+        const ground = Floor.create(
+            0, // Object id is not relevant here.
+            level_corners[0],
+            level_corners[1],
+            max_width_and_heigth,
+            shared_floor_vertices,
+        );
         const wall_type = WallType.SmallWall;
         const level_boundaries = [4]Wall{
             // Object id is not relevant here.
@@ -50,7 +57,7 @@ pub const LevelGeometry = struct {
         };
 
         return LevelGeometry{
-            .ground = Floor.create(0, max_width_and_heigth, shared_floor_vertices),
+            .ground = ground,
             .level_boundaries = level_boundaries,
             .object_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
@@ -102,7 +109,7 @@ pub const LevelGeometry = struct {
         TallHedge,
     };
 
-    /// Returns the id of the created wall on success.
+    /// Returns the object id of the created wall on success.
     pub fn addWall(
         self: *LevelGeometry,
         start_position: util.FlatVector,
@@ -141,6 +148,26 @@ pub const LevelGeometry = struct {
             );
             wall.tint = tint;
         }
+    }
+
+    /// Side a and b can be chosen arbitrarily, but must be adjacent. Returns the object id of the
+    /// created floor on success.
+    pub fn addFloor(
+        self: *LevelGeometry,
+        side_a_start: util.FlatVector,
+        side_a_end: util.FlatVector,
+        side_b_length: f32,
+    ) !u64 {
+        const floor = try self.floors.addOne();
+        floor.* = floor.create(
+            self.object_id_counter,
+            side_a_start,
+            side_a_end,
+            side_b_length,
+            self.shared_floor_vertices,
+        );
+        self.object_id_counter = self.object_id_counter + 1;
+        return floor.object_id;
     }
 
     /// If the given object id does not exist, this function will do nothing.
@@ -282,16 +309,26 @@ const Floor = struct {
     precomputed_matrix: rl.Matrix,
     tint: rl.Color,
 
-    /// Keeps a reference to the given floor vertices for its entire lifetime.
-    fn create(object_id: u64, side_length: f32, shared_floor_vertices: []f32) Floor {
+    /// Side a and b can be chosen arbitrarily, but must be adjacent. Keeps a reference to the given
+    /// floor vertices for its entire lifetime.
+    fn create(
+        object_id: u64,
+        side_a_start: util.FlatVector,
+        side_a_end: util.FlatVector,
+        side_b_length: f32,
+        shared_floor_vertices: []f32,
+    ) Floor {
+        const offset_a = side_a_end.subtract(side_a_start);
+        const side_a_length = offset_a.length();
+
         const texture_scale = 5.0;
         var texcoords = [6 * 2]f32{
-            0,                           0,
-            side_length / texture_scale, side_length / texture_scale,
-            0,                           side_length / texture_scale,
-            0,                           0,
-            side_length / texture_scale, 0,
-            side_length / texture_scale, side_length / texture_scale,
+            0,                             0,
+            side_b_length / texture_scale, side_a_length / texture_scale,
+            0,                             side_a_length / texture_scale,
+            0,                             0,
+            side_b_length / texture_scale, 0,
+            side_b_length / texture_scale, side_a_length / texture_scale,
         };
 
         var mesh = std.mem.zeroes(rl.Mesh);
@@ -303,13 +340,16 @@ const Floor = struct {
         rl.UploadMesh(&mesh, false);
         mesh.texcoords = null; // Was copied to GPU.
 
+        const rotation = offset_a.computeRotationToOtherVector(util.FlatVector{ .x = 0, .z = 1 });
+        const offset_b = offset_a.rotateRightBy90Degrees().negate().normalize().scale(side_b_length);
+        const center = side_a_start.add(offset_a.scale(0.5)).add(offset_b.scale(0.5));
         return Floor{
             .object_id = object_id,
             .mesh = mesh,
             .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
-                rm.MatrixScale(side_length, 1, side_length),
-                rm.MatrixRotateY(0),
-            ), rm.MatrixTranslate(0, 0, 0)),
+                rm.MatrixScale(side_b_length, 1, side_a_length),
+                rm.MatrixRotateY(rotation),
+            ), rm.MatrixTranslate(center.x, 0, center.z)),
             .tint = rl.WHITE,
         };
     }
