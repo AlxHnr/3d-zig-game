@@ -420,7 +420,7 @@ const Wall = struct {
         wall_type: LevelGeometry.WallType,
     ) WallTypeProperties {
         return switch (wall_type) {
-            LevelGeometry.WallType.SmallWall => {
+            .SmallWall => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
@@ -429,7 +429,7 @@ const Wall = struct {
                     .texture_scale = 5.0,
                 };
             },
-            LevelGeometry.WallType.CastleWall => {
+            .CastleWall => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
@@ -438,7 +438,7 @@ const Wall = struct {
                     .texture_scale = 7.5,
                 };
             },
-            LevelGeometry.WallType.CastleTower => {
+            .CastleTower => {
                 const half_side_length = 3;
                 const rescaled_offset =
                     end_position.subtract(start_position).normalize().scale(half_side_length);
@@ -450,7 +450,7 @@ const Wall = struct {
                     .texture_scale = 9,
                 };
             },
-            LevelGeometry.WallType.GigaWall => {
+            .GigaWall => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
@@ -459,7 +459,7 @@ const Wall = struct {
                     .texture_scale = 16.0,
                 };
             },
-            LevelGeometry.WallType.TallHedge => {
+            .TallHedge => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
@@ -482,8 +482,8 @@ const Wall = struct {
 
     fn getDefaultTint(wall_type: LevelGeometry.WallType) rl.Color {
         return switch (wall_type) {
-            LevelGeometry.WallType.CastleTower => rl.Color{ .r = 248, .g = 248, .b = 248, .a = 255 },
-            LevelGeometry.WallType.GigaWall => rl.Color{ .r = 170, .g = 170, .b = 170, .a = 255 },
+            .CastleTower => rl.Color{ .r = 248, .g = 248, .b = 248, .a = 255 },
+            .GigaWall => rl.Color{ .r = 170, .g = 170, .b = 170, .a = 255 },
             else => rl.WHITE,
         };
     }
@@ -493,7 +493,7 @@ const Wall = struct {
         texture_collection: textures.Collection,
     ) textures.RaylibAsset {
         return switch (wall_type) {
-            LevelGeometry.WallType.TallHedge => texture_collection.get(textures.Name.hedge),
+            .TallHedge => texture_collection.get(textures.Name.hedge),
             else => texture_collection.get(textures.Name.wall),
         };
     }
