@@ -45,6 +45,7 @@ pub const LevelGeometry = struct {
             level_corners[0],
             level_corners[1],
             max_width_and_heigth,
+            FloorType.grass,
             shared_floor_vertices,
         );
         const wall_type = WallType.SmallWall;
@@ -150,6 +151,11 @@ pub const LevelGeometry = struct {
         }
     }
 
+    pub const FloorType = enum {
+        grass,
+        stone,
+    };
+
     /// Side a and b can be chosen arbitrarily, but must be adjacent. Returns the object id of the
     /// created floor on success.
     pub fn addFloor(
@@ -157,6 +163,7 @@ pub const LevelGeometry = struct {
         side_a_start: util.FlatVector,
         side_a_end: util.FlatVector,
         side_b_length: f32,
+        floor_type: FloorType,
     ) !u64 {
         const floor = try self.floors.addOne();
         floor.* = floor.create(
@@ -164,10 +171,35 @@ pub const LevelGeometry = struct {
             side_a_start,
             side_a_end,
             side_b_length,
+            floor_type,
             self.shared_floor_vertices,
         );
         self.object_id_counter = self.object_id_counter + 1;
         return floor.object_id;
+    }
+
+    /// If the given object id does not exist, this function will do nothing.
+    pub fn updateFloor(
+        self: *LevelGeometry,
+        object_id: u64,
+        side_a_start: util.FlatVector,
+        side_a_end: util.FlatVector,
+        side_b_length: f32,
+    ) void {
+        if (self.findFloor(object_id)) |floor| {
+            const tint = floor.tint;
+            const floor_type = floor.floor_type;
+            floor.destroy();
+            floor.* = Floor.create(
+                object_id,
+                side_a_start,
+                side_a_end,
+                side_b_length,
+                floor_type,
+                self.shared_floor_vertices,
+            );
+            floor.tint = tint;
+        }
     }
 
     /// If the given object id does not exist, this function will do nothing.
@@ -316,12 +348,15 @@ const Floor = struct {
         side_a_start: util.FlatVector,
         side_a_end: util.FlatVector,
         side_b_length: f32,
+        floor_type: LevelGeometry.FloorType,
         shared_floor_vertices: []f32,
     ) Floor {
         const offset_a = side_a_end.subtract(side_a_start);
         const side_a_length = offset_a.length();
 
-        const texture_scale = 5.0;
+        const texture_scale = switch (floor_type) {
+            else => 5.0,
+        };
         var texcoords = [6 * 2]f32{
             0,                             0,
             side_b_length / texture_scale, side_a_length / texture_scale,
