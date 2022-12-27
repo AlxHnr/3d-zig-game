@@ -523,8 +523,24 @@ pub fn main() !void {
             }
         }
         if (std.math.fabs(rl.GetMouseWheelMoveV().y) > util.Constants.epsilon) {
-            players[controllable_player_index].state_at_next_tick.camera
-                .increaseDistanceToObject(-rl.GetMouseWheelMoveV().y * 2.5);
+            if (!rl.IsMouseButtonDown(rl.MouseButton.MOUSE_BUTTON_RIGHT)) {
+                players[controllable_player_index].state_at_next_tick.camera
+                    .increaseDistanceToObject(-rl.GetMouseWheelMoveV().y * 2.5);
+            } else if (rl.GetMouseWheelMoveV().y < 0) {
+                wall_type_to_create =
+                    @intToEnum(LevelGeometry.WallType, @mod(
+                    @enumToInt(wall_type_to_create) + 1,
+                    @typeInfo(LevelGeometry.WallType).Enum.fields.len,
+                ));
+            } else {
+                wall_type_to_create = @intToEnum(
+                    LevelGeometry.WallType,
+                    if (@enumToInt(wall_type_to_create) == 0)
+                        @typeInfo(LevelGeometry.WallType).Enum.fields.len - 1
+                    else
+                        @enumToInt(wall_type_to_create) - 1,
+                );
+            }
         }
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_T)) {
             switch (edit_mode_view) {
@@ -553,13 +569,6 @@ pub fn main() !void {
 
         const ray = players[controllable_player_index].getCamera(lap_result.next_tick_progress)
             .get3DRay(rl.GetMousePosition());
-        if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_RIGHT)) {
-            wall_type_to_create =
-                @intToEnum(LevelGeometry.WallType, @mod(
-                @enumToInt(wall_type_to_create) + 1,
-                @typeInfo(LevelGeometry.WallType).Enum.fields.len,
-            ));
-        }
         switch (edit_mode) {
             EditMode.place_walls => {
                 if (currently_edited_wall) |*wall| {
