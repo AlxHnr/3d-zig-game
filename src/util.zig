@@ -167,6 +167,6 @@ pub fn getNextEnumWrapAround(value: anytype) @TypeOf(value) {
     }
     return @intToEnum(
         @TypeOf(value),
-        @mod(@enumToInt(value) + 1, @typeInfo(@TypeOf(value)).Enum.fields.len),
+        @mod(@intCast(usize, @enumToInt(value)) + 1, @typeInfo(@TypeOf(value)).Enum.fields.len),
     );
 }
