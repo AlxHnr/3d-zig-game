@@ -25,3 +25,7 @@ Install zig 0.9.1 and run `zig build run` inside the projects directory.
 ### [Blue mage sprite (modified)](https://opengameart.org/content/mage-0)
 * **Author**: Sollision & Jordan Irwin (AntumDeluge)
 * **License**: CC0
+
+### [Green hedge](https://opengameart.org/content/32x32-grass-tile)
+* **Author**: pboop
+* **License**: CC0

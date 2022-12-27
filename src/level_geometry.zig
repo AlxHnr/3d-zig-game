@@ -60,13 +60,14 @@ pub const LevelGeometry = struct {
     }
 
     pub fn draw(self: LevelGeometry, texture_collection: textures.Collection) void {
-        const material = texture_collection.get(textures.Name.wall).material;
-        const current_tint = material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color;
         for (self.walls.items) |wall| {
+            const material = Wall.getRaylibAsset(wall.wall_type, texture_collection).material;
+            const current_tint = material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color;
+
             material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = wall.tint;
             rl.DrawMesh(wall.mesh, material, wall.precomputed_matrix);
+            material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = current_tint;
         }
-        material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = current_tint;
 
         self.ground.draw(texture_collection.get(textures.Name.floor).material);
     }
@@ -77,6 +78,7 @@ pub const LevelGeometry = struct {
         CastleWall,
         CastleTower,
         GigaWall,
+        TallHedge,
     };
 
     /// Returns the id of the created wall on success.
@@ -427,15 +429,6 @@ const Wall = struct {
                     .texture_scale = 5.0,
                 };
             },
-            LevelGeometry.WallType.MediumWall => {
-                return WallTypeProperties{
-                    .corrected_start_position = start_position,
-                    .corrected_end_position = end_position,
-                    .height = 10,
-                    .thickness = 1,
-                    .texture_scale = 5.0,
-                };
-            },
             LevelGeometry.WallType.CastleWall => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
@@ -466,6 +459,24 @@ const Wall = struct {
                     .texture_scale = 16.0,
                 };
             },
+            LevelGeometry.WallType.TallHedge => {
+                return WallTypeProperties{
+                    .corrected_start_position = start_position,
+                    .corrected_end_position = end_position,
+                    .height = 8,
+                    .thickness = 3,
+                    .texture_scale = 3.5,
+                };
+            },
+            else => {
+                return WallTypeProperties{
+                    .corrected_start_position = start_position,
+                    .corrected_end_position = end_position,
+                    .height = 10,
+                    .thickness = 1,
+                    .texture_scale = 5.0,
+                };
+            },
         };
     }
 
@@ -474,6 +485,16 @@ const Wall = struct {
             LevelGeometry.WallType.CastleTower => rl.Color{ .r = 248, .g = 248, .b = 248, .a = 255 },
             LevelGeometry.WallType.GigaWall => rl.Color{ .r = 170, .g = 170, .b = 170, .a = 255 },
             else => rl.WHITE,
+        };
+    }
+
+    fn getRaylibAsset(
+        wall_type: LevelGeometry.WallType,
+        texture_collection: textures.Collection,
+    ) textures.RaylibAsset {
+        return switch (wall_type) {
+            LevelGeometry.WallType.TallHedge => texture_collection.get(textures.Name.hedge),
+            else => texture_collection.get(textures.Name.wall),
         };
     }
 };

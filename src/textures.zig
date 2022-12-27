@@ -4,7 +4,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const util = @import("util.zig");
 
-pub const Name = enum { floor, gem, player, wall };
+pub const Name = enum { floor, gem, hedge, player, wall };
 pub const RaylibAsset = struct { texture: rl.Texture, material: rl.Material };
 
 pub const Collection = struct {
