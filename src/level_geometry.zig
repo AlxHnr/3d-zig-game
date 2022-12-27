@@ -12,15 +12,25 @@ pub const LevelGeometry = struct {
     object_id_counter: u64,
     walls: std.ArrayList(Wall),
     shared_wall_vertices: []f32,
+    shared_floor_vertices: []f32,
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator, max_width_and_heigth: f32) !LevelGeometry {
-        var ground = try Floor.create(allocator, max_width_and_heigth);
-        errdefer ground.destroy(allocator);
-
         const precomputed_wall_vertices = Wall.computeVertices();
         var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
+        errdefer allocator.free(shared_wall_vertices);
         std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
+
+        const floor_vertices = [18]f32{
+            -0.5, 0, 0.5,
+            0.5,  0, -0.5,
+            -0.5, 0, -0.5,
+            -0.5, 0, 0.5,
+            0.5,  0, 0.5,
+            0.5,  0, -0.5,
+        };
+        var shared_floor_vertices = try allocator.alloc(f32, floor_vertices.len);
+        std.mem.copy(f32, shared_floor_vertices, floor_vertices[0..]);
 
         const half_size = max_width_and_heigth / 2;
         const level_corners = [4]util.FlatVector{
@@ -39,16 +49,19 @@ pub const LevelGeometry = struct {
         };
 
         return LevelGeometry{
-            .ground = ground,
+            .ground = Floor.create(max_width_and_heigth, shared_floor_vertices),
             .level_boundaries = level_boundaries,
             .object_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
             .shared_wall_vertices = shared_wall_vertices,
+            .shared_floor_vertices = shared_floor_vertices,
         };
     }
 
     pub fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
-        self.ground.destroy(allocator);
+        self.ground.destroy();
+        allocator.free(self.shared_floor_vertices);
+
         for (self.level_boundaries) |*level_boundary| {
             level_boundary.destroy();
         }
@@ -229,20 +242,11 @@ pub const LevelGeometry = struct {
 };
 
 const Floor = struct {
-    vertices: []f32,
     mesh: rl.Mesh,
+    precomputed_matrix: rl.Matrix,
 
-    fn create(allocator: std.mem.Allocator, side_length: f32) !Floor {
-        var vertices = try allocator.alloc(f32, 6 * 3);
-        std.mem.copy(f32, vertices, &[6 * 3]f32{
-            -side_length / 2, 0, side_length / 2,
-            side_length / 2,  0, -side_length / 2,
-            -side_length / 2, 0, -side_length / 2,
-            -side_length / 2, 0, side_length / 2,
-            side_length / 2,  0, side_length / 2,
-            side_length / 2,  0, -side_length / 2,
-        });
-
+    /// Keeps a reference to the given floor vertices for its entire lifetime.
+    fn create(side_length: f32, shared_floor_vertices: []f32) Floor {
         const texture_scale = 5.0;
         var texcoords = [6 * 2]f32{
             0,                           0,
@@ -254,30 +258,35 @@ const Floor = struct {
         };
 
         var mesh = std.mem.zeroes(rl.Mesh);
-        mesh.vertices = vertices.ptr;
-        mesh.vertexCount = @intCast(c_int, vertices.len / 3);
-        mesh.triangleCount = @intCast(c_int, vertices.len / 9);
+        mesh.vertices = shared_floor_vertices.ptr;
+        mesh.vertexCount = @intCast(c_int, shared_floor_vertices.len / 3);
+        mesh.triangleCount = @intCast(c_int, shared_floor_vertices.len / 9);
         mesh.texcoords = &texcoords;
 
         rl.UploadMesh(&mesh, false);
         mesh.texcoords = null; // Was copied to GPU.
 
-        return Floor{ .vertices = vertices, .mesh = mesh };
+        return Floor{
+            .mesh = mesh,
+            .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
+                rm.MatrixScale(side_length, 1, side_length),
+                rm.MatrixRotateY(0),
+            ), rm.MatrixTranslate(0, 0, 0)),
+        };
     }
 
-    fn destroy(self: *Floor, allocator: std.mem.Allocator) void {
-        allocator.free(self.vertices);
+    fn destroy(self: *Floor) void {
         self.mesh.vertices = null; // Prevent raylib from freeing our own vertices.
         rl.UnloadMesh(self.mesh);
     }
 
     fn draw(self: Floor, material: rl.Material) void {
-        rl.DrawMesh(self.mesh, material, rm.MatrixIdentity());
+        rl.DrawMesh(self.mesh, material, self.precomputed_matrix);
     }
 
     /// If the given ray hits this object, return the position on the floor.
     fn cast3DRay(self: Floor, ray: rl.Ray) ?util.FlatVector {
-        const ray_collision = rl.GetRayCollisionMesh(ray, self.mesh, rm.MatrixIdentity());
+        const ray_collision = rl.GetRayCollisionMesh(ray, self.mesh, self.precomputed_matrix);
         return if (ray_collision.hit)
             util.FlatVector.fromVector3(ray_collision.point)
         else
