@@ -5,13 +5,13 @@ const rl = @import("raylib");
 const util = @import("util.zig");
 
 pub const Name = enum { floor, gem, player, wall };
-pub const RaylibAssets = struct { texture: rl.Texture, material: rl.Material };
+pub const RaylibAsset = struct { texture: rl.Texture, material: rl.Material };
 
 pub const Collection = struct {
-    asset_mappings: std.EnumArray(Name, RaylibAssets),
+    asset_mappings: std.EnumArray(Name, RaylibAsset),
 
     pub fn loadFromDisk() !Collection {
-        var asset_mappings = std.EnumArray(Name, RaylibAssets).initUndefined();
+        var asset_mappings = std.EnumArray(Name, RaylibAsset).initUndefined();
         var iterator = asset_mappings.iterator();
         while (iterator.next()) |mapping| {
             var asset_path_buffer: [64]u8 = undefined;
@@ -35,7 +35,7 @@ pub const Collection = struct {
 
             var material = rl.LoadMaterialDefault();
             rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), texture);
-            mapping.value.* = RaylibAssets{ .texture = texture, .material = material };
+            mapping.value.* = RaylibAsset{ .texture = texture, .material = material };
         }
 
         return Collection{ .asset_mappings = asset_mappings };
@@ -49,7 +49,7 @@ pub const Collection = struct {
     }
 
     /// The returned assets should not be freed by the caller.
-    pub fn get(self: Collection, name: Name) RaylibAssets {
+    pub fn get(self: Collection, name: Name) RaylibAsset {
         return self.asset_mappings.get(name);
     }
 };
