@@ -527,19 +527,9 @@ pub fn main() !void {
                 players[controllable_player_index].state_at_next_tick.camera
                     .increaseDistanceToObject(-rl.GetMouseWheelMoveV().y * 2.5);
             } else if (rl.GetMouseWheelMoveV().y < 0) {
-                wall_type_to_create =
-                    @intToEnum(LevelGeometry.WallType, @mod(
-                    @enumToInt(wall_type_to_create) + 1,
-                    @typeInfo(LevelGeometry.WallType).Enum.fields.len,
-                ));
+                wall_type_to_create = util.getNextEnumWrapAround(wall_type_to_create);
             } else {
-                wall_type_to_create = @intToEnum(
-                    LevelGeometry.WallType,
-                    if (@enumToInt(wall_type_to_create) == 0)
-                        @typeInfo(LevelGeometry.WallType).Enum.fields.len - 1
-                    else
-                        @enumToInt(wall_type_to_create) - 1,
-                );
+                wall_type_to_create = util.getPreviousEnumWrapAround(wall_type_to_create);
             }
         }
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_T)) {
