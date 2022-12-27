@@ -1,10 +1,11 @@
 const collision = @import("collision.zig");
+const edit_mode = @import("edit_mode.zig");
+const gems = @import("gems.zig");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
 const std = @import("std");
-const util = @import("util.zig");
-const gems = @import("gems.zig");
 const textures = @import("textures.zig");
+const util = @import("util.zig");
 
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
@@ -348,7 +349,7 @@ fn drawEverything(
     gem_collection: gems.Collection,
     texture_collection: textures.Collection,
     billboard_shader: rl.Shader,
-    wall_type_to_create: LevelGeometry.WallType,
+    edit_mode_state: edit_mode.State,
     interval_between_previous_and_current_tick: f32,
 ) void {
     const lerped_camera = current_player.getCamera(interval_between_previous_and_current_tick);
@@ -396,13 +397,9 @@ fn drawEverything(
         current_player.gem_count,
     );
 
-    var string_buffer: [32]u8 = undefined;
-    const wall_type_string = std.fmt.bufPrintZ(
-        string_buffer[0..],
-        "Wall to create: {s}",
-        .{@tagName(wall_type_to_create)},
-    ) catch "";
-    rl.DrawText(wall_type_string, 5, 5, 20, rl.BLACK);
+    var string_buffer: [128]u8 = undefined;
+    const edit_mode_descripiton = edit_mode_state.describe(string_buffer[0..]) catch "";
+    rl.DrawText(edit_mode_descripiton, 5, 5, 20, rl.BLACK);
 
     const fps_string = std.fmt.bufPrintZ(string_buffer[0..], "FPS: {}", .{rl.GetFPS()}) catch "";
     rl.DrawText(fps_string, 5, 25, 20, rl.BLACK);
@@ -436,17 +433,12 @@ fn drawGemCount(
     );
 }
 
-const EditModeView = enum {
-    from_behind,
-    top_down,
-};
+const ViewMode = enum { from_behind, top_down };
 
-const EditMode = enum {
-    place_walls,
-    delete_walls,
+const CurrentlyEditedObject = struct {
+    object_id: u64,
+    start_position: util.FlatVector,
 };
-
-const CurrentlyEditedWall = struct { id: u64, start_position: util.FlatVector };
 
 pub fn main() !void {
     var screen_width: u16 = 1280;
@@ -469,18 +461,15 @@ pub fn main() !void {
     };
     var controllable_player_index: usize = 0;
 
-    var edit_mode_view = EditModeView.from_behind;
-    var edit_mode = EditMode.place_walls;
-    var wall_type_to_create = LevelGeometry.WallType.SmallWall;
-
     var level_geometry = try LevelGeometry.create(gpa.allocator(), 100);
     defer level_geometry.destroy(gpa.allocator());
-    var currently_edited_wall: ?CurrentlyEditedWall = null;
 
     var gem_collection = gems.Collection.create(gpa.allocator());
     defer gem_collection.destroy();
 
     var prng = std.rand.DefaultPrng.init(0);
+    var view_mode = ViewMode.from_behind;
+    var edit_mode_state = edit_mode.State.create();
 
     var tick_timer = try util.TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
@@ -501,7 +490,7 @@ pub fn main() !void {
             gem_collection,
             texture_collection,
             billboard_shader,
-            wall_type_to_create,
+            edit_mode_state,
             lap_result.next_tick_progress,
         );
 
@@ -527,84 +516,42 @@ pub fn main() !void {
                 players[controllable_player_index].state_at_next_tick.camera
                     .increaseDistanceToObject(-rl.GetMouseWheelMoveV().y * 2.5);
             } else if (rl.GetMouseWheelMoveV().y < 0) {
-                wall_type_to_create = util.getNextEnumWrapAround(wall_type_to_create);
+                edit_mode_state.cycleInsertedObjectSubtypeForwards();
             } else {
-                wall_type_to_create = util.getPreviousEnumWrapAround(wall_type_to_create);
+                edit_mode_state.cycleInsertedObjectSubtypeBackwards();
             }
         }
+        if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_MIDDLE)) {
+            edit_mode_state.cycleInsertedObjectType(&level_geometry);
+        }
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_T)) {
-            switch (edit_mode_view) {
+            switch (view_mode) {
                 .from_behind => {
-                    edit_mode_view = EditModeView.top_down;
+                    view_mode = .top_down;
                     players[controllable_player_index].state_at_next_tick.camera
                         .setAngleFromGround(util.degreesToRadians(90));
                 },
                 .top_down => {
-                    edit_mode_view = EditModeView.from_behind;
+                    view_mode = .from_behind;
                     players[controllable_player_index].state_at_next_tick.camera
                         .resetAngleFromGround();
                 },
             }
         }
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_DELETE)) {
-            edit_mode = switch (edit_mode) {
-                .place_walls => EditMode.delete_walls,
-                .delete_walls => EditMode.place_walls,
-            };
-            if (currently_edited_wall) |wall| {
-                level_geometry.untintObject(wall.id);
-                currently_edited_wall = null;
-            }
+            edit_mode_state.cycleMode(&level_geometry);
         }
 
         const ray = players[controllable_player_index].getCamera(lap_result.next_tick_progress)
             .get3DRay(rl.GetMousePosition());
-        switch (edit_mode) {
-            .place_walls => {
-                if (currently_edited_wall) |*wall| {
-                    if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
-                        if (level_geometry.cast3DRayToGround(ray)) |position_on_grid| {
-                            level_geometry.updateWall(wall.id, wall.start_position, position_on_grid);
-                        }
-                    }
-                    if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                        level_geometry.untintObject(wall.id);
-                        currently_edited_wall = null;
-                    }
-                } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                    if (level_geometry.cast3DRayToGround(ray)) |position_on_grid| {
-                        const wall_id = try level_geometry.addWall(
-                            position_on_grid,
-                            position_on_grid,
-                            wall_type_to_create,
-                        );
-                        level_geometry.tintObject(wall_id, rl.GREEN);
-                        currently_edited_wall =
-                            CurrentlyEditedWall{ .id = wall_id, .start_position = position_on_grid };
-                    }
-                }
-            },
-            .delete_walls => {
-                if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
-                    if (currently_edited_wall) |wall| {
-                        level_geometry.untintObject(wall.id);
-                        currently_edited_wall = null;
-                    }
-                    if (level_geometry.cast3DRayToWalls(ray)) |ray_collision| {
-                        level_geometry.tintObject(ray_collision.object_id, rl.RED);
-                        currently_edited_wall = CurrentlyEditedWall{
-                            .id = ray_collision.object_id,
-                            .start_position = util.FlatVector{ .x = 0, .z = 0 },
-                        };
-                    }
-                }
-                if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                    if (currently_edited_wall) |wall| {
-                        level_geometry.removeObject(wall.id);
-                        currently_edited_wall = null;
-                    }
-                }
-            },
+        if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
+            edit_mode_state.updateCurrentActionTarget(&level_geometry, ray);
+        }
+        if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
+            try edit_mode_state.startActionAtTarget(&level_geometry, ray);
+        }
+        if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
+            edit_mode_state.completeCurrentAction(&level_geometry);
         }
         if (rl.IsWindowResized()) {
             screen_width = @intCast(u16, rl.GetScreenWidth());
