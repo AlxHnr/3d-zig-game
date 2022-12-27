@@ -552,7 +552,7 @@ pub fn main() !void {
                 .delete_walls => EditMode.place_walls,
             };
             if (currently_edited_wall) |wall| {
-                level_geometry.untintWall(wall.id);
+                level_geometry.untintObject(wall.id);
                 currently_edited_wall = null;
             }
         }
@@ -568,7 +568,7 @@ pub fn main() !void {
                         }
                     }
                     if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-                        level_geometry.untintWall(wall.id);
+                        level_geometry.untintObject(wall.id);
                         currently_edited_wall = null;
                     }
                 } else if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
@@ -578,7 +578,7 @@ pub fn main() !void {
                             position_on_grid,
                             wall_type_to_create,
                         );
-                        level_geometry.tintWall(wall_id, rl.GREEN);
+                        level_geometry.tintObject(wall_id, rl.GREEN);
                         currently_edited_wall =
                             CurrentlyEditedWall{ .id = wall_id, .start_position = position_on_grid };
                     }
@@ -587,11 +587,11 @@ pub fn main() !void {
             .delete_walls => {
                 if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
                     if (currently_edited_wall) |wall| {
-                        level_geometry.untintWall(wall.id);
+                        level_geometry.untintObject(wall.id);
                         currently_edited_wall = null;
                     }
                     if (level_geometry.cast3DRayToWalls(ray)) |ray_collision| {
-                        level_geometry.tintWall(ray_collision.object_id, rl.RED);
+                        level_geometry.tintObject(ray_collision.object_id, rl.RED);
                         currently_edited_wall = CurrentlyEditedWall{
                             .id = ray_collision.object_id,
                             .start_position = util.FlatVector{ .x = 0, .z = 0 },
@@ -600,7 +600,7 @@ pub fn main() !void {
                 }
                 if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
                     if (currently_edited_wall) |wall| {
-                        level_geometry.removeWall(wall.id);
+                        level_geometry.removeObject(wall.id);
                         currently_edited_wall = null;
                     }
                 }

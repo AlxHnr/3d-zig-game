@@ -12,6 +12,7 @@ pub const LevelGeometry = struct {
     object_id_counter: u64,
     walls: std.ArrayList(Wall),
     shared_wall_vertices: []f32,
+    floors: std.ArrayList(Floor),
     shared_floor_vertices: []f32,
 
     /// Stores the given allocator internally for its entire lifetime.
@@ -49,40 +50,47 @@ pub const LevelGeometry = struct {
         };
 
         return LevelGeometry{
-            .ground = Floor.create(max_width_and_heigth, shared_floor_vertices),
+            .ground = Floor.create(0, max_width_and_heigth, shared_floor_vertices),
             .level_boundaries = level_boundaries,
             .object_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
             .shared_wall_vertices = shared_wall_vertices,
+            .floors = std.ArrayList(Floor).init(allocator),
             .shared_floor_vertices = shared_floor_vertices,
         };
     }
 
     pub fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
         self.ground.destroy();
-        allocator.free(self.shared_floor_vertices);
-
         for (self.level_boundaries) |*level_boundary| {
             level_boundary.destroy();
         }
+
         for (self.walls.items) |*wall| {
             wall.destroy();
         }
         self.walls.deinit();
         allocator.free(self.shared_wall_vertices);
+
+        for (self.floors.items) |*floor| {
+            floor.destroy();
+        }
+        self.floors.deinit();
+        allocator.free(self.shared_floor_vertices);
     }
 
     pub fn draw(self: LevelGeometry, texture_collection: textures.Collection) void {
         for (self.walls.items) |wall| {
             const material = Wall.getRaylibAsset(wall.wall_type, texture_collection).material;
-            const current_tint = material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color;
-
-            material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = wall.tint;
-            rl.DrawMesh(wall.mesh, material, wall.precomputed_matrix);
-            material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = current_tint;
+            drawTintedMesh(wall.mesh, material, wall.tint, wall.precomputed_matrix);
+        }
+        for (self.floors.items) |floor| {
+            const material = texture_collection.get(textures.Name.stone_floor).material;
+            drawTintedMesh(floor.mesh, material, floor.tint, floor.precomputed_matrix);
         }
 
-        self.ground.draw(texture_collection.get(textures.Name.grass).material);
+        const material = texture_collection.get(textures.Name.grass).material;
+        drawTintedMesh(self.ground.mesh, material, rl.WHITE, self.ground.precomputed_matrix);
     }
 
     pub const WallType = enum {
@@ -114,17 +122,6 @@ pub const LevelGeometry = struct {
     }
 
     /// If the given object id does not exist, this function will do nothing.
-    pub fn removeWall(self: *LevelGeometry, object_id: u64) void {
-        for (self.walls.items) |*wall, index| {
-            if (wall.object_id == object_id) {
-                wall.destroy();
-                _ = self.walls.orderedRemove(index);
-                return;
-            }
-        }
-    }
-
-    /// If the given object id does not exist, this function will do nothing.
     pub fn updateWall(
         self: *LevelGeometry,
         object_id: u64,
@@ -146,15 +143,37 @@ pub const LevelGeometry = struct {
         }
     }
 
-    pub fn tintWall(self: *LevelGeometry, object_id: u64, tint: rl.Color) void {
-        if (self.findWall(object_id)) |wall| {
-            wall.tint = tint;
+    /// If the given object id does not exist, this function will do nothing.
+    pub fn removeObject(self: *LevelGeometry, object_id: u64) void {
+        for (self.walls.items) |*wall, index| {
+            if (wall.object_id == object_id) {
+                wall.destroy();
+                _ = self.walls.orderedRemove(index);
+                return;
+            }
+        }
+        for (self.floors.items) |*floor, index| {
+            if (floor.object_id == object_id) {
+                floor.destroy();
+                _ = self.floors.orderedRemove(index);
+                return;
+            }
         }
     }
 
-    pub fn untintWall(self: *LevelGeometry, object_id: u64) void {
+    pub fn tintObject(self: *LevelGeometry, object_id: u64, tint: rl.Color) void {
+        if (self.findWall(object_id)) |wall| {
+            wall.tint = tint;
+        } else if (self.findFloor(object_id)) |floor| {
+            floor.tint = tint;
+        }
+    }
+
+    pub fn untintObject(self: *LevelGeometry, object_id: u64) void {
         if (self.findWall(object_id)) |wall| {
             wall.tint = Wall.getDefaultTint(wall.wall_type);
+        } else if (self.findFloor(object_id)) |floor| {
+            floor.tint = rl.WHITE;
         }
     }
 
@@ -231,6 +250,15 @@ pub const LevelGeometry = struct {
         return null;
     }
 
+    fn findFloor(self: *LevelGeometry, object_id: u64) ?*Floor {
+        for (self.floors.items) |*floor| {
+            if (floor.object_id == object_id) {
+                return floor;
+            }
+        }
+        return null;
+    }
+
     /// If the given wall collides with the circle, move the circle out of the wall and set
     /// found_collision to true. Without a collision this boolean will remain unchanged.
     fn updateDisplacedCircle(wall: Wall, circle: *collision.Circle, found_collision: *bool) void {
@@ -239,14 +267,23 @@ pub const LevelGeometry = struct {
             found_collision.* = true;
         }
     }
+
+    fn drawTintedMesh(mesh: rl.Mesh, material: rl.Material, tint: rl.Color, matrix: rl.Matrix) void {
+        const current_tint = material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color;
+        material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = tint;
+        rl.DrawMesh(mesh, material, matrix);
+        material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = current_tint;
+    }
 };
 
 const Floor = struct {
+    object_id: u64,
     mesh: rl.Mesh,
     precomputed_matrix: rl.Matrix,
+    tint: rl.Color,
 
     /// Keeps a reference to the given floor vertices for its entire lifetime.
-    fn create(side_length: f32, shared_floor_vertices: []f32) Floor {
+    fn create(object_id: u64, side_length: f32, shared_floor_vertices: []f32) Floor {
         const texture_scale = 5.0;
         var texcoords = [6 * 2]f32{
             0,                           0,
@@ -267,21 +304,19 @@ const Floor = struct {
         mesh.texcoords = null; // Was copied to GPU.
 
         return Floor{
+            .object_id = object_id,
             .mesh = mesh,
             .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
                 rm.MatrixScale(side_length, 1, side_length),
                 rm.MatrixRotateY(0),
             ), rm.MatrixTranslate(0, 0, 0)),
+            .tint = rl.WHITE,
         };
     }
 
     fn destroy(self: *Floor) void {
         self.mesh.vertices = null; // Prevent raylib from freeing our own vertices.
         rl.UnloadMesh(self.mesh);
-    }
-
-    fn draw(self: Floor, material: rl.Material) void {
-        rl.DrawMesh(self.mesh, material, self.precomputed_matrix);
     }
 
     /// If the given ray hits this object, return the position on the floor.
