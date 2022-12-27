@@ -69,7 +69,7 @@ pub const LevelGeometry = struct {
             material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = current_tint;
         }
 
-        self.ground.draw(texture_collection.get(textures.Name.floor).material);
+        self.ground.draw(texture_collection.get(textures.Name.grass).material);
     }
 
     pub const WallType = enum {
