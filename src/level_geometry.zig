@@ -228,9 +228,23 @@ pub const LevelGeometry = struct {
         }
     }
 
-    /// If the given ray hits the level grid, return the position on the ground.
-    pub fn cast3DRayToGround(self: LevelGeometry, ray: rl.Ray) ?util.FlatVector {
-        return self.ground.cast3DRay(ray);
+    /// If the given ray hits the ground within a not too large distance, return the position on the
+    /// ground.
+    pub fn cast3DRayToGround(_: LevelGeometry, ray: rl.Ray) ?util.FlatVector {
+        if (std.math.signbit(ray.position.y) == std.math.signbit(ray.direction.y)) {
+            return null;
+        }
+        if (std.math.fabs(ray.direction.y) < util.Constants.epsilon) {
+            return null;
+        }
+        const offset_from_start = util.FlatVector{
+            .x = -ray.position.y / (ray.direction.y / ray.direction.x),
+            .z = -ray.position.y / (ray.direction.y / ray.direction.z),
+        };
+        if (offset_from_start.length() > 500) {
+            return null;
+        }
+        return util.FlatVector.fromVector3(ray.position).add(offset_from_start);
     }
 
     pub const RayCollision = struct {
