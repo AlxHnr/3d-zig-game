@@ -252,15 +252,18 @@ pub const LevelGeometry = struct {
     pub fn cast3DRayToWalls(self: LevelGeometry, ray: rl.Ray) ?RayCollision {
         var result: ?RayCollision = null;
         for (self.walls.items) |wall| {
-            const ray_collision = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
-            const found_closer_wall = if (!ray_collision.hit)
-                false
-            else if (result) |existing_result|
-                ray_collision.distance < existing_result.distance
-            else
-                true;
-            if (found_closer_wall) {
-                result = RayCollision{ .object_id = wall.object_id, .distance = ray_collision.distance };
+            result = getCloserRayHit(ray, wall.mesh, wall.precomputed_matrix, wall.object_id, result);
+        }
+        return result;
+    }
+
+    /// Find the id of the closest object hit by the given ray, if available.
+    pub fn cast3DRayToObjects(self: LevelGeometry, ray: rl.Ray) ?RayCollision {
+        var result = self.cast3DRayToWalls(ray);
+        if (result == null) {
+            for (self.floors.items) |floor| {
+                result =
+                    getCloserRayHit(ray, floor.mesh, floor.precomputed_matrix, floor.object_id, result);
             }
         }
         return result;
@@ -334,6 +337,26 @@ pub const LevelGeometry = struct {
         material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = tint;
         rl.DrawMesh(mesh, material, matrix);
         material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = current_tint;
+    }
+
+    fn getCloserRayHit(
+        ray: rl.Ray,
+        mesh: rl.Mesh,
+        precomputed_matrix: rl.Matrix,
+        object_id: u64,
+        current_collision: ?RayCollision,
+    ) ?RayCollision {
+        const hit = rl.GetRayCollisionMesh(ray, mesh, precomputed_matrix);
+        const found_closer_object = if (!hit.hit)
+            false
+        else if (current_collision) |existing_result|
+            hit.distance < existing_result.distance
+        else
+            true;
+        if (found_closer_object) {
+            return RayCollision{ .object_id = object_id, .distance = hit.distance };
+        }
+        return current_collision;
     }
 };
 

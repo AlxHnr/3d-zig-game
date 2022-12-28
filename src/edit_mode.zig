@@ -29,7 +29,7 @@ pub const State = struct {
                 }
             },
             .delete_objects => {
-                if (level_geometry.cast3DRayToWalls(mouse_ray)) |ray_collision| {
+                if (level_geometry.cast3DRayToObjects(mouse_ray)) |ray_collision| {
                     level_geometry.removeObject(ray_collision.object_id);
                 }
             },
@@ -50,7 +50,7 @@ pub const State = struct {
             },
             .delete_objects => {
                 self.resetCurrentlyEditedObject(level_geometry);
-                if (level_geometry.cast3DRayToWalls(mouse_ray)) |ray_collision| {
+                if (level_geometry.cast3DRayToObjects(mouse_ray)) |ray_collision| {
                     level_geometry.tintObject(ray_collision.object_id, rl.RED);
                     self.currently_edited_object = CurrentlyEditedObject{
                         .object_id = ray_collision.object_id,
