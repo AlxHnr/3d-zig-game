@@ -383,8 +383,8 @@ const Floor = struct {
             .mesh = mesh,
             .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
                 rm.MatrixScale(side_b_length, 1, side_a_length),
-                rm.MatrixRotateY(rotation),
             ), rm.MatrixTranslate(center.x, 0, center.z)),
+                rm.MatrixRotateY(-rotation),
             .tint = rl.WHITE,
         };
     }
