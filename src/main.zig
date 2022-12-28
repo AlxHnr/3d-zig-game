@@ -544,10 +544,11 @@ pub fn main() !void {
             edit_mode_state.cycleMode(&level_geometry);
         }
 
-        const ray = players[controllable_player_index].getCamera(lap_result.next_tick_progress)
-            .get3DRay(rl.GetMousePosition());
+        const camera = players[controllable_player_index].getCamera(lap_result.next_tick_progress);
+        const ray = camera.get3DRay(rl.GetMousePosition());
         if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
-            edit_mode_state.updateCurrentActionTarget(&level_geometry, ray);
+            edit_mode_state
+                .updateCurrentActionTarget(&level_geometry, ray, camera.getDirectionToTarget());
         }
         if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
             try edit_mode_state.startActionAtTarget(&level_geometry, ray);
