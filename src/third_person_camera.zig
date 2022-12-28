@@ -121,6 +121,12 @@ pub const Camera = struct {
         return self.camera;
     }
 
+    pub fn getDirectionToTarget(self: Camera) util.FlatVector {
+        const position = util.FlatVector.fromVector3(self.camera.position);
+        const target = util.FlatVector.fromVector3(self.camera.target);
+        return target.subtract(position).normalize();
+    }
+
     pub fn processElapsedTick(
         self: *Camera,
         target_object_position: rl.Vector3,

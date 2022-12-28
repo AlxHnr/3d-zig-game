@@ -86,6 +86,10 @@ pub const FlatVector = struct {
     pub fn rotateRightBy90Degrees(self: FlatVector) FlatVector {
         return FlatVector{ .x = -self.z, .z = self.x };
     }
+
+    pub fn projectOnto(self: FlatVector, other: FlatVector) FlatVector {
+        return other.scale(self.dotProduct(other) / other.dotProduct(other));
+    }
 };
 
 // TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
