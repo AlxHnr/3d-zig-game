@@ -347,7 +347,7 @@ fn drawEverything(
     screen_height: u16,
     players: []const Player,
     current_player: Player,
-    level_geometry: LevelGeometry,
+    level_geometry: *LevelGeometry,
     gem_collection: gems.Collection,
     texture_collection: textures.Collection,
     billboard_shader: rl.Shader,
@@ -362,6 +362,8 @@ fn drawEverything(
     else
         null;
     const raylib_camera = lerped_camera.getRaylibCamera(max_distance_from_target);
+
+    level_geometry.prerenderGround(texture_collection);
 
     rl.BeginDrawing();
     rl.BeginMode3D(raylib_camera);
@@ -463,7 +465,7 @@ pub fn main() !void {
     };
     var controllable_player_index: usize = 0;
 
-    var level_geometry = try LevelGeometry.create(gpa.allocator(), 100);
+    var level_geometry = try LevelGeometry.create(gpa.allocator(), 1000);
     defer level_geometry.destroy(gpa.allocator());
 
     var gem_collection = gems.Collection.create(gpa.allocator());
@@ -488,7 +490,7 @@ pub fn main() !void {
             screen_height,
             players[0..],
             players[controllable_player_index],
-            level_geometry,
+            &level_geometry,
             gem_collection,
             texture_collection,
             billboard_shader,

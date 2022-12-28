@@ -16,6 +16,8 @@ pub const LevelGeometry = struct {
     floors: std.ArrayList(Floor),
     shared_floor_vertices: []f32,
 
+    prerendered_ground: PrerenderedGround,
+
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator, max_width_and_heigth: f32) !LevelGeometry {
         const precomputed_wall_vertices = Wall.computeVertices();
@@ -57,6 +59,7 @@ pub const LevelGeometry = struct {
             .shared_wall_vertices = shared_wall_vertices,
             .floors = std.ArrayList(Floor).init(allocator),
             .shared_floor_vertices = shared_floor_vertices,
+            .prerendered_ground = PrerenderedGround.create(max_width_and_heigth),
         };
     }
 
@@ -74,6 +77,11 @@ pub const LevelGeometry = struct {
         }
         self.floors.deinit();
         allocator.free(self.shared_floor_vertices);
+        self.prerendered_ground.destroy();
+    }
+
+    pub fn prerenderGround(self: *LevelGeometry, texture_collection: textures.Collection) void {
+        self.prerendered_ground.prerender(self.floors.items, texture_collection);
     }
 
     pub fn draw(self: LevelGeometry, texture_collection: textures.Collection) void {
@@ -81,13 +89,8 @@ pub const LevelGeometry = struct {
             const material = Wall.getRaylibAsset(wall.wall_type, texture_collection).material;
             drawTintedMesh(wall.mesh, material, wall.tint, wall.precomputed_matrix);
         }
-        for (self.floors.items) |floor| {
-            const material = Floor.getRaylibAsset(floor.floor_type, texture_collection).material;
-            drawTintedMesh(floor.mesh, material, floor.tint, floor.precomputed_matrix);
-        }
 
-        const material = Floor.getRaylibAsset(self.ground.floor_type, texture_collection).material;
-        drawTintedMesh(self.ground.mesh, material, self.ground.tint, self.ground.precomputed_matrix);
+        self.prerendered_ground.draw();
     }
 
     pub const WallType = enum {
@@ -346,6 +349,11 @@ const Floor = struct {
     tint: rl.Color,
     floor_type: LevelGeometry.FloorType,
 
+    side_a_start: util.FlatVector,
+    side_a_length: f32,
+    side_b_length: f32,
+    rotation: f32,
+
     /// Side a and b can be chosen arbitrarily, but must be adjacent. Keeps a reference to the given
     /// floor vertices for its entire lifetime.
     fn create(
@@ -359,7 +367,7 @@ const Floor = struct {
         const offset_a = side_a_end.subtract(side_a_start);
         const side_a_length = offset_a.length();
 
-        const texture_scale = getDefaultScale(floor_type);
+        const texture_scale = getDefaultTextureScale(floor_type);
         var texcoords = [6 * 2]f32{
             0,                             0,
             side_b_length / texture_scale, side_a_length / texture_scale,
@@ -381,15 +389,20 @@ const Floor = struct {
         const rotation = offset_a.computeRotationToOtherVector(util.FlatVector{ .x = 0, .z = 1 });
         const offset_b = offset_a.rotateRightBy90Degrees().negate().normalize().scale(side_b_length);
         const center = side_a_start.add(offset_a.scale(0.5)).add(offset_b.scale(0.5));
+
         return Floor{
             .object_id = object_id,
             .mesh = mesh,
             .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
                 rm.MatrixScale(side_b_length, 1, side_a_length),
-            ), rm.MatrixTranslate(center.x, 0, center.z)),
-                rm.MatrixRotateY(-rotation),
+                rm.MatrixTranslate(center.x, 0, center.z),
+            ), rm.MatrixRotateY(-rotation)),
             .tint = getDefaultTint(floor_type),
             .floor_type = floor_type,
+            .side_a_start = side_a_end,
+            .side_a_length = side_a_length,
+            .side_b_length = side_b_length,
+            .rotation = rotation,
         };
     }
 
@@ -407,7 +420,7 @@ const Floor = struct {
             null;
     }
 
-    fn getDefaultScale(floor_type: LevelGeometry.FloorType) f32 {
+    fn getDefaultTextureScale(floor_type: LevelGeometry.FloorType) f32 {
         return switch (floor_type) {
             else => 5.0,
         };
@@ -641,5 +654,89 @@ const Wall = struct {
             .TallHedge => texture_collection.get(textures.Name.hedge),
             else => texture_collection.get(textures.Name.wall),
         };
+    }
+};
+
+/// A piece of ground which floats trough the game world.
+const PrerenderedGround = struct {
+    render_texture: rl.RenderTexture,
+
+    /// Wrapper around render texture.
+    render_texture_material: rl.Material,
+
+    /// Helpers for moving the ground into 3d space.
+    plane_mesh: rl.Mesh,
+    mesh_matrix: rl.Matrix,
+
+    /// Center of this object in the game-world.
+    position_in_game: util.FlatVector,
+    width_and_height: f32,
+
+    /// Creates a floating ground object at 0,0 in game-world coordinates. Takes the dimensions of
+    /// the ground area to consider while prerendering.
+    fn create(width_and_height: f32) PrerenderedGround {
+        return .{
+            .render_texture = rl.LoadRenderTexture(1024, 1024),
+            .render_texture_material = rl.LoadMaterialDefault(),
+            .plane_mesh = rl.GenMeshPlane(width_and_height, width_and_height, 1, 1),
+            .mesh_matrix = rm.MatrixTranslate(0, 0, 0),
+            .position_in_game = .{ .x = 0, .z = 0 },
+            .width_and_height = width_and_height,
+        };
+    }
+
+    fn destroy(self: *PrerenderedGround) void {
+        rl.UnloadMesh(self.plane_mesh);
+        rl.UnloadMaterial(self.render_texture_material);
+        rl.UnloadRenderTexture(self.render_texture);
+    }
+
+    fn prerender(
+        self: *PrerenderedGround,
+        floors: []Floor,
+        texture_collection: textures.Collection,
+    ) void {
+        rl.BeginTextureMode(self.render_texture);
+        rl.ClearBackground(.{ .r = 0, .g = 0, .b = 0, .a = 0 });
+
+        const translation = self.position_in_game.add(.{
+            .x = -self.width_and_height / 2,
+            .z = self.width_and_height / 2,
+        });
+        const gameworld_to_texture_ratio = util.FlatVector{
+            .x = @intToFloat(f32, self.render_texture.texture.width) / self.width_and_height,
+            .z = @intToFloat(f32, self.render_texture.texture.height) / self.width_and_height,
+        };
+
+        for (floors) |floor| {
+            const texture = Floor.getRaylibAsset(floor.floor_type, texture_collection).texture;
+            const texture_scale = Floor.getDefaultTextureScale(floor.floor_type);
+            const source_rect = rl.Rectangle{
+                .x = 0,
+                .y = 0,
+                .width = @intToFloat(f32, texture.width) * floor.side_b_length / texture_scale,
+                .height = @intToFloat(f32, texture.height) * floor.side_a_length / texture_scale,
+            };
+            const translated_side_a_start = floor.side_a_start.subtract(translation);
+            const dest_rect = rl.Rectangle{
+                .x = translated_side_a_start.x * gameworld_to_texture_ratio.x,
+                .y = translated_side_a_start.z * -gameworld_to_texture_ratio.z,
+                .width = floor.side_b_length * gameworld_to_texture_ratio.x,
+                .height = floor.side_a_length * gameworld_to_texture_ratio.z,
+            };
+            const origin = rl.Vector2{ .x = 0, .y = 0 };
+            const angle = -util.radiansToDegrees(floor.rotation);
+            rl.DrawTexturePro(texture, source_rect, dest_rect, origin, angle, floor.tint);
+        }
+
+        rl.EndTextureMode();
+    }
+
+    fn draw(self: PrerenderedGround) void {
+        const key = @enumToInt(rl.MATERIAL_MAP_DIFFUSE);
+        const material_default_texture = self.render_texture_material.maps[key].texture;
+        self.render_texture_material.maps[key].texture = self.render_texture.texture;
+        rl.DrawMesh(self.plane_mesh, self.render_texture_material, self.mesh_matrix);
+        self.render_texture_material.maps[key].texture = material_default_texture;
     }
 };
