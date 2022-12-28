@@ -12,6 +12,8 @@ pub const LevelGeometry = struct {
     object_id_counter: u64,
     walls: std.ArrayList(Wall),
     shared_wall_vertices: []f32,
+
+    /// Floors are rendered in order.
     floors: std.ArrayList(Floor),
     shared_floor_vertices: []f32,
 
@@ -166,7 +168,7 @@ pub const LevelGeometry = struct {
         floor_type: FloorType,
     ) !u64 {
         const floor = try self.floors.addOne();
-        floor.* = floor.create(
+        floor.* = Floor.create(
             self.object_id_counter,
             side_a_start,
             side_a_end,
@@ -340,6 +342,7 @@ const Floor = struct {
     mesh: rl.Mesh,
     precomputed_matrix: rl.Matrix,
     tint: rl.Color,
+    floor_type: LevelGeometry.FloorType,
 
     /// Side a and b can be chosen arbitrarily, but must be adjacent. Keeps a reference to the given
     /// floor vertices for its entire lifetime.
@@ -386,6 +389,7 @@ const Floor = struct {
             ), rm.MatrixTranslate(center.x, 0, center.z)),
                 rm.MatrixRotateY(-rotation),
             .tint = rl.WHITE,
+            .floor_type = floor_type,
         };
     }
 
