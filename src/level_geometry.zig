@@ -7,7 +7,6 @@ const textures = @import("textures.zig");
 
 pub const LevelGeometry = struct {
     ground: Floor,
-    level_boundaries: [4]Wall,
 
     object_id_counter: u64,
     walls: std.ArrayList(Wall),
@@ -50,18 +49,9 @@ pub const LevelGeometry = struct {
             FloorType.grass,
             shared_floor_vertices,
         );
-        const wall_type = WallType.SmallWall;
-        const level_boundaries = [4]Wall{
-            // Object id is not relevant here.
-            Wall.create(0, level_corners[0], level_corners[1], wall_type, shared_wall_vertices),
-            Wall.create(0, level_corners[1], level_corners[2], wall_type, shared_wall_vertices),
-            Wall.create(0, level_corners[2], level_corners[3], wall_type, shared_wall_vertices),
-            Wall.create(0, level_corners[3], level_corners[0], wall_type, shared_wall_vertices),
-        };
 
         return LevelGeometry{
             .ground = ground,
-            .level_boundaries = level_boundaries,
             .object_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
             .shared_wall_vertices = shared_wall_vertices,
@@ -72,9 +62,6 @@ pub const LevelGeometry = struct {
 
     pub fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
         self.ground.destroy();
-        for (self.level_boundaries) |*level_boundary| {
-            level_boundary.destroy();
-        }
 
         for (self.walls.items) |*wall| {
             wall.destroy();
@@ -277,9 +264,6 @@ pub const LevelGeometry = struct {
         var displaced_circle = circle;
 
         // Move displaced_circle out of all walls.
-        for (self.level_boundaries) |level_boundary| {
-            updateDisplacedCircle(level_boundary, &displaced_circle, &found_collision);
-        }
         for (self.walls.items) |wall| {
             updateDisplacedCircle(wall, &displaced_circle, &found_collision);
         }
@@ -292,11 +276,6 @@ pub const LevelGeometry = struct {
 
     /// Check if the given line (game-world coordinates) collides with the level geometry.
     pub fn collidesWithLine(self: LevelGeometry, line_start: util.FlatVector, line_end: util.FlatVector) bool {
-        for (self.level_boundaries) |level_boundary| {
-            if (level_boundary.boundaries.collidesWithLine(line_start, line_end)) {
-                return true;
-            }
-        }
         for (self.walls.items) |wall| {
             if (wall.boundaries.collidesWithLine(line_start, line_end)) {
                 return true;
