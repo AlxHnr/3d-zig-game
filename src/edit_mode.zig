@@ -7,6 +7,7 @@ pub const State = struct {
     mode: Mode,
     object_type_to_insert: ObjectTypeToInsert,
     currently_edited_object: ?CurrentlyEditedObject,
+    continuous_placement: bool,
 
     pub fn create() State {
         return State{
@@ -17,6 +18,7 @@ pub const State = struct {
                 .floor = @intToEnum(LevelGeometry.FloorType, 0),
             },
             .currently_edited_object = null,
+            .continuous_placement = false,
         };
     }
 
@@ -62,7 +64,9 @@ pub const State = struct {
     }
 
     pub fn completeCurrentAction(self: *State, level_geometry: *LevelGeometry) void {
-        self.resetCurrentlyEditedObject(level_geometry);
+        if (self.mode == .insert_objects and !self.continuous_placement) {
+            self.resetCurrentlyEditedObject(level_geometry);
+        }
     }
 
     // Cycles between the states various edit modes, e.g. insert, delete.
@@ -96,6 +100,11 @@ pub const State = struct {
         }
     }
 
+    pub fn toggleContinuousPlacement(self: *State, level_geometry: *LevelGeometry) void {
+        self.continuous_placement = !self.continuous_placement;
+        self.completeCurrentAction(level_geometry);
+    }
+
     /// Returns a slice describing the current edit mode state. Fails if the given buffer is too
     /// small.
     pub fn describe(self: State, string_buffer: []u8) ![:0]u8 {
@@ -105,7 +114,13 @@ pub const State = struct {
                     .wall => @tagName(self.object_type_to_insert.wall),
                     .floor => @tagName(self.object_type_to_insert.floor),
                 };
-                return std.fmt.bufPrintZ(string_buffer, "inserting {s} of type {s}", .{
+                const continuous_string = if (self.continuous_placement)
+                    "continuous "
+                else
+                    "";
+
+                return std.fmt.bufPrintZ(string_buffer, "inserting {s}{s} of type {s}", .{
+                    continuous_string,
                     @tagName(self.object_type_to_insert.used_field),
                     enum_string,
                 });

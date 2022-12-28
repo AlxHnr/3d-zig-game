@@ -528,6 +528,9 @@ pub fn main() !void {
         if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_MIDDLE)) {
             edit_mode_state.cycleInsertedObjectType(&level_geometry);
         }
+        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_C)) {
+            edit_mode_state.toggleContinuousPlacement(&level_geometry);
+        }
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_T)) {
             switch (view_mode) {
                 .from_behind => {
