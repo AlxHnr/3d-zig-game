@@ -542,15 +542,11 @@ pub fn main() !void {
                 },
             }
         }
-        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_DELETE)) {
-            edit_mode_state.cycleMode(&level_geometry);
-        }
 
         const camera = players[controllable_player_index].getCamera(lap_result.next_tick_progress);
         const ray = camera.get3DRay(rl.GetMousePosition());
-        if (rm.Vector2Length(rl.GetMouseDelta()) > util.Constants.epsilon) {
-            edit_mode_state
-                .updateCurrentActionTarget(&level_geometry, ray, camera.getDirectionToTarget());
+        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_DELETE)) {
+            edit_mode_state.cycleMode(&level_geometry);
         }
         if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
             try edit_mode_state.startActionAtTarget(&level_geometry, ray);
@@ -558,6 +554,8 @@ pub fn main() !void {
         if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
             edit_mode_state.completeCurrentAction(&level_geometry);
         }
+        edit_mode_state
+            .updateCurrentActionTarget(&level_geometry, ray, camera.getDirectionToTarget());
         if (rl.IsWindowResized()) {
             screen_width = @intCast(u16, rl.GetScreenWidth());
             screen_height = @intCast(u16, rl.GetScreenHeight());

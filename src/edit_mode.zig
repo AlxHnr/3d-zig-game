@@ -62,9 +62,6 @@ pub const State = struct {
     }
 
     pub fn completeCurrentAction(self: *State, level_geometry: *LevelGeometry) void {
-        if (self.mode != .insert_objects) {
-            return;
-        }
         self.resetCurrentlyEditedObject(level_geometry);
     }
 
