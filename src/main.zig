@@ -85,9 +85,11 @@ const Character = struct {
 
         const is_accelerating = self.acceleration_direction.length() > util.Constants.epsilon;
         if (is_accelerating) {
-            self.velocity = self.velocity.add(self.acceleration_direction.scale(0.03));
-            if (self.velocity.length() > 0.2) {
-                self.velocity = self.velocity.normalize().scale(0.2);
+            const max_velocity = 0.15;
+            const acceleration = max_velocity / 5.0;
+            self.velocity = self.velocity.add(self.acceleration_direction.scale(acceleration));
+            if (self.velocity.length() > max_velocity) {
+                self.velocity = self.velocity.normalize().scale(max_velocity);
             }
         } else {
             self.velocity = self.velocity.scale(0.7);
