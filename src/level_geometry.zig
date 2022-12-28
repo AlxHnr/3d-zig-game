@@ -95,12 +95,12 @@ pub const LevelGeometry = struct {
             drawTintedMesh(wall.mesh, material, wall.tint, wall.precomputed_matrix);
         }
         for (self.floors.items) |floor| {
-            const material = texture_collection.get(textures.Name.stone_floor).material;
+            const material = Floor.getRaylibAsset(floor.floor_type, texture_collection).material;
             drawTintedMesh(floor.mesh, material, floor.tint, floor.precomputed_matrix);
         }
 
-        const material = texture_collection.get(textures.Name.grass).material;
-        drawTintedMesh(self.ground.mesh, material, rl.WHITE, self.ground.precomputed_matrix);
+        const material = Floor.getRaylibAsset(self.ground.floor_type, texture_collection).material;
+        drawTintedMesh(self.ground.mesh, material, self.ground.tint, self.ground.precomputed_matrix);
     }
 
     pub const WallType = enum {
@@ -234,7 +234,7 @@ pub const LevelGeometry = struct {
         if (self.findWall(object_id)) |wall| {
             wall.tint = Wall.getDefaultTint(wall.wall_type);
         } else if (self.findFloor(object_id)) |floor| {
-            floor.tint = rl.WHITE;
+            floor.tint = Floor.getDefaultTint(floor.floor_type);
         }
     }
 
@@ -380,9 +380,7 @@ const Floor = struct {
         const offset_a = side_a_end.subtract(side_a_start);
         const side_a_length = offset_a.length();
 
-        const texture_scale = switch (floor_type) {
-            else => 5.0,
-        };
+        const texture_scale = getDefaultScale(floor_type);
         var texcoords = [6 * 2]f32{
             0,                             0,
             side_b_length / texture_scale, side_a_length / texture_scale,
@@ -411,7 +409,7 @@ const Floor = struct {
                 rm.MatrixScale(side_b_length, 1, side_a_length),
             ), rm.MatrixTranslate(center.x, 0, center.z)),
                 rm.MatrixRotateY(-rotation),
-            .tint = rl.WHITE,
+            .tint = getDefaultTint(floor_type),
             .floor_type = floor_type,
         };
     }
@@ -428,6 +426,28 @@ const Floor = struct {
             util.FlatVector.fromVector3(ray_collision.point)
         else
             null;
+    }
+
+    fn getDefaultScale(floor_type: LevelGeometry.FloorType) f32 {
+        return switch (floor_type) {
+            else => 5.0,
+        };
+    }
+
+    fn getDefaultTint(floor_type: LevelGeometry.FloorType) rl.Color {
+        return switch (floor_type) {
+            else => rl.WHITE,
+        };
+    }
+
+    fn getRaylibAsset(
+        floor_type: LevelGeometry.FloorType,
+        texture_collection: textures.Collection,
+    ) textures.RaylibAsset {
+        return switch (floor_type) {
+            .grass => texture_collection.get(textures.Name.grass),
+            .stone => texture_collection.get(textures.Name.stone_floor),
+        };
     }
 };
 
