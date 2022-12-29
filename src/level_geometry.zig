@@ -6,16 +6,13 @@ const util = @import("util.zig");
 const textures = @import("textures.zig");
 
 pub const LevelGeometry = struct {
-    ground: Floor,
-
     object_id_counter: u64,
+
     walls: std.ArrayList(Wall),
     shared_wall_vertices: []f32,
 
-    /// Floors are rendered in order.
+    /// Floors are rendered in order, with the last floor at the top.
     floors: std.ArrayList(Floor),
-    shared_floor_vertices: []f32,
-
     prerendered_ground: PrerenderedGround,
 
     /// Stores the given allocator internally for its entire lifetime.
@@ -25,58 +22,23 @@ pub const LevelGeometry = struct {
         errdefer allocator.free(shared_wall_vertices);
         std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
 
-        const floor_vertices = [18]f32{
-            -0.5, 0, 0.5,
-            0.5,  0, -0.5,
-            -0.5, 0, -0.5,
-            -0.5, 0, 0.5,
-            0.5,  0, 0.5,
-            0.5,  0, -0.5,
-        };
-        var shared_floor_vertices = try allocator.alloc(f32, floor_vertices.len);
-        std.mem.copy(f32, shared_floor_vertices, floor_vertices[0..]);
-
-        const half_size = max_width_and_heigth / 2;
-        const level_corners = [4]util.FlatVector{
-            util.FlatVector{ .x = -half_size, .z = half_size },
-            util.FlatVector{ .x = half_size, .z = half_size },
-            util.FlatVector{ .x = half_size, .z = -half_size },
-            util.FlatVector{ .x = -half_size, .z = -half_size },
-        };
-        const ground = Floor.create(
-            0, // Object id is not relevant here.
-            level_corners[0],
-            level_corners[1],
-            max_width_and_heigth,
-            FloorType.grass,
-            shared_floor_vertices,
-        );
-
         return LevelGeometry{
-            .ground = ground,
             .object_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
             .shared_wall_vertices = shared_wall_vertices,
             .floors = std.ArrayList(Floor).init(allocator),
-            .shared_floor_vertices = shared_floor_vertices,
             .prerendered_ground = PrerenderedGround.create(max_width_and_heigth),
         };
     }
 
     pub fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
-        self.ground.destroy();
-
         for (self.walls.items) |*wall| {
             wall.destroy();
         }
         self.walls.deinit();
         allocator.free(self.shared_wall_vertices);
 
-        for (self.floors.items) |*floor| {
-            floor.destroy();
-        }
         self.floors.deinit();
-        allocator.free(self.shared_floor_vertices);
         self.prerendered_ground.destroy();
     }
 
@@ -164,7 +126,6 @@ pub const LevelGeometry = struct {
             side_a_end,
             side_b_length,
             floor_type,
-            self.shared_floor_vertices,
         );
         self.object_id_counter = self.object_id_counter + 1;
         return floor.object_id;
@@ -181,14 +142,12 @@ pub const LevelGeometry = struct {
         if (self.findFloor(object_id)) |floor| {
             const tint = floor.tint;
             const floor_type = floor.floor_type;
-            floor.destroy();
             floor.* = Floor.create(
                 object_id,
                 side_a_start,
                 side_a_end,
                 side_b_length,
                 floor_type,
-                self.shared_floor_vertices,
             );
             floor.tint = tint;
         }
@@ -205,7 +164,6 @@ pub const LevelGeometry = struct {
         }
         for (self.floors.items) |*floor, index| {
             if (floor.object_id == object_id) {
-                floor.destroy();
                 _ = self.floors.orderedRemove(index);
                 return;
             }
@@ -371,73 +329,33 @@ pub const LevelGeometry = struct {
 
 const Floor = struct {
     object_id: u64,
-    mesh: rl.Mesh,
-    precomputed_matrix: rl.Matrix,
-    tint: rl.Color,
     floor_type: LevelGeometry.FloorType,
-
+    boundaries: collision.Rectangle,
     side_a_start: util.FlatVector,
     side_a_length: f32,
     side_b_length: f32,
     rotation: f32,
-    boundaries: collision.Rectangle,
+    tint: rl.Color,
 
-    /// Side a and b can be chosen arbitrarily, but must be adjacent. Keeps a reference to the given
-    /// floor vertices for its entire lifetime.
+    /// Side a and b can be chosen arbitrarily, but must be adjacent.
     fn create(
         object_id: u64,
         side_a_start: util.FlatVector,
         side_a_end: util.FlatVector,
         side_b_length: f32,
         floor_type: LevelGeometry.FloorType,
-        shared_floor_vertices: []f32,
     ) Floor {
         const offset_a = side_a_end.subtract(side_a_start);
-        const side_a_length = offset_a.length();
-
-        const texture_scale = getDefaultTextureScale(floor_type);
-        var texcoords = [6 * 2]f32{
-            0,                             0,
-            side_b_length / texture_scale, side_a_length / texture_scale,
-            0,                             side_a_length / texture_scale,
-            0,                             0,
-            side_b_length / texture_scale, 0,
-            side_b_length / texture_scale, side_a_length / texture_scale,
-        };
-
-        var mesh = std.mem.zeroes(rl.Mesh);
-        mesh.vertices = shared_floor_vertices.ptr;
-        mesh.vertexCount = @intCast(c_int, shared_floor_vertices.len / 3);
-        mesh.triangleCount = @intCast(c_int, shared_floor_vertices.len / 9);
-        mesh.texcoords = &texcoords;
-
-        rl.UploadMesh(&mesh, false);
-        mesh.texcoords = null; // Was copied to GPU.
-
-        const rotation = offset_a.computeRotationToOtherVector(util.FlatVector{ .x = 0, .z = 1 });
-        const offset_b = offset_a.rotateRightBy90Degrees().negate().normalize().scale(side_b_length);
-        const center = side_a_start.add(offset_a.scale(0.5)).add(offset_b.scale(0.5));
-
         return Floor{
             .object_id = object_id,
-            .mesh = mesh,
-            .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
-                rm.MatrixScale(side_b_length, 1, side_a_length),
-                rm.MatrixTranslate(center.x, 0, center.z),
-            ), rm.MatrixRotateY(-rotation)),
-            .tint = getDefaultTint(floor_type),
             .floor_type = floor_type,
-            .side_a_start = side_a_end,
-            .side_a_length = side_a_length,
-            .side_b_length = side_b_length,
-            .rotation = rotation,
             .boundaries = collision.Rectangle.create(side_a_start, side_a_end, side_b_length),
+            .side_a_start = side_a_end,
+            .side_a_length = offset_a.length(),
+            .side_b_length = side_b_length,
+            .rotation = offset_a.computeRotationToOtherVector(util.FlatVector{ .x = 0, .z = 1 }),
+            .tint = getDefaultTint(floor_type),
         };
-    }
-
-    fn destroy(self: *Floor) void {
-        self.mesh.vertices = null; // Prevent raylib from freeing our own vertices.
-        rl.UnloadMesh(self.mesh);
     }
 
     /// If the given ray hits this object, return the position on the floor.
@@ -708,7 +626,7 @@ const PrerenderedGround = struct {
             .render_texture = rl.LoadRenderTexture(1024, 1024),
             .render_texture_material = rl.LoadMaterialDefault(),
             .plane_mesh = rl.GenMeshPlane(width_and_height, width_and_height, 1, 1),
-            .mesh_matrix = rm.MatrixTranslate(0, 0, 0),
+            .mesh_matrix = rm.MatrixIdentity(),
             .position_in_game = .{ .x = 0, .z = 0 },
             .width_and_height = width_and_height,
         };
