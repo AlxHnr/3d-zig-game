@@ -573,5 +573,8 @@ pub fn main() !void {
             screen_width = @intCast(u16, rl.GetScreenWidth());
             screen_height = @intCast(u16, rl.GetScreenHeight());
         }
+        if (rl.GetFrameTime() > 0.020) {
+            std.debug.print("Slow frame, duration: {d:.5} seconds\n", .{rl.GetFrameTime()});
+        }
     }
 }
