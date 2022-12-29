@@ -131,12 +131,12 @@ pub const LevelGeometry = struct {
     };
 
     pub const WallType = enum {
-        SmallWall,
-        MediumWall,
-        CastleWall,
-        CastleTower,
-        GigaWall,
-        TallHedge,
+        small_wall,
+        medium_wall,
+        castle_wall,
+        castle_tower,
+        tall_hedge,
+        giga_wall,
     };
 
     /// Returns the object id of the created wall on success.
@@ -613,7 +613,16 @@ const Wall = struct {
         wall_type: LevelGeometry.WallType,
     ) WallTypeProperties {
         return switch (wall_type) {
-            .SmallWall => {
+            else => {
+                return WallTypeProperties{
+                    .corrected_start_position = start_position,
+                    .corrected_end_position = end_position,
+                    .height = 10,
+                    .thickness = 1,
+                    .texture_scale = 5.0,
+                };
+            },
+            .small_wall => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
@@ -622,7 +631,7 @@ const Wall = struct {
                     .texture_scale = 5.0,
                 };
             },
-            .CastleWall => {
+            .castle_wall => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
@@ -631,7 +640,7 @@ const Wall = struct {
                     .texture_scale = 7.5,
                 };
             },
-            .CastleTower => {
+            .castle_tower => {
                 const half_side_length = 3;
                 const rescaled_offset =
                     end_position.subtract(start_position).normalize().scale(half_side_length);
@@ -643,16 +652,12 @@ const Wall = struct {
                     .texture_scale = 9,
                 };
             },
-            .GigaWall => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
-                    .height = 140,
-                    .thickness = 6,
-                    .texture_scale = 16.0,
                 };
             },
-            .TallHedge => {
+            .tall_hedge => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
@@ -661,13 +666,13 @@ const Wall = struct {
                     .texture_scale = 3.5,
                 };
             },
-            else => {
+            .giga_wall => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
-                    .height = 10,
-                    .thickness = 1,
-                    .texture_scale = 5.0,
+                    .height = 140,
+                    .thickness = 6,
+                    .texture_scale = 16.0,
                 };
             },
         };
@@ -675,8 +680,8 @@ const Wall = struct {
 
     fn getDefaultTint(wall_type: LevelGeometry.WallType) rl.Color {
         return switch (wall_type) {
-            .CastleTower => rl.Color{ .r = 248, .g = 248, .b = 248, .a = 255 },
-            .GigaWall => rl.Color{ .r = 170, .g = 170, .b = 170, .a = 255 },
+            .castle_tower => rl.Color{ .r = 248, .g = 248, .b = 248, .a = 255 },
+            .giga_wall => rl.Color{ .r = 170, .g = 170, .b = 170, .a = 255 },
             else => rl.WHITE,
         };
     }
@@ -686,7 +691,7 @@ const Wall = struct {
         texture_collection: textures.Collection,
     ) textures.RaylibAsset {
         return switch (wall_type) {
-            .TallHedge => texture_collection.get(textures.Name.hedge),
+            .tall_hedge => texture_collection.get(textures.Name.hedge),
             else => texture_collection.get(textures.Name.wall),
         };
     }
