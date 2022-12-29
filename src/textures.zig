@@ -28,8 +28,8 @@ pub const Collection = struct {
                 .{@tagName(mapping.key)},
             );
 
-            const texture = rl.LoadTexture(asset_path);
-            if (texture.id == 0) {
+            var image = rl.LoadImage(asset_path);
+            if (image.data == null) {
                 var cleanup_iterator = asset_mappings.iterator();
                 while (cleanup_iterator.next()) |mapping_to_destroy| {
                     if (mapping_to_destroy.key == mapping.key) {
@@ -40,6 +40,7 @@ pub const Collection = struct {
                 return util.RaylibError.FailedToLoadTextureFile;
             }
 
+            const texture = textureFromImage(&image, mapping.key);
             var material = rl.LoadMaterialDefault();
             rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), texture);
             mapping.value.* = RaylibAsset{ .texture = texture, .material = material };
@@ -60,3 +61,22 @@ pub const Collection = struct {
         return self.asset_mappings.get(name);
     }
 };
+
+/// Will consume the given image.
+fn textureFromImage(image: *rl.Image, texture_name: Name) rl.Texture {
+    defer rl.UnloadImage(image.*);
+
+    switch (texture_name) {
+        else => return rl.LoadTextureFromImage(image.*),
+        .hedge => {
+            // Apply some tricks to make the artwork look pixely from nearby but not grainy from the
+            // distance.
+            rl.ImageResizeNN(image, image.width * 5, image.height * 5);
+
+            var texture = rl.LoadTextureFromImage(image.*);
+            rl.GenTextureMipmaps(&texture);
+            rl.SetTextureFilter(texture, @enumToInt(rl.FILTER_BILINEAR));
+            return texture;
+        },
+    }
+}
