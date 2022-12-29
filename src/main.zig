@@ -478,6 +478,7 @@ pub fn main() !void {
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             for (players) |*player| {
+                level_geometry.processElapsedTick();
                 player.processElapsedTick(level_geometry, &gem_collection);
                 gem_collection.processElapsedTick();
             }

@@ -33,3 +33,7 @@ Install zig 0.9.1 and run `zig build run` inside the projects directory.
 ### [Stone floor (modified)](https://opengameart.org/content/mage-city-arcanos)
 * **Author**: Hyptosis
 * **License**: CC0
+
+### [Water animation frames](https://opengameart.org/content/dungeon-crawl-32x32-tiles)
+* **Author**: Chris Hamons
+* **License**: CC0

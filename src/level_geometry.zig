@@ -1,3 +1,4 @@
+const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
@@ -16,6 +17,9 @@ pub const LevelGeometry = struct {
 
     /// Used for invalidating prerendered floor textures.
     floor_change_counter: u64,
+    floor_animation_cycle: animation.FourStepCycle,
+
+    tick_counter: u64,
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
@@ -29,6 +33,8 @@ pub const LevelGeometry = struct {
             .shared_wall_vertices = shared_wall_vertices,
             .floors = std.ArrayList(Floor).init(allocator),
             .floor_change_counter = 0,
+            .floor_animation_cycle = animation.FourStepCycle.create(),
+            .tick_counter = 0,
         };
     }
 
@@ -51,17 +57,25 @@ pub const LevelGeometry = struct {
             drawTintedMesh(wall.mesh, material, wall.tint, wall.precomputed_matrix);
         }
 
-        prerendered_ground.near_prerendered_ground.draw();
-        prerendered_ground.distant_prerendered_ground.draw();
+        prerendered_ground.near_ground.draw();
+        prerendered_ground.distant_ground.draw();
+    }
+
+    pub fn processElapsedTick(self: *LevelGeometry) void {
+        // Value was picked to roughly sync up with the render interval in prerenderGround().
+        const step_interval = 0.0166666;
+        self.floor_animation_cycle.processStep(step_interval);
+        self.tick_counter = self.tick_counter + 1;
     }
 
     /// Returned object must be released by the caller after use.
     pub fn createPrerenderedGround(_: LevelGeometry) PrerenderedGround {
         const y_offset = util.Constants.epsilon * 10000.0;
         return .{
-            .near_prerendered_ground = PrerenderedGroundPlane.create(1024, 48, false, 0),
-            .distant_prerendered_ground = PrerenderedGroundPlane.create(2048, 512, true, -y_offset),
+            .near_ground = PrerenderedGroundPlane.create(1024, 48, false, 0),
+            .distant_ground = PrerenderedGroundPlane.create(2048, 512, true, -y_offset),
             .state_of_change_counter_at_render = 0,
+            .tick_counter_at_render = 0,
         };
     }
 
@@ -73,30 +87,43 @@ pub const LevelGeometry = struct {
     ) void {
         const rerender_everything =
             prerendered_ground.state_of_change_counter_at_render != self.floor_change_counter;
-        const rerender_near_floor = new_center_position
-            .subtract(prerendered_ground.near_prerendered_ground.position).length() > 2;
-        const rerender_distant_floor = new_center_position
-            .subtract(prerendered_ground.distant_prerendered_ground.position).length() > 100;
-
-        if (rerender_everything or rerender_near_floor) {
-            prerendered_ground.near_prerendered_ground
-                .prerender(self.floors.items, new_center_position, texture_collection);
-        }
-        if (rerender_everything or rerender_distant_floor) {
-            prerendered_ground.distant_prerendered_ground
-                .prerender(self.floors.items, new_center_position, texture_collection);
-        }
         prerendered_ground.state_of_change_counter_at_render = self.floor_change_counter;
+
+        if (rerender_everything or
+            self.tick_counter - prerendered_ground.tick_counter_at_render >= 15)
+        {
+            prerendered_ground.near_ground.prerender(
+                self.floors.items,
+                self.floor_animation_cycle,
+                new_center_position,
+                texture_collection,
+            );
+            prerendered_ground.tick_counter_at_render = self.tick_counter;
+        }
+
+        const rerender_distant_floor = new_center_position
+            .subtract(prerendered_ground.distant_ground.position).length() > 100;
+        if (rerender_everything or rerender_distant_floor) {
+            prerendered_ground.distant_ground.prerender(
+                self.floors.items,
+                self.floor_animation_cycle,
+                new_center_position,
+                texture_collection,
+            );
+        }
     }
 
     pub const PrerenderedGround = struct {
-        near_prerendered_ground: PrerenderedGroundPlane,
-        distant_prerendered_ground: PrerenderedGroundPlane,
+        near_ground: PrerenderedGroundPlane,
+        distant_ground: PrerenderedGroundPlane,
         state_of_change_counter_at_render: u64,
 
+        /// Rerendering the ground depends on the game state and thus on the ticks elapsed.
+        tick_counter_at_render: u64,
+
         pub fn destroy(self: *PrerenderedGround) void {
-            self.near_prerendered_ground.destroy();
-            self.distant_prerendered_ground.destroy();
+            self.near_ground.destroy();
+            self.distant_ground.destroy();
         }
     };
 
@@ -153,6 +180,7 @@ pub const LevelGeometry = struct {
     pub const FloorType = enum {
         grass,
         stone,
+        water,
     };
 
     /// Side a and b can be chosen arbitrarily, but must be adjacent. Returns the object id of the
@@ -420,6 +448,7 @@ const Floor = struct {
     fn getDefaultTextureScale(floor_type: LevelGeometry.FloorType) f32 {
         return switch (floor_type) {
             else => 5.0,
+            .water => 3.0,
         };
     }
 
@@ -431,11 +460,17 @@ const Floor = struct {
 
     fn getRaylibAsset(
         floor_type: LevelGeometry.FloorType,
+        floor_animation_cycle: animation.FourStepCycle,
         texture_collection: textures.Collection,
     ) textures.RaylibAsset {
         return switch (floor_type) {
             .grass => texture_collection.get(textures.Name.grass),
             .stone => texture_collection.get(textures.Name.stone_floor),
+            .water => switch (floor_animation_cycle.getFrame()) {
+                else => texture_collection.get(textures.Name.water_frame_0),
+                1 => texture_collection.get(textures.Name.water_frame_1),
+                2 => texture_collection.get(textures.Name.water_frame_2),
+            },
         };
     }
 };
@@ -704,6 +739,7 @@ const PrerenderedGroundPlane = struct {
     fn prerender(
         self: *PrerenderedGroundPlane,
         floors: []Floor,
+        floor_animation_cycle: animation.FourStepCycle,
         new_center_position: util.FlatVector,
         texture_collection: textures.Collection,
     ) void {
@@ -721,7 +757,11 @@ const PrerenderedGroundPlane = struct {
         rl.BeginTextureMode(self.render_texture);
         rl.ClearBackground(.{ .r = 0, .g = 0, .b = 0, .a = 0 });
         for (floors) |floor| {
-            const texture = Floor.getRaylibAsset(floor.floor_type, texture_collection).texture;
+            const texture = Floor.getRaylibAsset(
+                floor.floor_type,
+                floor_animation_cycle,
+                texture_collection,
+            ).texture;
             const texture_scale = Floor.getDefaultTextureScale(floor.floor_type);
             const source_rect = rl.Rectangle{
                 .x = 0,

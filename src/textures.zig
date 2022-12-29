@@ -11,6 +11,9 @@ pub const Name = enum {
     player,
     stone_floor,
     wall,
+    water_frame_0,
+    water_frame_1,
+    water_frame_2,
 };
 pub const RaylibAsset = struct { texture: rl.Texture, material: rl.Material };
 
