@@ -13,13 +13,14 @@ pub const LevelGeometry = struct {
 
     /// Floors are rendered in order, with the last floor at the top.
     floors: std.ArrayList(Floor),
-    prerendered_ground: PrerenderedGround,
+
+    /// Used for invalidating prerendered floor textures.
+    floor_change_counter: u64,
 
     /// Stores the given allocator internally for its entire lifetime.
-    pub fn create(allocator: std.mem.Allocator, max_width_and_heigth: f32) !LevelGeometry {
+    pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
         const precomputed_wall_vertices = Wall.computeVertices();
         var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
-        errdefer allocator.free(shared_wall_vertices);
         std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
 
         return LevelGeometry{
@@ -27,7 +28,7 @@ pub const LevelGeometry = struct {
             .walls = std.ArrayList(Wall).init(allocator),
             .shared_wall_vertices = shared_wall_vertices,
             .floors = std.ArrayList(Floor).init(allocator),
-            .prerendered_ground = PrerenderedGround.create(max_width_and_heigth),
+            .floor_change_counter = 0,
         };
     }
 
@@ -37,23 +38,67 @@ pub const LevelGeometry = struct {
         }
         self.walls.deinit();
         allocator.free(self.shared_wall_vertices);
-
         self.floors.deinit();
-        self.prerendered_ground.destroy();
     }
 
-    pub fn prerenderGround(self: *LevelGeometry, texture_collection: textures.Collection) void {
-        self.prerendered_ground.prerender(self.floors.items, texture_collection);
-    }
-
-    pub fn draw(self: LevelGeometry, texture_collection: textures.Collection) void {
+    pub fn draw(
+        self: LevelGeometry,
+        prerendered_ground: PrerenderedGround,
+        texture_collection: textures.Collection,
+    ) void {
         for (self.walls.items) |wall| {
             const material = Wall.getRaylibAsset(wall.wall_type, texture_collection).material;
             drawTintedMesh(wall.mesh, material, wall.tint, wall.precomputed_matrix);
         }
 
-        self.prerendered_ground.draw();
+        prerendered_ground.near_prerendered_ground.draw();
+        prerendered_ground.distant_prerendered_ground.draw();
     }
+
+    /// Returned object must be released by the caller after use.
+    pub fn createPrerenderedGround(_: LevelGeometry) PrerenderedGround {
+        const y_offset = util.Constants.epsilon * 10000.0;
+        return .{
+            .near_prerendered_ground = PrerenderedGroundPlane.create(1024, 48, false, 0),
+            .distant_prerendered_ground = PrerenderedGroundPlane.create(2048, 512, true, -y_offset),
+            .state_of_change_counter_at_render = 0,
+        };
+    }
+
+    pub fn prerenderGround(
+        self: LevelGeometry,
+        prerendered_ground: *PrerenderedGround,
+        new_center_position: util.FlatVector,
+        texture_collection: textures.Collection,
+    ) void {
+        const rerender_everything =
+            prerendered_ground.state_of_change_counter_at_render != self.floor_change_counter;
+        const rerender_near_floor = new_center_position
+            .subtract(prerendered_ground.near_prerendered_ground.position).length() > 2;
+        const rerender_distant_floor = new_center_position
+            .subtract(prerendered_ground.distant_prerendered_ground.position).length() > 100;
+
+        if (rerender_everything or rerender_near_floor) {
+            prerendered_ground.near_prerendered_ground
+                .prerender(self.floors.items, new_center_position, texture_collection);
+        }
+        if (rerender_everything or rerender_distant_floor) {
+            prerendered_ground.distant_prerendered_ground
+                .prerender(self.floors.items, new_center_position, texture_collection);
+        }
+        prerendered_ground.state_of_change_counter_at_render = self.floor_change_counter;
+    }
+
+    pub const PrerenderedGround = struct {
+        near_prerendered_ground: PrerenderedGroundPlane,
+        distant_prerendered_ground: PrerenderedGroundPlane,
+        state_of_change_counter_at_render: u64,
+
+        pub fn destroy(self: *PrerenderedGround) void {
+            self.near_prerendered_ground.destroy();
+            self.distant_prerendered_ground.destroy();
+        }
+    };
 
     pub const WallType = enum {
         SmallWall,
@@ -128,6 +173,7 @@ pub const LevelGeometry = struct {
             floor_type,
         );
         self.object_id_counter = self.object_id_counter + 1;
+        self.floor_change_counter = self.floor_change_counter + 1;
         return floor.object_id;
     }
 
@@ -150,6 +196,7 @@ pub const LevelGeometry = struct {
                 floor_type,
             );
             floor.tint = tint;
+            self.floor_change_counter = self.floor_change_counter + 1;
         }
     }
 
@@ -165,6 +212,7 @@ pub const LevelGeometry = struct {
         for (self.floors.items) |*floor, index| {
             if (floor.object_id == object_id) {
                 _ = self.floors.orderedRemove(index);
+                self.floor_change_counter = self.floor_change_counter + 1;
                 return;
             }
         }
@@ -175,6 +223,7 @@ pub const LevelGeometry = struct {
             wall.tint = tint;
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = tint;
+            self.floor_change_counter = self.floor_change_counter + 1;
         }
     }
 
@@ -183,6 +232,7 @@ pub const LevelGeometry = struct {
             wall.tint = Wall.getDefaultTint(wall.wall_type);
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = Floor.getDefaultTint(floor.floor_type);
+            self.floor_change_counter = self.floor_change_counter + 1;
         }
     }
 
@@ -605,48 +655,61 @@ const Wall = struct {
 };
 
 /// A piece of ground which floats trough the game world.
-const PrerenderedGround = struct {
+const PrerenderedGroundPlane = struct {
     render_texture: rl.RenderTexture,
 
     /// Wrapper around render texture.
     render_texture_material: rl.Material,
 
-    /// Helpers for moving the ground into 3d space.
+    genereate_mipmaps: bool,
+
+    /// Helpers for rendering the ground.
     plane_mesh: rl.Mesh,
     mesh_matrix: rl.Matrix,
 
-    /// Center of this object in the game-world.
-    position_in_game: util.FlatVector,
+    /// Dimensions of this object in the game-world.
+    position: util.FlatVector,
     width_and_height: f32,
 
+    /// Needed to prevent Z fighting when rendering multiple ground planes on top of each other.
+    y_offset: f32,
+
     /// Creates a floating ground object at 0,0 in game-world coordinates. Takes the dimensions of
-    /// the ground area to consider while prerendering.
-    fn create(width_and_height: f32) PrerenderedGround {
+    /// the ground area to consider while prerendering. The given y_offset is useful for rendering
+    /// multiple grounds above each other without Z fighting.
+    fn create(
+        texture_size: u16,
+        width_and_height: f32,
+        genereate_mipmaps: bool,
+        y_offset: f32,
+    ) PrerenderedGroundPlane {
         return .{
-            .render_texture = rl.LoadRenderTexture(1024, 1024),
+            .render_texture = rl.LoadRenderTexture(texture_size, texture_size),
             .render_texture_material = rl.LoadMaterialDefault(),
+            .genereate_mipmaps = genereate_mipmaps,
             .plane_mesh = rl.GenMeshPlane(width_and_height, width_and_height, 1, 1),
-            .mesh_matrix = rm.MatrixIdentity(),
-            .position_in_game = .{ .x = 0, .z = 0 },
+            .mesh_matrix = rm.MatrixTranslate(0, y_offset, 0),
+            .position = .{ .x = 0, .z = 0 },
             .width_and_height = width_and_height,
+            .y_offset = y_offset,
         };
     }
 
-    fn destroy(self: *PrerenderedGround) void {
+    fn destroy(self: *PrerenderedGroundPlane) void {
         rl.UnloadMesh(self.plane_mesh);
         rl.UnloadMaterial(self.render_texture_material);
         rl.UnloadRenderTexture(self.render_texture);
     }
 
     fn prerender(
-        self: *PrerenderedGround,
+        self: *PrerenderedGroundPlane,
         floors: []Floor,
+        new_center_position: util.FlatVector,
         texture_collection: textures.Collection,
     ) void {
-        rl.BeginTextureMode(self.render_texture);
-        rl.ClearBackground(.{ .r = 0, .g = 0, .b = 0, .a = 0 });
+        self.position = new_center_position;
 
-        const translation = self.position_in_game.add(.{
+        const translation = self.position.add(.{
             .x = -self.width_and_height / 2,
             .z = self.width_and_height / 2,
         });
@@ -655,6 +718,8 @@ const PrerenderedGround = struct {
             .z = @intToFloat(f32, self.render_texture.texture.height) / self.width_and_height,
         };
 
+        rl.BeginTextureMode(self.render_texture);
+        rl.ClearBackground(.{ .r = 0, .g = 0, .b = 0, .a = 0 });
         for (floors) |floor| {
             const texture = Floor.getRaylibAsset(floor.floor_type, texture_collection).texture;
             const texture_scale = Floor.getDefaultTextureScale(floor.floor_type);
@@ -674,12 +739,19 @@ const PrerenderedGround = struct {
             const origin = rl.Vector2{ .x = 0, .y = 0 };
             const angle = -util.radiansToDegrees(floor.rotation);
             rl.DrawTexturePro(texture, source_rect, dest_rect, origin, angle, floor.tint);
+
+            self.mesh_matrix = rm.MatrixTranslate(self.position.x, self.y_offset, self.position.z);
         }
 
         rl.EndTextureMode();
+
+        if (self.genereate_mipmaps) {
+            rl.GenTextureMipmaps(&self.render_texture.texture);
+            rl.SetTextureFilter(self.render_texture.texture, @enumToInt(rl.FILTER_BILINEAR));
+        }
     }
 
-    fn draw(self: PrerenderedGround) void {
+    fn draw(self: PrerenderedGroundPlane) void {
         const key = @enumToInt(rl.MATERIAL_MAP_DIFFUSE);
         const material_default_texture = self.render_texture_material.maps[key].texture;
         self.render_texture_material.maps[key].texture = self.render_texture.texture;

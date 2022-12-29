@@ -348,6 +348,7 @@ fn drawEverything(
     players: []const Player,
     current_player: Player,
     level_geometry: *LevelGeometry,
+    prerendered_ground: *LevelGeometry.PrerenderedGround,
     gem_collection: gems.Collection,
     texture_collection: textures.Collection,
     billboard_shader: rl.Shader,
@@ -363,12 +364,17 @@ fn drawEverything(
         null;
     const raylib_camera = lerped_camera.getRaylibCamera(max_distance_from_target);
 
-    level_geometry.prerenderGround(texture_collection);
+    level_geometry.prerenderGround(
+        prerendered_ground,
+        current_player.getLerpedCollisionObject(interval_between_previous_and_current_tick)
+            .boundaries.position,
+        texture_collection,
+    );
 
     rl.BeginDrawing();
     rl.BeginMode3D(raylib_camera);
     rl.ClearBackground(rl.Color{ .r = 140, .g = 190, .b = 214, .a = 255 });
-    level_geometry.draw(texture_collection);
+    level_geometry.draw(prerendered_ground.*, texture_collection);
 
     var collision_objects: [4]gems.CollisionObject = undefined;
     std.debug.assert(players.len <= collision_objects.len);
@@ -465,8 +471,11 @@ pub fn main() !void {
     };
     var controllable_player_index: usize = 0;
 
-    var level_geometry = try LevelGeometry.create(gpa.allocator(), 1000);
+    var level_geometry = try LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy(gpa.allocator());
+
+    var prerendered_ground = level_geometry.createPrerenderedGround();
+    defer prerendered_ground.destroy();
 
     var gem_collection = gems.Collection.create(gpa.allocator());
     defer gem_collection.destroy();
@@ -491,6 +500,7 @@ pub fn main() !void {
             players[0..],
             players[controllable_player_index],
             &level_geometry,
+            &prerendered_ground,
             gem_collection,
             texture_collection,
             billboard_shader,
