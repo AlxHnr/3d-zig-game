@@ -263,14 +263,27 @@ pub const LevelGeometry = struct {
 
     /// Find the id of the closest object hit by the given ray, if available.
     pub fn cast3DRayToObjects(self: LevelGeometry, ray: rl.Ray) ?RayCollision {
-        var result = self.cast3DRayToWalls(ray);
-        if (result == null) {
-            for (self.floors.items) |floor| {
-                result =
-                    getCloserRayHit(ray, floor.mesh, floor.precomputed_matrix, floor.object_id, result);
+        // Walls are covering floors and are prioritized.
+        if (self.cast3DRayToWalls(ray)) |ray_collision| {
+            return ray_collision;
+        }
+
+        if (self.cast3DRayToGround(ray)) |position_on_ground| {
+            for (self.floors.items) |_, index| {
+                // The last floor in this array is always drawn at the top.
+                const floor = self.floors.items[self.floors.items.len - index - 1];
+                if (floor.boundaries.collidesWithPoint(position_on_ground)) {
+                    return RayCollision{
+                        .object_id = floor.object_id,
+                        .distance = rm.Vector3Length(rm.Vector3Subtract(
+                            ray.position,
+                            position_on_ground.toVector3(),
+                        )),
+                    };
+                }
             }
         }
-        return result;
+        return null;
     }
 
     /// If a collision occurs, return a displacement vector for moving the given circle out of the
@@ -367,6 +380,7 @@ const Floor = struct {
     side_a_length: f32,
     side_b_length: f32,
     rotation: f32,
+    boundaries: collision.Rectangle,
 
     /// Side a and b can be chosen arbitrarily, but must be adjacent. Keeps a reference to the given
     /// floor vertices for its entire lifetime.
@@ -417,6 +431,7 @@ const Floor = struct {
             .side_a_length = side_a_length,
             .side_b_length = side_b_length,
             .rotation = rotation,
+            .boundaries = collision.Rectangle.create(side_a_start, side_a_end, side_b_length),
         };
     }
 

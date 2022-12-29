@@ -68,6 +68,10 @@ pub const Rectangle = struct {
             lineCollidesWithLine(start, end, self.third_corner, second_corner);
     }
 
+    pub fn collidesWithPoint(self: Rectangle, point: util.FlatVector) bool {
+        return self.collidesWithRotatedPoint(self.rotation.rotate(point));
+    }
+
     fn collidesWithRotatedPoint(self: Rectangle, rotated_point: util.FlatVector) bool {
         return rotated_point.x > self.first_corner.x and
             rotated_point.x < self.third_corner.x and
