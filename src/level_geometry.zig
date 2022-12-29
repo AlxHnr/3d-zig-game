@@ -784,7 +784,10 @@ const PrerenderedGroundPlane = struct {
 
         if (self.genereate_mipmaps) {
             rl.GenTextureMipmaps(&self.render_texture.texture);
-            rl.SetTextureFilter(self.render_texture.texture, @enumToInt(rl.FILTER_BILINEAR));
+            rl.SetTextureFilter(
+                self.render_texture.texture,
+                @enumToInt(rl.TextureFilter.TEXTURE_FILTER_TRILINEAR),
+            );
         }
     }
 
