@@ -2,6 +2,7 @@
 
 const rl = @import("raylib");
 const util = @import("util.zig");
+const rlgl = @cImport(@cInclude("rlgl.h"));
 
 const vertex_shader =
     \\ #version 330
@@ -32,13 +33,11 @@ const fragment_shader =
     \\ }
 ;
 
-extern fn rlGetShaderIdDefault() c_uint;
-
 /// Returns a shader for rendering unordered billboards with fully transparent pixels. To be freed
 /// with raylib.UnloadShader().
 pub fn load() util.RaylibError!rl.Shader {
     const shader = rl.LoadShaderFromMemory(vertex_shader, fragment_shader);
-    if (shader.id == rlGetShaderIdDefault()) {
+    if (shader.id == rlgl.rlGetShaderIdDefault()) {
         return util.RaylibError.FailedToCompileAndLinkShader;
     }
     return shader;
