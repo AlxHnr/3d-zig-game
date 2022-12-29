@@ -1,3 +1,4 @@
+const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const edit_mode = @import("edit_mode.zig");
 const gems = @import("gems.zig");
@@ -146,8 +147,7 @@ const Player = struct {
                 character.boundaries.position.toVector3(),
                 character.looking_direction,
             ),
-            .animation_cycle = 0,
-            .animation_frame = 0,
+            .animation_cycle = animation.FourStepCycle.create(),
         };
         return Player{
             .id = id,
@@ -282,13 +282,12 @@ const Player = struct {
         const h = getFrameHeight(spritesheet);
         const min_velocity_for_animation = 0.02;
 
-        // Loop from 0 -> 1 -> 2 -> 1 -> 0.
         const animation_frame =
-            if (state_to_render.character.velocity.length() < min_velocity_for_animation or
-            state_to_render.animation_frame == 3)
+            if (state_to_render.character.velocity.length() < min_velocity_for_animation)
             1
         else
-            state_to_render.animation_frame;
+            state_to_render.animation_cycle.getFrame();
+
         const x = w * @intToFloat(f32, animation_frame);
         return switch (side) {
             .front => rl.Rectangle{ .x = x, .y = h, .width = w, .height = h },
@@ -306,10 +305,7 @@ const Player = struct {
     const State = struct {
         character: Character,
         camera: ThirdPersonCamera,
-        /// Loops from 0 to 1 and wraps around to 0.
-        animation_cycle: f32,
-        /// Four animation frames.
-        animation_frame: u2,
+        animation_cycle: animation.FourStepCycle,
 
         /// Interpolate between this players state and another players state based on the given
         /// interval from 0 to 1.
@@ -317,11 +313,7 @@ const Player = struct {
             return State{
                 .character = self.character.lerp(other.character, interval),
                 .camera = self.camera.lerp(other.camera, interval),
-                .animation_cycle = rm.Lerp(self.animation_cycle, other.animation_cycle, interval),
-                .animation_frame = if (interval < 0.5)
-                    self.animation_frame
-                else
-                    other.animation_frame,
+                .animation_cycle = self.animation_cycle.lerp(other.animation_cycle, interval),
             };
         }
 
@@ -334,11 +326,7 @@ const Player = struct {
                 self.character.boundaries.position.toVector3(),
                 self.character.looking_direction,
             );
-            self.animation_cycle = self.animation_cycle + self.character.velocity.length() * 0.75;
-            if (self.animation_cycle > 1) {
-                self.animation_cycle = 0;
-                self.animation_frame = self.animation_frame +% 1;
-            }
+            self.animation_cycle.processStep(self.character.velocity.length() * 0.75);
         }
     };
 };
