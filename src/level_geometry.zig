@@ -5,6 +5,7 @@ const rm = @import("raylib-math");
 const std = @import("std");
 const util = @import("util.zig");
 const textures = @import("textures.zig");
+const glad = @cImport(@cInclude("external/glad.h"));
 
 pub const LevelGeometry = struct {
     object_id_counter: u64,
@@ -58,7 +59,10 @@ pub const LevelGeometry = struct {
         }
 
         prerendered_ground.near_ground.draw();
+
+        glad.glStencilFunc(glad.GL_NOTEQUAL, 1, 0xff);
         prerendered_ground.distant_ground.draw();
+        glad.glStencilFunc(glad.GL_ALWAYS, 1, 0xff);
     }
 
     pub fn processElapsedTick(self: *LevelGeometry) void {
@@ -70,10 +74,9 @@ pub const LevelGeometry = struct {
 
     /// Returned object must be released by the caller after use.
     pub fn createPrerenderedGround(_: LevelGeometry) PrerenderedGround {
-        const y_offset = util.Constants.epsilon * 10000.0;
         return .{
-            .near_ground = PrerenderedGroundPlane.create(1024, 48, false, 0),
-            .distant_ground = PrerenderedGroundPlane.create(2048, 512, true, -y_offset),
+            .near_ground = PrerenderedGroundPlane.create(1024, 48, false),
+            .distant_ground = PrerenderedGroundPlane.create(2048, 512, true),
             .state_of_change_counter_at_render = 0,
             .tick_counter_at_render = 0,
         };
@@ -706,27 +709,21 @@ const PrerenderedGroundPlane = struct {
     position: util.FlatVector,
     width_and_height: f32,
 
-    /// Needed to prevent Z fighting when rendering multiple ground planes on top of each other.
-    y_offset: f32,
-
     /// Creates a floating ground object at 0,0 in game-world coordinates. Takes the dimensions of
-    /// the ground area to consider while prerendering. The given y_offset is useful for rendering
-    /// multiple grounds above each other without Z fighting.
+    /// the ground area to consider while prerendering.
     fn create(
         texture_size: u16,
         width_and_height: f32,
         genereate_mipmaps: bool,
-        y_offset: f32,
     ) PrerenderedGroundPlane {
         return .{
             .render_texture = rl.LoadRenderTexture(texture_size, texture_size),
             .render_texture_material = rl.LoadMaterialDefault(),
             .genereate_mipmaps = genereate_mipmaps,
             .plane_mesh = rl.GenMeshPlane(width_and_height, width_and_height, 1, 1),
-            .mesh_matrix = rm.MatrixTranslate(0, y_offset, 0),
+            .mesh_matrix = rm.MatrixIdentity(),
             .position = .{ .x = 0, .z = 0 },
             .width_and_height = width_and_height,
-            .y_offset = y_offset,
         };
     }
 
@@ -780,7 +777,7 @@ const PrerenderedGroundPlane = struct {
             const angle = -util.radiansToDegrees(floor.rotation);
             rl.DrawTexturePro(texture, source_rect, dest_rect, origin, angle, floor.tint);
 
-            self.mesh_matrix = rm.MatrixTranslate(self.position.x, self.y_offset, self.position.z);
+            self.mesh_matrix = rm.MatrixTranslate(self.position.x, 0, self.position.z);
         }
 
         rl.EndTextureMode();

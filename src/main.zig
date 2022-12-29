@@ -7,6 +7,7 @@ const rm = @import("raylib-math");
 const std = @import("std");
 const textures = @import("textures.zig");
 const util = @import("util.zig");
+const glad = @cImport(@cInclude("external/glad.h"));
 
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
@@ -361,7 +362,10 @@ fn drawEverything(
 
     rl.BeginDrawing();
     rl.BeginMode3D(raylib_camera);
-    rl.ClearBackground(rl.Color{ .r = 140, .g = 190, .b = 214, .a = 255 });
+
+    glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
+    glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
+
     level_geometry.draw(prerendered_ground.*, texture_collection);
 
     var collision_objects: [4]gems.CollisionObject = undefined;
@@ -443,6 +447,9 @@ pub fn main() !void {
     var screen_height: u16 = 720;
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
+
+    glad.glEnable(glad.GL_STENCIL_TEST);
+    glad.glStencilOp(glad.GL_KEEP, glad.GL_KEEP, glad.GL_REPLACE);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
