@@ -11,7 +11,7 @@ const glad = @cImport(@cInclude("external/glad.h"));
 
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
-const loadShader = @import("shader.zig").load;
+const DefaultShader = @import("default_shader.zig").DefaultShader;
 
 fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
     return rl.Color{
@@ -340,7 +340,7 @@ fn drawEverything(
     prerendered_ground: *LevelGeometry.PrerenderedGround,
     gem_collection: gems.Collection,
     texture_collection: textures.Collection,
-    shader: rl.Shader,
+    shader: DefaultShader,
     edit_mode_state: edit_mode.State,
     interval_between_previous_and_current_tick: f32,
 ) void {
@@ -363,6 +363,7 @@ fn drawEverything(
 
     rl.BeginDrawing();
     rl.BeginMode3D(raylib_camera);
+    shader.enable();
 
     glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
     glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
@@ -455,15 +456,15 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    const shader = try loadShader();
-    defer rl.UnloadShader(shader);
+    var shader = try DefaultShader.create();
+    defer shader.destroy();
 
-    var texture_collection = try textures.Collection.loadFromDisk(shader);
+    var texture_collection = try textures.Collection.loadFromDisk();
     defer texture_collection.destroy();
 
     var players = [_]Player{
-        Player.create(1, 28, 28, texture_collection.get(textures.Name.player).texture),
-        Player.create(2, 5, 14, texture_collection.get(textures.Name.player).texture),
+        Player.create(0, 0, 0, texture_collection.get(textures.Name.player).texture),
+        Player.create(1, 5, 14, texture_collection.get(textures.Name.player).texture),
     };
     var controllable_player_index: usize = 0;
 
