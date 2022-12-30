@@ -11,7 +11,7 @@ const glad = @cImport(@cInclude("external/glad.h"));
 
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
-const loadBillboardShader = @import("billboard_shader.zig").load;
+const loadShader = @import("shader.zig").load;
 
 fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
     return rl.Color{
@@ -340,7 +340,7 @@ fn drawEverything(
     prerendered_ground: *LevelGeometry.PrerenderedGround,
     gem_collection: gems.Collection,
     texture_collection: textures.Collection,
-    billboard_shader: rl.Shader,
+    shader: rl.Shader,
     edit_mode_state: edit_mode.State,
     interval_between_previous_and_current_tick: f32,
 ) void {
@@ -375,7 +375,7 @@ fn drawEverything(
             player.getLerpedCollisionObject(interval_between_previous_and_current_tick);
     }
 
-    rl.BeginShaderMode(billboard_shader);
+    rl.BeginShaderMode(shader);
     gem_collection.draw(
         raylib_camera,
         texture_collection.get(textures.Name.gem).texture,
@@ -454,8 +454,8 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    const billboard_shader = try loadBillboardShader();
-    defer rl.UnloadShader(billboard_shader);
+    const shader = try loadShader();
+    defer rl.UnloadShader(shader);
 
     var texture_collection = try textures.Collection.loadFromDisk();
     defer texture_collection.destroy();
@@ -499,7 +499,7 @@ pub fn main() !void {
             &prerendered_ground,
             gem_collection,
             texture_collection,
-            billboard_shader,
+            shader,
             edit_mode_state,
             lap_result.next_tick_progress,
         );

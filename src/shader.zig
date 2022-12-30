@@ -1,4 +1,4 @@
-//! Contains a shader for rendering unordered billboards with fully transparent pixels.
+//! Contains a shader for rendering textures with fully transparent pixels.
 
 const rl = @import("raylib");
 const rlgl = @cImport(@cInclude("rlgl.h"));
@@ -34,8 +34,8 @@ const fragment_shader =
     \\ }
 ;
 
-/// Returns a shader for rendering unordered billboards with fully transparent pixels. To be freed
-/// with raylib.UnloadShader().
+/// Returns a shader for rendering textures with fully transparent pixels. To be freed with
+/// raylib.UnloadShader().
 pub fn load() util.RaylibError!rl.Shader {
     const shader = rl.LoadShaderFromMemory(vertex_shader, fragment_shader);
     if (shader.id == rlgl.rlGetShaderIdDefault()) {
