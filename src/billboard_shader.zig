@@ -1,8 +1,8 @@
 //! Contains a shader for rendering unordered billboards with fully transparent pixels.
 
 const rl = @import("raylib");
-const util = @import("util.zig");
 const rlgl = @cImport(@cInclude("rlgl.h"));
+const util = @import("util.zig");
 
 const vertex_shader =
     \\ #version 330
@@ -23,13 +23,14 @@ const fragment_shader =
     \\ in vec2 fragment_texture_coordinate;
     \\ out vec4 final_color;
     \\ uniform sampler2D texture0;
+    \\ uniform vec4 colDiffuse;
     \\
     \\ void main() {
     \\     vec4 texel_color = texture(texture0, fragment_texture_coordinate);
     \\     if (texel_color.a < 0.5) {
     \\         discard;
     \\     }
-    \\     final_color = texel_color;
+    \\     final_color = texel_color * colDiffuse;
     \\ }
 ;
 
