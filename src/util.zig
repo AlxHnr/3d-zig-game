@@ -4,6 +4,7 @@ const std = @import("std");
 const math = std.math;
 const rl = @import("raylib");
 const rm = @import("raylib-math");
+const rlgl = @cImport(@cInclude("rlgl.h"));
 
 pub const Constants = struct {
     pub const up = rl.Vector3{ .x = 0, .y = 1, .z = 0 };
@@ -173,4 +174,24 @@ pub fn getNextEnumWrapAround(value: anytype) @TypeOf(value) {
         @TypeOf(value),
         @mod(@intCast(usize, @enumToInt(value)) + 1, @typeInfo(@TypeOf(value)).Enum.fields.len),
     );
+}
+
+/// Wrapper around raylib.DrawMesh(), which takes a texture and shader.
+pub fn drawMesh(
+    mesh: rl.Mesh,
+    transform_matrix: rl.Matrix,
+    texture: rl.Texture,
+    tint: rl.Color,
+    shader: rl.Shader,
+) void {
+    var maps = std.mem.zeroes([rl.MAX_MATERIAL_MAPS]rl.MaterialMap);
+    var material = std.mem.zeroes(rl.Material);
+    material.maps = &maps;
+
+    material.shader.id = shader.id;
+    material.shader.locs = rlgl.rlGetShaderLocsDefault();
+    material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].texture = texture;
+    material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = tint;
+
+    rl.DrawMesh(mesh, material, transform_matrix);
 }

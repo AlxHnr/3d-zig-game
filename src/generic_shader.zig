@@ -1,114 +1,50 @@
-//! Contains a shader for rendering textures with fully transparent pixels.
+//! Contains an adaption of raylibs default shader for rendering textures with fully transparent
+//! fragments.
 
 const util = @import("util.zig");
 const rl = @import("raylib");
-const rm = @import("raylib-math");
 const rlgl = @cImport(@cInclude("rlgl.h"));
-const glad = @cImport(@cInclude("external/glad.h"));
 
 const vertex_shader =
     \\ #version 330
     \\
-    \\ in vec3 vertex_position;
-    \\ in vec2 vertex_texture_coordinate;
-    \\ out vec2 fragment_texture_coordinate;
-    \\ uniform mat4 mvp_matrix;
+    \\ in vec3 vertexPosition;
+    \\ in vec2 vertexTexCoord;
+    \\ in vec4 vertexColor;
+    \\ out vec2 fragTexCoord;
+    \\ out vec4 fragColor;
+    \\ uniform mat4 mvp;
     \\
     \\ void main() {
-    \\     fragment_texture_coordinate = vertex_texture_coordinate;
-    \\     gl_Position = mvp_matrix * vec4(vertex_position, 1.0);
+    \\     fragTexCoord = vertexTexCoord;
+    \\     fragColor = vertexColor;
+    \\     gl_Position = mvp * vec4(vertexPosition, 1.0);
     \\ }
 ;
+
 const fragment_shader =
     \\ #version 330
     \\
-    \\ in vec2 fragment_texture_coordinate;
-    \\ out vec4 final_color;
-    \\ uniform sampler2D texture_sampler;
-    \\ uniform vec4 tint;
+    \\ in vec2 fragTexCoord;
+    \\ in vec4 fragColor;
+    \\ out vec4 finalColor;
+    \\ uniform sampler2D texture0;
+    \\ uniform vec4 colDiffuse;
     \\
     \\ void main() {
-    \\     vec4 texel_color = texture(texture_sampler, fragment_texture_coordinate);
-    \\     if (texel_color.a < 0.5) {
-    \\         discard;
+    \\     vec4 texelColor = texture(texture0, fragTexCoord);
+    \\     if (texelColor.a < 0.5) {
+    \\       discard;
     \\     }
-    \\     final_color = texel_color * tint;
+    \\     finalColor = texelColor * colDiffuse * fragColor;
     \\ }
 ;
 
-pub const GenericShader = struct {
-    shader: rl.Shader,
-    mvp_location: glad.GLint,
-    texture_sampler_location: glad.GLint,
-    tint_location: glad.GLint,
-
-    pub fn create() util.RaylibError!GenericShader {
-        const shader = rl.LoadShaderFromMemory(vertex_shader, fragment_shader);
-        if (shader.id == rlgl.rlGetShaderIdDefault()) {
-            return util.RaylibError.FailedToCompileAndLinkShader;
-        }
-
-        const mvp_location = glad.glGetUniformLocation(shader.id, "mvp_matrix");
-        const texture_sampler_location = glad.glGetUniformLocation(shader.id, "texture_sampler");
-        const tint_location = glad.glGetUniformLocation(shader.id, "tint");
-        if (mvp_location == -1 or texture_sampler_location == -1 or tint_location == -1) {
-            return util.RaylibError.FailedToCompileAndLinkShader;
-        }
-        return GenericShader{
-            .shader = shader,
-            .mvp_location = mvp_location,
-            .texture_sampler_location = texture_sampler_location,
-            .tint_location = tint_location,
-        };
+/// To be freed via raylib.UnloadShader();
+pub fn load() util.RaylibError!rl.Shader {
+    const shader = rl.LoadShaderFromMemory(vertex_shader, fragment_shader);
+    if (shader.id == rlgl.rlGetShaderIdDefault()) {
+        return util.RaylibError.FailedToCompileAndLinkShader;
     }
-
-    pub fn destroy(self: *GenericShader) void {
-        rl.UnloadShader(self.shader);
-    }
-
-    pub fn enable(self: GenericShader) void {
-        rl.BeginShaderMode(self.shader);
-        rlgl.rlEnableShader(self.shader.id);
-        rlgl.rlActiveTextureSlot(0);
-        var sampler2d_id: glad.GLint = 0;
-        glad.glUniform1iv(self.texture_sampler_location, 1, &sampler2d_id);
-    }
-
-    pub fn disable(_: GenericShader) void {
-        rl.EndShaderMode();
-        rlgl.rlDisableShader();
-    }
-
-    /// Only callable when the shader is active.
-    pub fn drawMesh(
-        self: GenericShader,
-        mesh: rl.Mesh,
-        model_matrix: rl.Matrix,
-        texture: rl.Texture,
-        tint: rl.Color,
-    ) void {
-        const raylib_view_matrix = @bitCast(rl.Matrix, rlgl.rlGetMatrixModelview());
-        const raylib_projection_matrix = @bitCast(rl.Matrix, rlgl.rlGetMatrixProjection());
-        const raylib_transform_matrix = @bitCast(rl.Matrix, rlgl.rlGetMatrixTransform());
-        const mvp_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
-            rm.MatrixMultiply(model_matrix, raylib_transform_matrix),
-            raylib_view_matrix,
-        ), raylib_projection_matrix);
-        const tint_vec4 = [4]glad.GLfloat{
-            @intToFloat(f32, tint.r) / 255.0,
-            @intToFloat(f32, tint.g) / 255.0,
-            @intToFloat(f32, tint.b) / 255.0,
-            @intToFloat(f32, tint.a) / 255.0,
-        };
-
-        _ = rlgl.rlEnableVertexArray(mesh.vaoId);
-        rlgl.rlEnableTexture(texture.id);
-        rlgl.rlSetUniformMatrix(self.mvp_location, @bitCast(rlgl.Matrix, mvp_matrix));
-        glad.glUniform4fv(self.tint_location, 1, &tint_vec4);
-
-        rlgl.rlDrawVertexArray(0, mesh.vertexCount);
-
-        rlgl.rlDisableVertexArray();
-        rlgl.rlDisableTexture();
-    }
-};
+    return shader;
+}

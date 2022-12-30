@@ -6,7 +6,6 @@ const std = @import("std");
 const util = @import("util.zig");
 const textures = @import("textures.zig");
 const glad = @cImport(@cInclude("external/glad.h"));
-const GenericShader = @import("generic_shader.zig").GenericShader;
 
 pub const LevelGeometry = struct {
     object_id_counter: u64,
@@ -63,16 +62,16 @@ pub const LevelGeometry = struct {
     pub fn draw(
         self: LevelGeometry,
         camera: rl.Camera,
-        shader: GenericShader,
+        shader: rl.Shader,
         prerendered_ground: PrerenderedGround,
         texture_collection: textures.Collection,
     ) void {
         for (self.walls.items) |wall| {
             const texture = wall.getTexture(texture_collection);
-            shader.drawMesh(wall.mesh, wall.precomputed_matrix, texture, wall.tint);
+            util.drawMesh(wall.mesh, wall.precomputed_matrix, texture, wall.tint, shader);
         }
 
-        prerendered_ground.near_ground.draw(shader);
+        rl.BeginShaderMode(shader);
         for (self.billboard_objects.items) |billboard| {
             rl.DrawBillboard(
                 camera,
@@ -86,7 +85,9 @@ pub const LevelGeometry = struct {
                 billboard.tint,
             );
         }
+        rl.EndShaderMode();
 
+        prerendered_ground.near_ground.draw(shader);
         glad.glStencilFunc(glad.GL_NOTEQUAL, 1, 0xff);
         prerendered_ground.distant_ground.draw(shader);
         glad.glStencilFunc(glad.GL_ALWAYS, 1, 0xff);
@@ -959,8 +960,8 @@ const PrerenderedGroundPlane = struct {
         }
     }
 
-    fn draw(self: PrerenderedGroundPlane, shader: GenericShader) void {
-        shader.drawMesh(self.plane_mesh, self.mesh_matrix, self.render_texture.texture, rl.WHITE);
+    fn draw(self: PrerenderedGroundPlane, shader: rl.Shader) void {
+        util.drawMesh(self.plane_mesh, self.mesh_matrix, self.render_texture.texture, rl.WHITE, shader);
     }
 };
 

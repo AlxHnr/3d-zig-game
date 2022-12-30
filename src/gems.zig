@@ -145,7 +145,6 @@ const Gem = struct {
             const length = self.side_length * self.spawn_animation_progress;
             const t = (self.spawn_animation_progress - 0.5) * 2;
             const y = (1 - t * t + length / 2) * jump_heigth;
-            // std.debug.print("{d:.10}\n", .{y});
             const position_3d = rl.Vector3{
                 .x = self.boundaries.position.x,
                 .y = y,
