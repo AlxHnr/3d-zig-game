@@ -6,6 +6,7 @@ const std = @import("std");
 const util = @import("util.zig");
 const textures = @import("textures.zig");
 const glad = @cImport(@cInclude("external/glad.h"));
+const GenericShader = @import("generic_shader.zig").GenericShader;
 
 pub const LevelGeometry = struct {
     object_id_counter: u64,
@@ -62,15 +63,16 @@ pub const LevelGeometry = struct {
     pub fn draw(
         self: LevelGeometry,
         camera: rl.Camera,
+        shader: GenericShader,
         prerendered_ground: PrerenderedGround,
         texture_collection: textures.Collection,
     ) void {
         for (self.walls.items) |wall| {
-            const material = Wall.getRaylibAsset(wall.wall_type, texture_collection).material;
-            drawTintedMesh(wall.mesh, material, wall.tint, wall.precomputed_matrix);
+            const texture = Wall.getRaylibAsset(wall.wall_type, texture_collection).texture;
+            shader.drawMesh(wall.mesh, wall.precomputed_matrix, texture, wall.tint);
         }
 
-        prerendered_ground.near_ground.draw();
+        prerendered_ground.near_ground.draw(shader);
         for (self.billboard_objects.items) |billboard| {
             rl.DrawBillboard(
                 camera,
@@ -86,7 +88,7 @@ pub const LevelGeometry = struct {
         }
 
         glad.glStencilFunc(glad.GL_NOTEQUAL, 1, 0xff);
-        prerendered_ground.distant_ground.draw();
+        prerendered_ground.distant_ground.draw(shader);
         glad.glStencilFunc(glad.GL_ALWAYS, 1, 0xff);
     }
 
@@ -452,13 +454,6 @@ pub const LevelGeometry = struct {
             circle.position = circle.position.add(displacement_vector);
             found_collision.* = true;
         }
-    }
-
-    fn drawTintedMesh(mesh: rl.Mesh, material: rl.Material, tint: rl.Color, matrix: rl.Matrix) void {
-        const current_tint = material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color;
-        material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = tint;
-        rl.DrawMesh(mesh, material, matrix);
-        material.maps[@enumToInt(rl.MATERIAL_MAP_DIFFUSE)].color = current_tint;
     }
 
     fn getCloserRayHit(
@@ -976,12 +971,8 @@ const PrerenderedGroundPlane = struct {
         }
     }
 
-    fn draw(self: PrerenderedGroundPlane) void {
-        const key = @enumToInt(rl.MATERIAL_MAP_DIFFUSE);
-        const material_default_texture = self.render_texture_material.maps[key].texture;
-        self.render_texture_material.maps[key].texture = self.render_texture.texture;
-        rl.DrawMesh(self.plane_mesh, self.render_texture_material, self.mesh_matrix);
-        self.render_texture_material.maps[key].texture = material_default_texture;
+    fn draw(self: PrerenderedGroundPlane, shader: GenericShader) void {
+        shader.drawMesh(self.plane_mesh, self.mesh_matrix, self.render_texture.texture, rl.WHITE);
     }
 };
 

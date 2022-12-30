@@ -368,7 +368,7 @@ fn drawEverything(
     glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
 
     shader.enable();
-    level_geometry.draw(raylib_camera, prerendered_ground.*, texture_collection);
+    level_geometry.draw(raylib_camera, shader, prerendered_ground.*, texture_collection);
 
     var collision_objects: [4]gems.CollisionObject = undefined;
     std.debug.assert(players.len <= collision_objects.len);
