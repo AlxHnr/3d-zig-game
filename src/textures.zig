@@ -9,6 +9,7 @@ pub const Name = enum {
     gem,
     grass,
     hedge,
+    metal_fence,
     player,
     stone_floor,
     wall,

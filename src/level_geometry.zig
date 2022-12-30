@@ -12,6 +12,7 @@ pub const LevelGeometry = struct {
 
     walls: std.ArrayList(Wall),
     shared_wall_vertices: []f32,
+    shared_fence_vertices: []f32,
 
     /// Floors are rendered in order, with the last floor at the top.
     floors: std.ArrayList(Floor),
@@ -24,14 +25,20 @@ pub const LevelGeometry = struct {
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
-        const precomputed_wall_vertices = Wall.computeVertices();
+        const precomputed_wall_vertices = Wall.computeBottomlessCubeVertices();
         var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
+        errdefer allocator.free(shared_wall_vertices);
         std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
+
+        const precomputed_fence_vertices = Wall.computeDoubleSidedPlaneVertices();
+        var shared_fence_vertices = try allocator.alloc(f32, precomputed_fence_vertices.len);
+        std.mem.copy(f32, shared_fence_vertices, precomputed_fence_vertices[0..]);
 
         return LevelGeometry{
             .object_id_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
             .shared_wall_vertices = shared_wall_vertices,
+            .shared_fence_vertices = shared_fence_vertices,
             .floors = std.ArrayList(Floor).init(allocator),
             .floor_change_counter = 0,
             .floor_animation_cycle = animation.FourStepCycle.create(),
@@ -45,6 +52,7 @@ pub const LevelGeometry = struct {
         }
         self.walls.deinit();
         allocator.free(self.shared_wall_vertices);
+        allocator.free(self.shared_fence_vertices);
         self.floors.deinit();
     }
 
@@ -135,6 +143,8 @@ pub const LevelGeometry = struct {
         medium_wall,
         castle_wall,
         castle_tower,
+        metal_fence,
+        short_metal_fence,
         tall_hedge,
         giga_wall,
     };
@@ -153,6 +163,7 @@ pub const LevelGeometry = struct {
             end_position,
             wall_type,
             self.shared_wall_vertices,
+            self.shared_fence_vertices,
         );
         self.object_id_counter = self.object_id_counter + 1;
         return wall.object_id;
@@ -175,6 +186,7 @@ pub const LevelGeometry = struct {
                 end_position,
                 wall_type,
                 self.shared_wall_vertices,
+                self.shared_fence_vertices,
             );
             wall.tint = tint;
         }
@@ -292,9 +304,12 @@ pub const LevelGeometry = struct {
     };
 
     /// Find the id of the closest wall hit by the given ray, if available.
-    pub fn cast3DRayToWalls(self: LevelGeometry, ray: rl.Ray) ?RayCollision {
+    pub fn cast3DRayToWalls(self: LevelGeometry, ray: rl.Ray, ignore_fences: bool) ?RayCollision {
         var result: ?RayCollision = null;
         for (self.walls.items) |wall| {
+            if (ignore_fences and Wall.isFence(wall.wall_type)) {
+                continue;
+            }
             result = getCloserRayHit(ray, wall.mesh, wall.precomputed_matrix, wall.object_id, result);
         }
         return result;
@@ -303,7 +318,7 @@ pub const LevelGeometry = struct {
     /// Find the id of the closest object hit by the given ray, if available.
     pub fn cast3DRayToObjects(self: LevelGeometry, ray: rl.Ray) ?RayCollision {
         // Walls are covering floors and are prioritized.
-        if (self.cast3DRayToWalls(ray)) |ray_collision| {
+        if (self.cast3DRayToWalls(ray, false)) |ray_collision| {
             return ray_collision;
         }
 
@@ -486,13 +501,14 @@ const Wall = struct {
     boundaries: collision.Rectangle,
     wall_type: LevelGeometry.WallType,
 
-    /// Keeps a reference to the given wall vertices for its entire lifetime.
+    /// Keeps a reference to the given vertices for its entire lifetime.
     fn create(
         object_id: u64,
         start_position: util.FlatVector,
         end_position: util.FlatVector,
         wall_type: LevelGeometry.WallType,
         shared_wall_vertices: []f32,
+        shared_fence_vertices: []f32,
     ) Wall {
         const wall_type_properties = getWallTypeProperties(start_position, end_position, wall_type);
         const offset = wall_type_properties.corrected_end_position.subtract(
@@ -502,14 +518,58 @@ const Wall = struct {
         const x_axis = util.FlatVector{ .x = 1, .z = 0 };
         const rotation_angle = x_axis.computeRotationToOtherVector(offset);
 
-        var mesh = std.mem.zeroes(rl.Mesh);
-        mesh.vertices = shared_wall_vertices.ptr;
-        mesh.vertexCount = @intCast(c_int, shared_wall_vertices.len / 3);
-        mesh.triangleCount = @intCast(c_int, shared_wall_vertices.len / 9);
-
         const height = wall_type_properties.height;
-        const thickness = wall_type_properties.thickness;
         const texture_scale = wall_type_properties.texture_scale;
+
+        // When generating a fence, the thickness is only relevant for collision boundaries.
+        const thickness = wall_type_properties.thickness;
+
+        const mesh = if (isFence(wall_type))
+            generateDoubleSidedPlane(width, height, texture_scale, shared_fence_vertices)
+        else
+            generateBottomlessCube(width, height, thickness, texture_scale, shared_wall_vertices);
+        const scale_matrix = if (isFence(wall_type))
+            rm.MatrixScale(width, height, 1)
+        else
+            rm.MatrixScale(width, height, thickness);
+
+        const side_a_up_offset = util.FlatVector
+            .normalize(util.FlatVector{ .x = offset.z, .z = -offset.x })
+            .scale(thickness / 2);
+        return Wall{
+            .object_id = object_id,
+            .mesh = mesh,
+            .precomputed_matrix = rm.MatrixMultiply(
+                rm.MatrixMultiply(scale_matrix, rm.MatrixRotateY(rotation_angle)),
+                rm.MatrixTranslate(
+                    wall_type_properties.corrected_start_position.x,
+                    0,
+                    wall_type_properties.corrected_start_position.z,
+                ),
+            ),
+            .tint = Wall.getDefaultTint(wall_type),
+            .boundaries = collision.Rectangle.create(
+                wall_type_properties.corrected_start_position.add(side_a_up_offset),
+                wall_type_properties.corrected_start_position.subtract(side_a_up_offset),
+                width,
+            ),
+            .wall_type = wall_type,
+        };
+    }
+
+    fn destroy(self: *Wall) void {
+        self.mesh.vertices = null; // Prevent raylib from freeing our shared mesh.
+        rl.UnloadMesh(self.mesh);
+    }
+
+    /// Will keep a reference to the given vertices for the rest of its lifetime.
+    fn generateBottomlessCube(
+        width: f32,
+        height: f32,
+        thickness: f32,
+        texture_scale: f32,
+        shared_vertices: []f32,
+    ) rl.Mesh {
         const texture_corners = [8]rl.Vector2{
             rl.Vector2{ .x = 0, .y = 0 },
             rl.Vector2{ .x = width / texture_scale, .y = 0 },
@@ -527,50 +587,18 @@ const Wall = struct {
             1, 0, 2, 2, 0, 3, // Back side.
             0, 3, 4, 4, 3, 5, // Right side.
         };
-        var texcoords: [computeVertices().len / 3 * 2]f32 = undefined;
-        mesh.texcoords = &texcoords;
-        var index: usize = 0;
-        while (index < texcoords.len) : (index += 2) {
-            texcoords[index] = texture_corners[texture_corner_indices[index / 2]].x;
-            texcoords[index + 1] = texture_corners[texture_corner_indices[index / 2]].y;
-        }
-
-        rl.UploadMesh(&mesh, false);
-        mesh.texcoords = null; // Was copied to GPU.
-
-        const side_a_up_offset = util.FlatVector
-            .normalize(util.FlatVector{ .x = offset.z, .z = -offset.x })
-            .scale(thickness / 2);
-
-        return Wall{
-            .object_id = object_id,
-            .mesh = mesh,
-            .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
-                rm.MatrixScale(width, height, thickness),
-                rm.MatrixRotateY(rotation_angle),
-            ), rm.MatrixTranslate(
-                wall_type_properties.corrected_start_position.x,
-                0,
-                wall_type_properties.corrected_start_position.z,
-            )),
-            .tint = Wall.getDefaultTint(wall_type),
-            .boundaries = collision.Rectangle.create(
-                wall_type_properties.corrected_start_position.add(side_a_up_offset),
-                wall_type_properties.corrected_start_position.subtract(side_a_up_offset),
-                width,
-            ),
-            .wall_type = wall_type,
-        };
-    }
-
-    fn destroy(self: *Wall) void {
-        self.mesh.vertices = null; // Prevent raylib from freeing our shared mesh.
-        rl.UnloadMesh(self.mesh);
+        var texcoords_buffer: [computeBottomlessCubeVertices().len / 3 * 2]f32 = undefined;
+        return generateMesh(
+            shared_vertices,
+            texture_corners[0..],
+            texture_corner_indices[0..],
+            &texcoords_buffer,
+        );
     }
 
     // Return the mesh of a wall. It has fixed dimensions of 1 and must be scaled by individual
     // transformation matrices to the desired size. This mesh has no bottom.
-    fn computeVertices() [90]f32 {
+    fn computeBottomlessCubeVertices() [90]f32 {
         const corners = [8]rl.Vector3{
             rl.Vector3{ .x = 0, .y = 1, .z = 0.5 },
             rl.Vector3{ .x = 0, .y = 0, .z = 0.5 },
@@ -588,15 +616,89 @@ const Wall = struct {
             4, 6, 5, 5, 6, 7, // Back side.
             2, 3, 6, 6, 3, 7, // Right side.
         };
-
         var vertices: [90]f32 = undefined;
+        populateVertices(&vertices, corners[0..], corner_indices[0..]);
+        return vertices;
+    }
+
+    /// Will keep a reference to the given vertices for the rest of its lifetime.
+    fn generateDoubleSidedPlane(
+        width: f32,
+        height: f32,
+        texture_scale: f32,
+        shared_vertices: []f32,
+    ) rl.Mesh {
+        const texture_corners = [4]rl.Vector2{
+            rl.Vector2{ .x = 0, .y = 0 },
+            rl.Vector2{ .x = width / texture_scale, .y = 0 },
+            rl.Vector2{ .x = width / texture_scale, .y = height / texture_scale },
+            rl.Vector2{ .x = 0, .y = height / texture_scale },
+        };
+        const texture_corner_indices = [12]u3{
+            0, 3, 1, 3, 2, 1, // Front side.
+            1, 0, 2, 2, 0, 3, // Back side.
+        };
+        var texcoords_buffer: [computeDoubleSidedPlaneVertices().len / 3 * 2]f32 = undefined;
+        return generateMesh(
+            shared_vertices,
+            texture_corners[0..],
+            texture_corner_indices[0..],
+            &texcoords_buffer,
+        );
+    }
+
+    // Return the mesh of a fence. It has fixed dimensions of 1 and must be scaled by individual
+    // transformation matrices to the desired size.
+    fn computeDoubleSidedPlaneVertices() [36]f32 {
+        const corners = [4]rl.Vector3{
+            rl.Vector3{ .x = 0, .y = 1, .z = 0 },
+            rl.Vector3{ .x = 0, .y = 0, .z = 0 },
+            rl.Vector3{ .x = 1, .y = 1, .z = 0 },
+            rl.Vector3{ .x = 1, .y = 0, .z = 0 },
+        };
+        const corner_indices = [12]u3{
+            0, 1, 2, 1, 3, 2, // Front side.
+            0, 2, 1, 1, 2, 3, // Back side.
+        };
+        var vertices: [36]f32 = undefined;
+        populateVertices(&vertices, corners[0..], corner_indices[0..]);
+        return vertices;
+    }
+
+    fn populateVertices(vertices: []f32, corners: []const rl.Vector3, corner_indices: []const u3) void {
         var index: usize = 0;
         while (index < vertices.len) : (index += 3) {
             vertices[index] = corners[corner_indices[index / 3]].x;
             vertices[index + 1] = corners[corner_indices[index / 3]].y;
             vertices[index + 2] = corners[corner_indices[index / 3]].z;
         }
-        return vertices;
+    }
+
+    /// The returned mesh will keep a reference to the given shared_vertices.
+    fn generateMesh(
+        shared_vertices: []f32,
+        texture_corners: []const rl.Vector2,
+        texture_corner_indices: []const u3,
+        texcoords_buffer: []f32,
+    ) rl.Mesh {
+        const texcoords_count = shared_vertices.len / 3 * 2;
+        std.debug.assert(texcoords_buffer.len >= texcoords_count);
+
+        var mesh = std.mem.zeroes(rl.Mesh);
+        mesh.vertices = shared_vertices.ptr;
+        mesh.vertexCount = @intCast(c_int, shared_vertices.len / 3);
+        mesh.triangleCount = @intCast(c_int, shared_vertices.len / 9);
+
+        mesh.texcoords = texcoords_buffer.ptr;
+        var index: usize = 0;
+        while (index < texcoords_count) : (index += 2) {
+            texcoords_buffer[index] = texture_corners[texture_corner_indices[index / 2]].x;
+            texcoords_buffer[index + 1] = texture_corners[texture_corner_indices[index / 2]].y;
+        }
+
+        rl.UploadMesh(&mesh, false);
+        mesh.texcoords = null; // Was copied to GPU.
+        return mesh;
     }
 
     const WallTypeProperties = struct {
@@ -612,6 +714,7 @@ const Wall = struct {
         end_position: util.FlatVector,
         wall_type: LevelGeometry.WallType,
     ) WallTypeProperties {
+        const fence_thickness = 0.25; // Only needed for collision boundaries.
         return switch (wall_type) {
             else => {
                 return WallTypeProperties{
@@ -652,6 +755,24 @@ const Wall = struct {
                     .texture_scale = 9,
                 };
             },
+            .metal_fence => {
+                return WallTypeProperties{
+                    .corrected_start_position = start_position,
+                    .corrected_end_position = end_position,
+                    .height = 3.5,
+                    .thickness = fence_thickness,
+                    .texture_scale = 3.5,
+                };
+            },
+            .short_metal_fence => {
+                return WallTypeProperties{
+                    .corrected_start_position = start_position,
+                    .corrected_end_position = end_position,
+                    .height = 1.5,
+                    .thickness = fence_thickness,
+                    .texture_scale = 3.5,
+                };
+            },
             .tall_hedge => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
@@ -673,6 +794,13 @@ const Wall = struct {
         };
     }
 
+    fn isFence(wall_type: LevelGeometry.WallType) bool {
+        return switch (wall_type) {
+            else => false,
+            .metal_fence, .short_metal_fence => true,
+        };
+    }
+
     fn getDefaultTint(wall_type: LevelGeometry.WallType) rl.Color {
         return switch (wall_type) {
             .castle_tower => rl.Color{ .r = 248, .g = 248, .b = 248, .a = 255 },
@@ -686,6 +814,7 @@ const Wall = struct {
         texture_collection: textures.Collection,
     ) textures.RaylibAsset {
         return switch (wall_type) {
+            .metal_fence, .short_metal_fence => texture_collection.get(textures.Name.metal_fence),
             .tall_hedge => texture_collection.get(textures.Name.hedge),
             else => texture_collection.get(textures.Name.wall),
         };

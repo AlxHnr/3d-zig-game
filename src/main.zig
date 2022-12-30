@@ -347,7 +347,8 @@ fn drawEverything(
     const lerped_camera = current_player.getCamera(interval_between_previous_and_current_tick);
 
     const max_distance_from_target =
-        if (level_geometry.cast3DRayToWalls(lerped_camera.get3DRayFromTargetToSelf())) |ray_collision|
+        if (level_geometry
+        .cast3DRayToWalls(lerped_camera.get3DRayFromTargetToSelf(), true)) |ray_collision|
         ray_collision.distance
     else
         null;

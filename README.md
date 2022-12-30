@@ -30,7 +30,7 @@ Install zig 0.9.1 and run `zig build run` inside the projects directory.
 * **Author**: pboop
 * **License**: CC0
 
-### [Stone floor (modified)](https://opengameart.org/content/mage-city-arcanos)
+### [Mage City Arcanos (modified)](https://opengameart.org/content/mage-city-arcanos)
 * **Author**: Hyptosis
 * **License**: CC0
 
