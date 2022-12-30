@@ -457,7 +457,7 @@ pub fn main() !void {
     const shader = try loadShader();
     defer rl.UnloadShader(shader);
 
-    var texture_collection = try textures.Collection.loadFromDisk();
+    var texture_collection = try textures.Collection.loadFromDisk(shader);
     defer texture_collection.destroy();
 
     var players = [_]Player{
