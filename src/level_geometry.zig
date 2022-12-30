@@ -9,6 +9,7 @@ const glad = @cImport(@cInclude("external/glad.h"));
 
 pub const LevelGeometry = struct {
     object_id_counter: u64,
+    tick_counter: u64,
 
     walls: std.ArrayList(Wall),
     shared_wall_vertices: []f32,
@@ -21,7 +22,7 @@ pub const LevelGeometry = struct {
     floor_change_counter: u64,
     floor_animation_cycle: animation.FourStepCycle,
 
-    tick_counter: u64,
+    billboard_objects: std.ArrayList(BillboardObject),
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
@@ -36,13 +37,14 @@ pub const LevelGeometry = struct {
 
         return LevelGeometry{
             .object_id_counter = 0,
+            .tick_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
             .shared_wall_vertices = shared_wall_vertices,
             .shared_fence_vertices = shared_fence_vertices,
             .floors = std.ArrayList(Floor).init(allocator),
             .floor_change_counter = 0,
             .floor_animation_cycle = animation.FourStepCycle.create(),
-            .tick_counter = 0,
+            .billboard_objects = std.ArrayList(BillboardObject).init(allocator),
         };
     }
 
@@ -54,10 +56,12 @@ pub const LevelGeometry = struct {
         allocator.free(self.shared_wall_vertices);
         allocator.free(self.shared_fence_vertices);
         self.floors.deinit();
+        self.billboard_objects.deinit();
     }
 
     pub fn draw(
         self: LevelGeometry,
+        camera: rl.Camera,
         prerendered_ground: PrerenderedGround,
         texture_collection: textures.Collection,
     ) void {
@@ -67,6 +71,19 @@ pub const LevelGeometry = struct {
         }
 
         prerendered_ground.near_ground.draw();
+        for (self.billboard_objects.items) |billboard| {
+            rl.DrawBillboard(
+                camera,
+                billboard.getRaylibAsset(texture_collection).texture,
+                rl.Vector3{
+                    .x = billboard.boundaries.position.x,
+                    .y = billboard.boundaries.radius,
+                    .z = billboard.boundaries.position.z,
+                },
+                billboard.boundaries.radius * 2,
+                billboard.tint,
+            );
+        }
 
         glad.glStencilFunc(glad.GL_NOTEQUAL, 1, 0xff);
         prerendered_ground.distant_ground.draw();
@@ -243,6 +260,22 @@ pub const LevelGeometry = struct {
         }
     }
 
+    pub const BillboardObjectType = enum {
+        small_bush,
+    };
+
+    /// Returns the object id of the created billboard object on success.
+    pub fn addBillboardObject(
+        self: *LevelGeometry,
+        object_type: BillboardObjectType,
+        position: util.FlatVector,
+    ) !u64 {
+        const billboard = try self.billboard_objects.addOne();
+        billboard.* = BillboardObject.create(self.object_id_counter, object_type, position);
+        self.object_id_counter = self.object_id_counter + 1;
+        return billboard.object_id;
+    }
+
     /// If the given object id does not exist, this function will do nothing.
     pub fn removeObject(self: *LevelGeometry, object_id: u64) void {
         for (self.walls.items) |*wall, index| {
@@ -252,10 +285,16 @@ pub const LevelGeometry = struct {
                 return;
             }
         }
-        for (self.floors.items) |*floor, index| {
+        for (self.floors.items) |floor, index| {
             if (floor.object_id == object_id) {
                 _ = self.floors.orderedRemove(index);
                 self.floor_change_counter = self.floor_change_counter + 1;
+                return;
+            }
+        }
+        for (self.billboard_objects.items) |billboard, index| {
+            if (billboard.object_id == object_id) {
+                _ = self.billboard_objects.orderedRemove(index);
                 return;
             }
         }
@@ -267,6 +306,8 @@ pub const LevelGeometry = struct {
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = tint;
             self.floor_change_counter = self.floor_change_counter + 1;
+        } else if (self.findBillboardObject(object_id)) |billboard| {
+            billboard.tint = tint;
         }
     }
 
@@ -276,6 +317,8 @@ pub const LevelGeometry = struct {
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = Floor.getDefaultTint(floor.floor_type);
             self.floor_change_counter = self.floor_change_counter + 1;
+        } else if (self.findBillboardObject(object_id)) |billboard| {
+            billboard.tint = BillboardObject.getDefaultTint(billboard.object_type);
         }
     }
 
@@ -310,16 +353,23 @@ pub const LevelGeometry = struct {
             if (ignore_fences and Wall.isFence(wall.wall_type)) {
                 continue;
             }
-            result = getCloserRayHit(ray, wall.mesh, wall.precomputed_matrix, wall.object_id, result);
+            const hit = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
+            result = getCloserRayHit(hit, wall.object_id, result);
         }
         return result;
     }
 
     /// Find the id of the closest object hit by the given ray, if available.
     pub fn cast3DRayToObjects(self: LevelGeometry, ray: rl.Ray) ?RayCollision {
-        // Walls are covering floors and are prioritized.
-        if (self.cast3DRayToWalls(ray, false)) |ray_collision| {
-            return ray_collision;
+        var result = self.cast3DRayToWalls(ray, false);
+        for (self.billboard_objects.items) |billboard| {
+            const hit = billboard.cast3DRay(ray);
+            result = getCloserRayHit(hit, billboard.object_id, result);
+        }
+
+        // Walls and billboards are covering floors and are prioritized.
+        if (result != null) {
+            return result;
         }
 
         if (self.cast3DRayToGround(ray)) |position_on_ground| {
@@ -386,6 +436,15 @@ pub const LevelGeometry = struct {
         return null;
     }
 
+    fn findBillboardObject(self: *LevelGeometry, object_id: u64) ?*BillboardObject {
+        for (self.billboard_objects.items) |*billboard| {
+            if (billboard.object_id == object_id) {
+                return billboard;
+            }
+        }
+        return null;
+    }
+
     /// If the given wall collides with the circle, move the circle out of the wall and set
     /// found_collision to true. Without a collision this boolean will remain unchanged.
     fn updateDisplacedCircle(wall: Wall, circle: *collision.Circle, found_collision: *bool) void {
@@ -403,13 +462,10 @@ pub const LevelGeometry = struct {
     }
 
     fn getCloserRayHit(
-        ray: rl.Ray,
-        mesh: rl.Mesh,
-        precomputed_matrix: rl.Matrix,
+        hit: rl.RayCollision,
         object_id: u64,
         current_collision: ?RayCollision,
     ) ?RayCollision {
-        const hit = rl.GetRayCollisionMesh(ray, mesh, precomputed_matrix);
         const found_closer_object = if (!hit.hit)
             false
         else if (current_collision) |existing_result|
@@ -926,5 +982,58 @@ const PrerenderedGroundPlane = struct {
         self.render_texture_material.maps[key].texture = self.render_texture.texture;
         rl.DrawMesh(self.plane_mesh, self.render_texture_material, self.mesh_matrix);
         self.render_texture_material.maps[key].texture = material_default_texture;
+    }
+};
+
+const BillboardObject = struct {
+    object_id: u64,
+    object_type: LevelGeometry.BillboardObjectType,
+    boundaries: collision.Circle,
+    tint: rl.Color,
+
+    fn create(
+        object_id: u64,
+        object_type: LevelGeometry.BillboardObjectType,
+        position: util.FlatVector,
+    ) BillboardObject {
+        return .{
+            .object_id = object_id,
+            .object_type = object_type,
+            .boundaries = .{ .position = position, .radius = getDefaultSize(object_type) / 2 },
+            .tint = getDefaultTint(object_type),
+        };
+    }
+
+    fn cast3DRay(self: BillboardObject, ray: rl.Ray) rl.RayCollision {
+        return rl.GetRayCollisionBox(ray, rl.BoundingBox{
+            .min = .{
+                .x = self.boundaries.position.x - self.boundaries.radius,
+                .y = 0,
+                .z = self.boundaries.position.z - self.boundaries.radius,
+            },
+            .max = .{
+                .x = self.boundaries.position.x + self.boundaries.radius,
+                .y = self.boundaries.radius * 2,
+                .z = self.boundaries.position.z + self.boundaries.radius,
+            },
+        });
+    }
+
+    fn getDefaultTint(object_type: LevelGeometry.BillboardObjectType) rl.Color {
+        return switch (object_type) {
+            else => rl.WHITE,
+        };
+    }
+
+    fn getDefaultSize(object_type: LevelGeometry.BillboardObjectType) f32 {
+        return switch (object_type) {
+            else => 1.0,
+        };
+    }
+
+    fn getRaylibAsset(self: BillboardObject, texture_collection: textures.Collection) textures.RaylibAsset {
+        return switch (self.object_type) {
+            .small_bush => texture_collection.get(textures.Name.small_bush),
+        };
     }
 };

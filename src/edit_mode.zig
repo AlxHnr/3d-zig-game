@@ -16,6 +16,7 @@ pub const State = struct {
                 .used_field = @intToEnum(ObjectTypeToInsert.UsedField, 0),
                 .wall = @intToEnum(LevelGeometry.WallType, 0),
                 .floor = @intToEnum(LevelGeometry.FloorType, 0),
+                .billboard = @intToEnum(LevelGeometry.BillboardObjectType, 0),
             },
             .currently_edited_object = null,
             .continuous_placement = false,
@@ -88,6 +89,7 @@ pub const State = struct {
         switch (object_type.used_field) {
             .wall => object_type.wall = util.getNextEnumWrapAround(object_type.wall),
             .floor => object_type.floor = util.getNextEnumWrapAround(object_type.floor),
+            .billboard => object_type.billboard = util.getNextEnumWrapAround(object_type.billboard),
         }
     }
 
@@ -97,6 +99,8 @@ pub const State = struct {
         switch (object_type.used_field) {
             .wall => object_type.wall = util.getPreviousEnumWrapAround(object_type.wall),
             .floor => object_type.floor = util.getPreviousEnumWrapAround(object_type.floor),
+            .billboard => object_type.billboard = util
+                .getPreviousEnumWrapAround(object_type.billboard),
         }
     }
 
@@ -113,8 +117,10 @@ pub const State = struct {
                 const enum_string = switch (self.object_type_to_insert.used_field) {
                     .wall => @tagName(self.object_type_to_insert.wall),
                     .floor => @tagName(self.object_type_to_insert.floor),
+                    .billboard => @tagName(self.object_type_to_insert.billboard),
                 };
-                const continuous_string = if (self.continuous_placement)
+                const continuous_string = if (self.continuous_placement and
+                    self.object_type_to_insert.used_field != .billboard)
                     "continuous "
                 else
                     "";
@@ -135,8 +141,9 @@ pub const State = struct {
         used_field: UsedField,
         wall: LevelGeometry.WallType,
         floor: LevelGeometry.FloorType,
+        billboard: LevelGeometry.BillboardObjectType,
 
-        const UsedField = enum { wall, floor };
+        const UsedField = enum { wall, floor, billboard };
     };
 
     const CurrentlyEditedObject = struct {
@@ -160,6 +167,7 @@ pub const State = struct {
         const object_id = try switch (object_type.used_field) {
             .wall => level_geometry.addWall(position, position, object_type.wall),
             .floor => level_geometry.addFloor(position, position, 0, object_type.floor),
+            .billboard => level_geometry.addBillboardObject(object_type.billboard, position),
         };
         level_geometry.tintObject(object_id, rl.GREEN);
         self.currently_edited_object =
@@ -197,6 +205,7 @@ pub const State = struct {
 
                     level_geometry.updateFloor(object.object_id, side_a_start, side_a_end, side_b_length);
                 },
+                .billboard => {},
             }
         }
     }

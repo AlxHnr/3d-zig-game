@@ -363,12 +363,12 @@ fn drawEverything(
 
     rl.BeginDrawing();
     rl.BeginMode3D(raylib_camera);
-    shader.enable();
 
     glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
     glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
 
-    level_geometry.draw(prerendered_ground.*, texture_collection);
+    shader.enable();
+    level_geometry.draw(raylib_camera, prerendered_ground.*, texture_collection);
 
     var collision_objects: [4]gems.CollisionObject = undefined;
     std.debug.assert(players.len <= collision_objects.len);

@@ -10,6 +10,7 @@ pub const Name = enum {
     hedge,
     metal_fence,
     player,
+    small_bush,
     stone_floor,
     wall,
     water_frame_0,
