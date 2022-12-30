@@ -36,13 +36,13 @@ const fragment_shader =
     \\ }
 ;
 
-pub const DefaultShader = struct {
+pub const GenericShader = struct {
     shader: rl.Shader,
     mvp_location: glad.GLint,
     texture_sampler_location: glad.GLint,
     tint_location: glad.GLint,
 
-    pub fn create() util.RaylibError!DefaultShader {
+    pub fn create() util.RaylibError!GenericShader {
         const shader = rl.LoadShaderFromMemory(vertex_shader, fragment_shader);
         if (shader.id == rlgl.rlGetShaderIdDefault()) {
             return util.RaylibError.FailedToCompileAndLinkShader;
@@ -54,7 +54,7 @@ pub const DefaultShader = struct {
         if (mvp_location == -1 or texture_sampler_location == -1 or tint_location == -1) {
             return util.RaylibError.FailedToCompileAndLinkShader;
         }
-        return DefaultShader{
+        return GenericShader{
             .shader = shader,
             .mvp_location = mvp_location,
             .texture_sampler_location = texture_sampler_location,
@@ -62,11 +62,11 @@ pub const DefaultShader = struct {
         };
     }
 
-    pub fn destroy(self: *DefaultShader) void {
+    pub fn destroy(self: *GenericShader) void {
         rl.UnloadShader(self.shader);
     }
 
-    pub fn enable(self: DefaultShader) void {
+    pub fn enable(self: GenericShader) void {
         rl.BeginShaderMode(self.shader);
         rlgl.rlEnableShader(self.shader.id);
         rlgl.rlActiveTextureSlot(0);
@@ -74,14 +74,14 @@ pub const DefaultShader = struct {
         glad.glUniform1iv(self.texture_sampler_location, 1, &sampler2d_id);
     }
 
-    pub fn disable(_: DefaultShader) void {
+    pub fn disable(_: GenericShader) void {
         rl.EndShaderMode();
         rlgl.rlDisableShader();
     }
 
     /// Only callable when the shader is active.
     pub fn drawMesh(
-        self: DefaultShader,
+        self: GenericShader,
         mesh: rl.Mesh,
         model_matrix: rl.Matrix,
         texture: rl.Texture,

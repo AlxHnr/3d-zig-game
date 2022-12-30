@@ -11,7 +11,7 @@ const glad = @cImport(@cInclude("external/glad.h"));
 
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
-const DefaultShader = @import("default_shader.zig").DefaultShader;
+const GenericShader = @import("generic_shader.zig").GenericShader;
 
 fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
     return rl.Color{
@@ -340,7 +340,7 @@ fn drawEverything(
     prerendered_ground: *LevelGeometry.PrerenderedGround,
     gem_collection: gems.Collection,
     texture_collection: textures.Collection,
-    shader: DefaultShader,
+    shader: GenericShader,
     edit_mode_state: edit_mode.State,
     interval_between_previous_and_current_tick: f32,
 ) void {
@@ -377,7 +377,6 @@ fn drawEverything(
             player.getLerpedCollisionObject(interval_between_previous_and_current_tick);
     }
 
-    rl.BeginShaderMode(shader);
     gem_collection.draw(
         raylib_camera,
         texture_collection.get(textures.Name.gem).texture,
@@ -392,7 +391,7 @@ fn drawEverything(
             interval_between_previous_and_current_tick,
         );
     }
-    rl.EndShaderMode();
+    shader.disable();
     rl.EndMode3D();
 
     drawGemCount(
@@ -456,7 +455,7 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var shader = try DefaultShader.create();
+    var shader = try GenericShader.create();
     defer shader.destroy();
 
     var texture_collection = try textures.Collection.loadFromDisk();
