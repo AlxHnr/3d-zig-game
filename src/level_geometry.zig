@@ -652,11 +652,6 @@ const Wall = struct {
                     .texture_scale = 9,
                 };
             },
-                return WallTypeProperties{
-                    .corrected_start_position = start_position,
-                    .corrected_end_position = end_position,
-                };
-            },
             .tall_hedge => {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
