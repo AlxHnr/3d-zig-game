@@ -379,14 +379,14 @@ fn drawEverything(
 
     gem_collection.draw(
         raylib_camera,
-        texture_collection.get(textures.Name.gem).texture,
+        texture_collection.get(textures.Name.gem),
         collision_objects[0..players.len],
         interval_between_previous_and_current_tick,
     );
     for (players) |*player| {
         player.draw(
             raylib_camera,
-            texture_collection.get(textures.Name.player).texture,
+            texture_collection.get(textures.Name.player),
             player.id == current_player.id,
             interval_between_previous_and_current_tick,
         );
@@ -396,7 +396,7 @@ fn drawEverything(
 
     drawGemCount(
         screen_height,
-        texture_collection.get(textures.Name.gem).texture,
+        texture_collection.get(textures.Name.gem),
         current_player.gem_count,
     );
 
@@ -462,8 +462,8 @@ pub fn main() !void {
     defer texture_collection.destroy();
 
     var players = [_]Player{
-        Player.create(0, 0, 0, texture_collection.get(textures.Name.player).texture),
-        Player.create(1, 5, 14, texture_collection.get(textures.Name.player).texture),
+        Player.create(0, 0, 0, texture_collection.get(textures.Name.player)),
+        Player.create(1, 5, 14, texture_collection.get(textures.Name.player)),
     };
     var controllable_player_index: usize = 0;
 

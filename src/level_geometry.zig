@@ -68,7 +68,7 @@ pub const LevelGeometry = struct {
         texture_collection: textures.Collection,
     ) void {
         for (self.walls.items) |wall| {
-            const texture = Wall.getRaylibAsset(wall.wall_type, texture_collection).texture;
+            const texture = wall.getTexture(texture_collection);
             shader.drawMesh(wall.mesh, wall.precomputed_matrix, texture, wall.tint);
         }
 
@@ -76,7 +76,7 @@ pub const LevelGeometry = struct {
         for (self.billboard_objects.items) |billboard| {
             rl.DrawBillboard(
                 camera,
-                billboard.getRaylibAsset(texture_collection).texture,
+                billboard.getTexture(texture_collection),
                 rl.Vector3{
                     .x = billboard.boundaries.position.x,
                     .y = billboard.boundaries.radius,
@@ -527,12 +527,12 @@ const Floor = struct {
         };
     }
 
-    fn getRaylibAsset(
-        floor_type: LevelGeometry.FloorType,
+    fn getTexture(
+        self: Floor,
         floor_animation_cycle: animation.FourStepCycle,
         texture_collection: textures.Collection,
-    ) textures.RaylibAsset {
-        return switch (floor_type) {
+    ) rl.Texture {
+        return switch (self.floor_type) {
             .grass => texture_collection.get(textures.Name.grass),
             .stone => texture_collection.get(textures.Name.stone_floor),
             .water => switch (floor_animation_cycle.getFrame()) {
@@ -860,11 +860,8 @@ const Wall = struct {
         };
     }
 
-    fn getRaylibAsset(
-        wall_type: LevelGeometry.WallType,
-        texture_collection: textures.Collection,
-    ) textures.RaylibAsset {
-        return switch (wall_type) {
+    fn getTexture(self: Wall, texture_collection: textures.Collection) rl.Texture {
+        return switch (self.wall_type) {
             .metal_fence, .short_metal_fence => texture_collection.get(textures.Name.metal_fence),
             .tall_hedge => texture_collection.get(textures.Name.hedge),
             else => texture_collection.get(textures.Name.wall),
@@ -875,9 +872,6 @@ const Wall = struct {
 /// A piece of ground which floats trough the game world.
 const PrerenderedGroundPlane = struct {
     render_texture: rl.RenderTexture,
-
-    /// Wrapper around render texture.
-    render_texture_material: rl.Material,
 
     genereate_mipmaps: bool,
 
@@ -898,7 +892,6 @@ const PrerenderedGroundPlane = struct {
     ) PrerenderedGroundPlane {
         return .{
             .render_texture = rl.LoadRenderTexture(texture_size, texture_size),
-            .render_texture_material = rl.LoadMaterialDefault(),
             .genereate_mipmaps = genereate_mipmaps,
             .plane_mesh = rl.GenMeshPlane(width_and_height, width_and_height, 1, 1),
             .mesh_matrix = rm.MatrixIdentity(),
@@ -909,7 +902,6 @@ const PrerenderedGroundPlane = struct {
 
     fn destroy(self: *PrerenderedGroundPlane) void {
         rl.UnloadMesh(self.plane_mesh);
-        rl.UnloadMaterial(self.render_texture_material);
         rl.UnloadRenderTexture(self.render_texture);
     }
 
@@ -934,11 +926,7 @@ const PrerenderedGroundPlane = struct {
         rl.BeginTextureMode(self.render_texture);
         rl.ClearBackground(.{ .r = 0, .g = 0, .b = 0, .a = 0 });
         for (floors) |floor| {
-            const texture = Floor.getRaylibAsset(
-                floor.floor_type,
-                floor_animation_cycle,
-                texture_collection,
-            ).texture;
+            const texture = floor.getTexture(floor_animation_cycle, texture_collection);
             const texture_scale = Floor.getDefaultTextureScale(floor.floor_type);
             const source_rect = rl.Rectangle{
                 .x = 0,
@@ -1022,7 +1010,7 @@ const BillboardObject = struct {
         };
     }
 
-    fn getRaylibAsset(self: BillboardObject, texture_collection: textures.Collection) textures.RaylibAsset {
+    fn getTexture(self: BillboardObject, texture_collection: textures.Collection) rl.Texture {
         return switch (self.object_type) {
             .small_bush => texture_collection.get(textures.Name.small_bush),
         };

@@ -17,53 +17,49 @@ pub const Name = enum {
     water_frame_1,
     water_frame_2,
 };
-pub const RaylibAsset = struct { texture: rl.Texture, material: rl.Material };
-
 pub const Collection = struct {
-    asset_mappings: std.EnumArray(Name, RaylibAsset),
+    textures: std.EnumArray(Name, rl.Texture),
 
     pub fn loadFromDisk() !Collection {
-        var asset_mappings = std.EnumArray(Name, RaylibAsset).initUndefined();
-        var iterator = asset_mappings.iterator();
+        var textures = std.EnumArray(Name, rl.Texture).initUndefined();
+        var iterator = textures.iterator();
         while (iterator.next()) |mapping| {
-            var asset_path_buffer: [64]u8 = undefined;
-            const asset_path = try std.fmt.bufPrintZ(
-                asset_path_buffer[0..],
+            var texture_path_buffer: [64]u8 = undefined;
+            const texture_path = try std.fmt.bufPrintZ(
+                texture_path_buffer[0..],
                 "assets/{s}.png",
                 .{@tagName(mapping.key)},
             );
 
-            var image = rl.LoadImage(asset_path);
+            var image = rl.LoadImage(texture_path);
             if (image.data == null) {
-                var cleanup_iterator = asset_mappings.iterator();
+                var cleanup_iterator = textures.iterator();
                 while (cleanup_iterator.next()) |mapping_to_destroy| {
                     if (mapping_to_destroy.key == mapping.key) {
                         break;
                     }
-                    rl.UnloadMaterial(mapping_to_destroy.value.material);
+                    rl.UnloadTexture(mapping_to_destroy.value.*);
                 }
                 return util.RaylibError.FailedToLoadTextureFile;
             }
 
             const texture = textureFromImage(&image, mapping.key);
-            var material = rl.LoadMaterialDefault();
-            rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), texture);
-            mapping.value.* = RaylibAsset{ .texture = texture, .material = material };
+            mapping.value.* = texture;
         }
 
-        return Collection{ .asset_mappings = asset_mappings };
+        return Collection{ .textures = textures };
     }
 
     pub fn destroy(self: *Collection) void {
-        var iterator = self.asset_mappings.iterator();
+        var iterator = self.textures.iterator();
         while (iterator.next()) |mapping| {
-            rl.UnloadMaterial(mapping.value.material);
+            rl.UnloadTexture(mapping.value.*);
         }
     }
 
-    /// The returned assets should not be freed by the caller.
-    pub fn get(self: Collection, name: Name) RaylibAsset {
-        return self.asset_mappings.get(name);
+    /// The returned texture should not be unloaded by the caller.
+    pub fn get(self: Collection, name: Name) rl.Texture {
+        return self.textures.get(name);
     }
 };
 
