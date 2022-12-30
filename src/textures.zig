@@ -3,7 +3,6 @@
 const std = @import("std");
 const rl = @import("raylib");
 const util = @import("util.zig");
-const rlgl = @cImport(@cInclude("rlgl.h"));
 
 pub const Name = enum {
     gem,
@@ -22,8 +21,7 @@ pub const RaylibAsset = struct { texture: rl.Texture, material: rl.Material };
 pub const Collection = struct {
     asset_mappings: std.EnumArray(Name, RaylibAsset),
 
-    /// Will keep a reference to the given shader for the rest of its lifetime.
-    pub fn loadFromDisk(shader: rl.Shader) !Collection {
+    pub fn loadFromDisk() !Collection {
         var asset_mappings = std.EnumArray(Name, RaylibAsset).initUndefined();
         var iterator = asset_mappings.iterator();
         while (iterator.next()) |mapping| {
@@ -41,7 +39,6 @@ pub const Collection = struct {
                     if (mapping_to_destroy.key == mapping.key) {
                         break;
                     }
-                    mapping_to_destroy.value.material.shader.id = rlgl.rlGetShaderIdDefault();
                     rl.UnloadMaterial(mapping_to_destroy.value.material);
                 }
                 return util.RaylibError.FailedToLoadTextureFile;
@@ -50,7 +47,6 @@ pub const Collection = struct {
             const texture = textureFromImage(&image, mapping.key);
             var material = rl.LoadMaterialDefault();
             rl.SetMaterialTexture(&material, @enumToInt(rl.MATERIAL_MAP_DIFFUSE), texture);
-            material.shader = shader;
             mapping.value.* = RaylibAsset{ .texture = texture, .material = material };
         }
 
@@ -60,7 +56,6 @@ pub const Collection = struct {
     pub fn destroy(self: *Collection) void {
         var iterator = self.asset_mappings.iterator();
         while (iterator.next()) |mapping| {
-            mapping.value.material.shader.id = rlgl.rlGetShaderIdDefault();
             rl.UnloadMaterial(mapping.value.material);
         }
     }
