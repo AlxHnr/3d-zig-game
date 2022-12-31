@@ -67,17 +67,15 @@ pub const Collection = struct {
 fn textureFromImage(image: *rl.Image, texture_name: Name) rl.Texture {
     defer rl.UnloadImage(image.*);
 
+    // Apply some tricks to make the artwork look pixely from nearby but not grainy from the
+    // distance.
     switch (texture_name) {
         else => return rl.LoadTextureFromImage(image.*),
-        .hedge => {
-            // Apply some tricks to make the artwork look pixely from nearby but not grainy from the
-            // distance.
-            rl.ImageResizeNN(image, image.width * 5, image.height * 5);
-
-            var texture = rl.LoadTextureFromImage(image.*);
-            rl.GenTextureMipmaps(&texture);
-            rl.SetTextureFilter(texture, @enumToInt(rl.FILTER_BILINEAR));
-            return texture;
-        },
+        .hedge => rl.ImageResizeNN(image, image.width * 5, image.height * 5),
+        .stone_floor => rl.ImageResizeNN(image, image.width * 10, image.height * 10),
     }
+    var texture = rl.LoadTextureFromImage(image.*);
+    rl.GenTextureMipmaps(&texture);
+    rl.SetTextureFilter(texture, @enumToInt(rl.FILTER_BILINEAR));
+    return texture;
 }
