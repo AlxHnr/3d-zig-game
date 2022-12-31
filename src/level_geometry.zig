@@ -856,9 +856,9 @@ const Wall = struct {
                 return WallTypeProperties{
                     .corrected_start_position = start_position,
                     .corrected_end_position = end_position,
-                    .height = 1.5,
+                    .height = 1,
                     .thickness = fence_thickness,
-                    .texture_scale = 3.5,
+                    .texture_scale = 1.5,
                 };
             },
             .tall_hedge => {
