@@ -435,6 +435,15 @@ const CurrentlyEditedObject = struct {
     start_position: util.FlatVector,
 };
 
+fn reloadDefaultMap(allocator: std.mem.Allocator, level_geometry: *LevelGeometry) !void {
+    var json = try std.fs.cwd().readFileAlloc(allocator, "maps/default.json", 20 * 1024 * 1024);
+    defer allocator.free(json);
+
+    const geometry = try LevelGeometry.createFromJson(allocator, json);
+    level_geometry.destroy(allocator);
+    level_geometry.* = geometry;
+}
+
 pub fn main() !void {
     var screen_width: u16 = 1280;
     var screen_height: u16 = 720;
@@ -461,6 +470,7 @@ pub fn main() !void {
 
     var level_geometry = try LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy(gpa.allocator());
+    try reloadDefaultMap(gpa.allocator(), &level_geometry);
 
     var gem_collection = gems.Collection.create(gpa.allocator());
     defer gem_collection.destroy();
@@ -536,12 +546,7 @@ pub fn main() !void {
             try level_geometry.toJson(gpa.allocator(), file.writer());
         }
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_F5)) {
-            var json = try std.fs.cwd()
-                .readFileAlloc(gpa.allocator(), "maps/default.json", 20 * 1024 * 1024);
-            defer gpa.allocator().free(json);
-            const geometry = try LevelGeometry.createFromJson(gpa.allocator(), json);
-            level_geometry.destroy(gpa.allocator());
-            level_geometry = geometry;
+            try reloadDefaultMap(gpa.allocator(), &level_geometry);
         }
 
         const camera = players[controllable_player_index].getCamera(lap_result.next_tick_progress);
