@@ -40,7 +40,7 @@ pub const Collection = struct {
                     }
                     rl.UnloadTexture(mapping_to_destroy.value.*);
                 }
-                return util.RaylibError.FailedToLoadTextureFile;
+                return util.Error.FailedToLoadTextureFile;
             }
 
             const texture = textureFromImage(&image, mapping.key);

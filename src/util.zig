@@ -143,9 +143,10 @@ pub const TickTimer = struct {
     };
 };
 
-pub const RaylibError = error{
+pub const Error = error{
     FailedToLoadTextureFile,
     FailedToCompileAndLinkShader,
+    FailedToDeserializeLevelGeometry,
 };
 
 pub fn getPreviousEnumWrapAround(value: anytype) @TypeOf(value) {

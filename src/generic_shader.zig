@@ -41,10 +41,10 @@ const fragment_shader =
 ;
 
 /// To be freed via raylib.UnloadShader();
-pub fn load() util.RaylibError!rl.Shader {
+pub fn load() util.Error!rl.Shader {
     const shader = rl.LoadShaderFromMemory(vertex_shader, fragment_shader);
     if (shader.id == rlgl.rlGetShaderIdDefault()) {
-        return util.RaylibError.FailedToCompileAndLinkShader;
+        return util.Error.FailedToCompileAndLinkShader;
     }
     return shader;
 }
