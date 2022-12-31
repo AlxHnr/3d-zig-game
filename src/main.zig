@@ -462,43 +462,12 @@ pub fn main() !void {
     var level_geometry = try LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy(gpa.allocator());
 
-    _ = try level_geometry.addFloor(
-        .{ .x = -500, .z = -500 },
-        .{ .x = -500, .z = 500 },
-        1000,
-        LevelGeometry.FloorType.water,
-    );
-    _ = try level_geometry.addFloor(
-        .{ .x = -15, .z = -15 },
-        .{ .x = -15, .z = 15 },
-        30,
-        LevelGeometry.FloorType.grass,
-    );
-    _ = try level_geometry.addFloor(
-        .{ .x = -5, .z = -500 },
-        .{ .x = -5, .z = 500 },
-        10,
-        LevelGeometry.FloorType.stone,
-    );
-
     var gem_collection = gems.Collection.create(gpa.allocator());
     defer gem_collection.destroy();
 
-    var prng = std.rand.DefaultPrng.init(0);
     var view_mode = ViewMode.from_behind;
     var edit_mode_state = edit_mode.State.create();
 
-    {
-        var counter: usize = 0;
-        while (counter < 2000) : (counter += 1) {
-            _ = try level_geometry.addBillboardObject(LevelGeometry.BillboardObjectType.small_bush, .{
-                .x = (std.rand.Random.float(prng.random(), f32) - 0.5) * 50,
-                .z = (std.rand.Random.float(prng.random(), f32) - 0.5) * 50,
-            });
-        }
-    }
-
-    // rl.SetTargetFPS(40);
     var tick_timer = try util.TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
         const lap_result = tick_timer.lap();
@@ -531,15 +500,6 @@ pub fn main() !void {
             }
             controllable_player_index = (controllable_player_index + 1) % players.len;
         }
-        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_BACKSPACE)) {
-            var counter: usize = 0;
-            while (counter < 500) : (counter += 1) {
-                _ = try gem_collection.addGem(util.FlatVector{
-                    .x = (std.rand.Random.float(prng.random(), f32) - 0.5) * 50,
-                    .z = (std.rand.Random.float(prng.random(), f32) - 0.5) * 50,
-                });
-            }
-        }
         if (std.math.fabs(rl.GetMouseWheelMoveV().y) > util.Constants.epsilon) {
             if (!rl.IsMouseButtonDown(rl.MouseButton.MOUSE_BUTTON_RIGHT)) {
                 players[controllable_player_index].state_at_next_tick.camera
@@ -569,6 +529,19 @@ pub fn main() !void {
                         .resetAngleFromGround();
                 },
             }
+        }
+        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_F2)) {
+            var file = try std.fs.cwd().createFile("maps/default.json", .{});
+            defer file.close();
+            try level_geometry.toJson(gpa.allocator(), file.writer());
+        }
+        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_F5)) {
+            var json = try std.fs.cwd()
+                .readFileAlloc(gpa.allocator(), "maps/default.json", 20 * 1024 * 1024);
+            defer gpa.allocator().free(json);
+            const geometry = try LevelGeometry.createFromJson(gpa.allocator(), json);
+            level_geometry.destroy(gpa.allocator());
+            level_geometry = geometry;
         }
 
         const camera = players[controllable_player_index].getCamera(lap_result.next_tick_progress);
