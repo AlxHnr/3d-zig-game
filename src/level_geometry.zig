@@ -9,17 +9,15 @@ const glad = @cImport(@cInclude("external/glad.h"));
 
 pub const LevelGeometry = struct {
     object_id_counter: u64,
-    tick_counter: u64,
 
     walls: std.ArrayList(Wall),
+
+    /// These vertices are needed for ray casting in edit mode.
     shared_wall_vertices: []f32,
     shared_fence_vertices: []f32,
 
     /// Floors are rendered in order, with the last floor at the top.
     floors: std.ArrayList(Floor),
-
-    /// Used for invalidating prerendered floor textures.
-    floor_change_counter: u64,
     floor_animation_cycle: animation.FourStepCycle,
 
     billboard_objects: std.ArrayList(BillboardObject),
@@ -37,12 +35,10 @@ pub const LevelGeometry = struct {
 
         return LevelGeometry{
             .object_id_counter = 0,
-            .tick_counter = 0,
             .walls = std.ArrayList(Wall).init(allocator),
             .shared_wall_vertices = shared_wall_vertices,
             .shared_fence_vertices = shared_fence_vertices,
             .floors = std.ArrayList(Floor).init(allocator),
-            .floor_change_counter = 0,
             .floor_animation_cycle = animation.FourStepCycle.create(),
             .billboard_objects = std.ArrayList(BillboardObject).init(allocator),
         };
@@ -55,7 +51,12 @@ pub const LevelGeometry = struct {
         self.walls.deinit();
         allocator.free(self.shared_wall_vertices);
         allocator.free(self.shared_fence_vertices);
+
+        for (self.floors.items) |*floor| {
+            floor.destroy();
+        }
         self.floors.deinit();
+
         self.billboard_objects.deinit();
     }
 
@@ -63,7 +64,6 @@ pub const LevelGeometry = struct {
         self: LevelGeometry,
         camera: rl.Camera,
         shader: rl.Shader,
-        prerendered_ground: PrerenderedGround,
         texture_collection: textures.Collection,
     ) void {
         for (self.walls.items) |wall| {
@@ -87,76 +87,20 @@ pub const LevelGeometry = struct {
         }
         rl.EndShaderMode();
 
-        prerendered_ground.near_ground.draw(shader);
+        // Render last floor above all others.
         glad.glStencilFunc(glad.GL_NOTEQUAL, 1, 0xff);
-        prerendered_ground.distant_ground.draw(shader);
+        var counter: usize = 0;
+        while (counter < self.floors.items.len) : (counter += 1) {
+            const floor = self.floors.items[self.floors.items.len - counter - 1];
+            const texture = floor.getTexture(self.floor_animation_cycle, texture_collection);
+            util.drawMesh(floor.mesh, floor.precomputed_matrix, texture, floor.tint, shader);
+        }
         glad.glStencilFunc(glad.GL_ALWAYS, 1, 0xff);
     }
 
     pub fn processElapsedTick(self: *LevelGeometry) void {
-        // Value was picked to roughly sync up with the render interval in prerenderGround().
-        const step_interval = 0.0166666;
-        self.floor_animation_cycle.processStep(step_interval);
-        self.tick_counter = self.tick_counter + 1;
+        self.floor_animation_cycle.processStep(0.02);
     }
-
-    /// Returned object must be released by the caller after use.
-    pub fn createPrerenderedGround(_: LevelGeometry) PrerenderedGround {
-        return .{
-            .near_ground = PrerenderedGroundPlane.create(1024, 48, false),
-            .distant_ground = PrerenderedGroundPlane.create(2048, 512, true),
-            .state_of_change_counter_at_render = 0,
-            .tick_counter_at_render = 0,
-        };
-    }
-
-    pub fn prerenderGround(
-        self: LevelGeometry,
-        prerendered_ground: *PrerenderedGround,
-        new_center_position: util.FlatVector,
-        texture_collection: textures.Collection,
-    ) void {
-        const rerender_everything =
-            prerendered_ground.state_of_change_counter_at_render != self.floor_change_counter;
-        prerendered_ground.state_of_change_counter_at_render = self.floor_change_counter;
-
-        if (rerender_everything or
-            self.tick_counter - prerendered_ground.tick_counter_at_render >= 15)
-        {
-            prerendered_ground.near_ground.prerender(
-                self.floors.items,
-                self.floor_animation_cycle,
-                new_center_position,
-                texture_collection,
-            );
-            prerendered_ground.tick_counter_at_render = self.tick_counter;
-        }
-
-        const rerender_distant_floor = new_center_position
-            .subtract(prerendered_ground.distant_ground.position).length() > 100;
-        if (rerender_everything or rerender_distant_floor) {
-            prerendered_ground.distant_ground.prerender(
-                self.floors.items,
-                self.floor_animation_cycle,
-                new_center_position,
-                texture_collection,
-            );
-        }
-    }
-
-    pub const PrerenderedGround = struct {
-        near_ground: PrerenderedGroundPlane,
-        distant_ground: PrerenderedGroundPlane,
-        state_of_change_counter_at_render: u64,
-
-        /// Rerendering the ground depends on the game state and thus on the ticks elapsed.
-        tick_counter_at_render: u64,
-
-        pub fn destroy(self: *PrerenderedGround) void {
-            self.near_ground.destroy();
-            self.distant_ground.destroy();
-        }
-    };
 
     pub const WallType = enum {
         small_wall,
@@ -236,7 +180,6 @@ pub const LevelGeometry = struct {
             floor_type,
         );
         self.object_id_counter = self.object_id_counter + 1;
-        self.floor_change_counter = self.floor_change_counter + 1;
         return floor.object_id;
     }
 
@@ -259,7 +202,6 @@ pub const LevelGeometry = struct {
                 floor_type,
             );
             floor.tint = tint;
-            self.floor_change_counter = self.floor_change_counter + 1;
         }
     }
 
@@ -288,10 +230,10 @@ pub const LevelGeometry = struct {
                 return;
             }
         }
-        for (self.floors.items) |floor, index| {
+        for (self.floors.items) |*floor, index| {
             if (floor.object_id == object_id) {
+                floor.destroy();
                 _ = self.floors.orderedRemove(index);
-                self.floor_change_counter = self.floor_change_counter + 1;
                 return;
             }
         }
@@ -308,7 +250,6 @@ pub const LevelGeometry = struct {
             wall.tint = tint;
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = tint;
-            self.floor_change_counter = self.floor_change_counter + 1;
         } else if (self.findBillboardObject(object_id)) |billboard| {
             billboard.tint = tint;
         }
@@ -319,7 +260,6 @@ pub const LevelGeometry = struct {
             wall.tint = Wall.getDefaultTint(wall.wall_type);
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = Floor.getDefaultTint(floor.floor_type);
-            self.floor_change_counter = self.floor_change_counter + 1;
         } else if (self.findBillboardObject(object_id)) |billboard| {
             billboard.tint = BillboardObject.getDefaultTint(billboard.object_type);
         }
@@ -478,11 +418,9 @@ pub const LevelGeometry = struct {
 const Floor = struct {
     object_id: u64,
     floor_type: LevelGeometry.FloorType,
+    mesh: rl.Mesh,
+    precomputed_matrix: rl.Matrix,
     boundaries: collision.Rectangle,
-    side_a_start: util.FlatVector,
-    side_a_length: f32,
-    side_b_length: f32,
-    rotation: f32,
     tint: rl.Color,
 
     /// Side a and b can be chosen arbitrarily, but must be adjacent.
@@ -494,16 +432,51 @@ const Floor = struct {
         floor_type: LevelGeometry.FloorType,
     ) Floor {
         const offset_a = side_a_end.subtract(side_a_start);
+        const side_a_length = offset_a.length();
+
+        var floor_vertices = [18]f32{
+            -0.5, 0, 0.5,
+            0.5,  0, -0.5,
+            -0.5, 0, -0.5,
+            -0.5, 0, 0.5,
+            0.5,  0, 0.5,
+            0.5,  0, -0.5,
+        };
+        const texture_scale = getDefaultTextureScale(floor_type);
+        const texture_corners = [4]rl.Vector2{
+            .{ .x = 0, .y = 0 },
+            .{ .x = side_b_length / texture_scale, .y = side_a_length / texture_scale },
+            .{ .x = 0, .y = side_a_length / texture_scale },
+            .{ .x = side_b_length / texture_scale, .y = 0 },
+        };
+        const texture_corner_indices = [6]u3{ 0, 1, 2, 0, 3, 1 };
+        var texcoords_buffer: [12]f32 = undefined;
+        var mesh = generateMesh(
+            floor_vertices[0..],
+            texture_corners[0..],
+            texture_corner_indices[0..],
+            &texcoords_buffer,
+        );
+        mesh.vertices = null; // Not needed for floors.
+
+        const rotation = offset_a.computeRotationToOtherVector(util.FlatVector{ .x = 0, .z = 1 });
+        const offset_b = offset_a.rotateRightBy90Degrees().negate().normalize().scale(side_b_length);
+        const center = side_a_start.add(offset_a.scale(0.5)).add(offset_b.scale(0.5));
         return Floor{
             .object_id = object_id,
             .floor_type = floor_type,
+            .mesh = mesh,
+            .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
+                rm.MatrixScale(side_b_length, 1, side_a_length),
+                rm.MatrixTranslate(center.x, 0, center.z),
+            ), rm.MatrixRotateY(-rotation)),
             .boundaries = collision.Rectangle.create(side_a_start, side_a_end, side_b_length),
-            .side_a_start = side_a_end,
-            .side_a_length = offset_a.length(),
-            .side_b_length = side_b_length,
-            .rotation = offset_a.computeRotationToOtherVector(util.FlatVector{ .x = 0, .z = 1 }),
             .tint = getDefaultTint(floor_type),
         };
+    }
+
+    fn destroy(self: *Floor) void {
+        rl.UnloadMesh(self.mesh);
     }
 
     /// If the given ray hits this object, return the position on the floor.
@@ -726,33 +699,6 @@ const Wall = struct {
         }
     }
 
-    /// The returned mesh will keep a reference to the given shared_vertices.
-    fn generateMesh(
-        shared_vertices: []f32,
-        texture_corners: []const rl.Vector2,
-        texture_corner_indices: []const u3,
-        texcoords_buffer: []f32,
-    ) rl.Mesh {
-        const texcoords_count = shared_vertices.len / 3 * 2;
-        std.debug.assert(texcoords_buffer.len >= texcoords_count);
-
-        var mesh = std.mem.zeroes(rl.Mesh);
-        mesh.vertices = shared_vertices.ptr;
-        mesh.vertexCount = @intCast(c_int, shared_vertices.len / 3);
-        mesh.triangleCount = @intCast(c_int, shared_vertices.len / 9);
-
-        mesh.texcoords = texcoords_buffer.ptr;
-        var index: usize = 0;
-        while (index < texcoords_count) : (index += 2) {
-            texcoords_buffer[index] = texture_corners[texture_corner_indices[index / 2]].x;
-            texcoords_buffer[index + 1] = texture_corners[texture_corner_indices[index / 2]].y;
-        }
-
-        rl.UploadMesh(&mesh, false);
-        mesh.texcoords = null; // Was copied to GPU.
-        return mesh;
-    }
-
     const WallTypeProperties = struct {
         corrected_start_position: util.FlatVector,
         corrected_end_position: util.FlatVector,
@@ -870,101 +816,6 @@ const Wall = struct {
     }
 };
 
-/// A piece of ground which floats trough the game world.
-const PrerenderedGroundPlane = struct {
-    render_texture: rl.RenderTexture,
-
-    genereate_mipmaps: bool,
-
-    /// Helpers for rendering the ground.
-    plane_mesh: rl.Mesh,
-    mesh_matrix: rl.Matrix,
-
-    /// Dimensions of this object in the game-world.
-    position: util.FlatVector,
-    width_and_height: f32,
-
-    /// Creates a floating ground object at 0,0 in game-world coordinates. Takes the dimensions of
-    /// the ground area to consider while prerendering.
-    fn create(
-        texture_size: u16,
-        width_and_height: f32,
-        genereate_mipmaps: bool,
-    ) PrerenderedGroundPlane {
-        return .{
-            .render_texture = rl.LoadRenderTexture(texture_size, texture_size),
-            .genereate_mipmaps = genereate_mipmaps,
-            .plane_mesh = rl.GenMeshPlane(width_and_height, width_and_height, 1, 1),
-            .mesh_matrix = rm.MatrixIdentity(),
-            .position = .{ .x = 0, .z = 0 },
-            .width_and_height = width_and_height,
-        };
-    }
-
-    fn destroy(self: *PrerenderedGroundPlane) void {
-        rl.UnloadMesh(self.plane_mesh);
-        rl.UnloadRenderTexture(self.render_texture);
-    }
-
-    fn prerender(
-        self: *PrerenderedGroundPlane,
-        floors: []Floor,
-        floor_animation_cycle: animation.FourStepCycle,
-        new_center_position: util.FlatVector,
-        texture_collection: textures.Collection,
-    ) void {
-        self.position = new_center_position;
-
-        const translation = self.position.add(.{
-            .x = -self.width_and_height / 2,
-            .z = self.width_and_height / 2,
-        });
-        const gameworld_to_texture_ratio = util.FlatVector{
-            .x = @intToFloat(f32, self.render_texture.texture.width) / self.width_and_height,
-            .z = @intToFloat(f32, self.render_texture.texture.height) / self.width_and_height,
-        };
-
-        rl.BeginTextureMode(self.render_texture);
-        rl.ClearBackground(.{ .r = 0, .g = 0, .b = 0, .a = 0 });
-        for (floors) |floor| {
-            const texture = floor.getTexture(floor_animation_cycle, texture_collection);
-            const texture_scale = Floor.getDefaultTextureScale(floor.floor_type);
-            const source_rect = rl.Rectangle{
-                .x = 0,
-                .y = 0,
-                .width = @intToFloat(f32, texture.width) * floor.side_b_length / texture_scale,
-                .height = @intToFloat(f32, texture.height) * floor.side_a_length / texture_scale,
-            };
-            const translated_side_a_start = floor.side_a_start.subtract(translation);
-            const dest_rect = rl.Rectangle{
-                .x = translated_side_a_start.x * gameworld_to_texture_ratio.x,
-                .y = translated_side_a_start.z * -gameworld_to_texture_ratio.z,
-                .width = floor.side_b_length * gameworld_to_texture_ratio.x,
-                .height = floor.side_a_length * gameworld_to_texture_ratio.z,
-            };
-            const origin = rl.Vector2{ .x = 0, .y = 0 };
-            const angle = -util.radiansToDegrees(floor.rotation);
-            rl.DrawTexturePro(texture, source_rect, dest_rect, origin, angle, floor.tint);
-
-            self.mesh_matrix = rm.MatrixTranslate(self.position.x, 0, self.position.z);
-        }
-
-        rl.EndTextureMode();
-
-        if (self.genereate_mipmaps) {
-            rl.GenTextureMipmaps(&self.render_texture.texture);
-            rl.SetTextureFilter(
-                self.render_texture.texture,
-                @enumToInt(rl.TextureFilter.TEXTURE_FILTER_TRILINEAR),
-            );
-        }
-    }
-
-    fn draw(self: PrerenderedGroundPlane, shader: rl.Shader) void {
-        util.drawMesh(self.plane_mesh, self.mesh_matrix, self.render_texture.texture, rl.WHITE, shader);
-    }
-};
-
 const BillboardObject = struct {
     object_id: u64,
     object_type: LevelGeometry.BillboardObjectType,
@@ -1017,3 +868,30 @@ const BillboardObject = struct {
         };
     }
 };
+
+/// The returned mesh will keep a reference to the given shared_vertices.
+fn generateMesh(
+    shared_vertices: []f32,
+    texture_corners: []const rl.Vector2,
+    texture_corner_indices: []const u3,
+    texcoords_buffer: []f32,
+) rl.Mesh {
+    const texcoords_count = shared_vertices.len / 3 * 2;
+    std.debug.assert(texcoords_buffer.len >= texcoords_count);
+
+    var mesh = std.mem.zeroes(rl.Mesh);
+    mesh.vertices = shared_vertices.ptr;
+    mesh.vertexCount = @intCast(c_int, shared_vertices.len / 3);
+    mesh.triangleCount = @intCast(c_int, shared_vertices.len / 9);
+
+    mesh.texcoords = texcoords_buffer.ptr;
+    var index: usize = 0;
+    while (index < texcoords_count) : (index += 2) {
+        texcoords_buffer[index] = texture_corners[texture_corner_indices[index / 2]].x;
+        texcoords_buffer[index + 1] = texture_corners[texture_corner_indices[index / 2]].y;
+    }
+
+    rl.UploadMesh(&mesh, false);
+    mesh.texcoords = null; // Was copied to GPU.
+    return mesh;
+}

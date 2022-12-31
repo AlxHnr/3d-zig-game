@@ -337,7 +337,6 @@ fn drawEverything(
     players: []const Player,
     current_player: Player,
     level_geometry: *LevelGeometry,
-    prerendered_ground: *LevelGeometry.PrerenderedGround,
     gem_collection: gems.Collection,
     texture_collection: textures.Collection,
     shader: rl.Shader,
@@ -354,20 +353,13 @@ fn drawEverything(
         null;
     const raylib_camera = lerped_camera.getRaylibCamera(max_distance_from_target);
 
-    level_geometry.prerenderGround(
-        prerendered_ground,
-        current_player.getLerpedCollisionObject(interval_between_previous_and_current_tick)
-            .boundaries.position,
-        texture_collection,
-    );
-
     rl.BeginDrawing();
     rl.BeginMode3D(raylib_camera);
 
     glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
     glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
 
-    level_geometry.draw(raylib_camera, shader, prerendered_ground.*, texture_collection);
+    level_geometry.draw(raylib_camera, shader, texture_collection);
 
     var collision_objects: [4]gems.CollisionObject = undefined;
     std.debug.assert(players.len <= collision_objects.len);
@@ -470,8 +462,24 @@ pub fn main() !void {
     var level_geometry = try LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy(gpa.allocator());
 
-    var prerendered_ground = level_geometry.createPrerenderedGround();
-    defer prerendered_ground.destroy();
+    _ = try level_geometry.addFloor(
+        .{ .x = -500, .z = -500 },
+        .{ .x = -500, .z = 500 },
+        1000,
+        LevelGeometry.FloorType.water,
+    );
+    _ = try level_geometry.addFloor(
+        .{ .x = -15, .z = -15 },
+        .{ .x = -15, .z = 15 },
+        30,
+        LevelGeometry.FloorType.grass,
+    );
+    _ = try level_geometry.addFloor(
+        .{ .x = -5, .z = -500 },
+        .{ .x = -5, .z = 500 },
+        10,
+        LevelGeometry.FloorType.stone,
+    );
 
     var gem_collection = gems.Collection.create(gpa.allocator());
     defer gem_collection.destroy();
@@ -480,6 +488,17 @@ pub fn main() !void {
     var view_mode = ViewMode.from_behind;
     var edit_mode_state = edit_mode.State.create();
 
+    {
+        var counter: usize = 0;
+        while (counter < 2000) : (counter += 1) {
+            _ = try level_geometry.addBillboardObject(LevelGeometry.BillboardObjectType.small_bush, .{
+                .x = (std.rand.Random.float(prng.random(), f32) - 0.5) * 50,
+                .z = (std.rand.Random.float(prng.random(), f32) - 0.5) * 50,
+            });
+        }
+    }
+
+    // rl.SetTargetFPS(40);
     var tick_timer = try util.TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
         const lap_result = tick_timer.lap();
@@ -497,7 +516,6 @@ pub fn main() !void {
             players[0..],
             players[controllable_player_index],
             &level_geometry,
-            &prerendered_ground,
             gem_collection,
             texture_collection,
             shader,
