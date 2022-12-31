@@ -468,8 +468,8 @@ const Floor = struct {
             .mesh = mesh,
             .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
                 rm.MatrixScale(side_b_length, 1, side_a_length),
-                rm.MatrixTranslate(center.x, 0, center.z),
-            ), rm.MatrixRotateY(-rotation)),
+                rm.MatrixRotateY(-rotation),
+            ), rm.MatrixTranslate(center.x, 0, center.z)),
             .boundaries = collision.Rectangle.create(side_a_start, side_a_end, side_b_length),
             .tint = getDefaultTint(floor_type),
         };
