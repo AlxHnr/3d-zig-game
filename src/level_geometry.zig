@@ -591,12 +591,12 @@ const Floor = struct {
         texture_collection: textures.Collection,
     ) rl.Texture {
         return switch (self.floor_type) {
-            .grass => texture_collection.get(textures.Name.grass),
-            .stone => texture_collection.get(textures.Name.stone_floor),
+            .grass => texture_collection.get(.grass),
+            .stone => texture_collection.get(.stone_floor),
             .water => switch (floor_animation_cycle.getFrame()) {
-                else => texture_collection.get(textures.Name.water_frame_0),
-                1 => texture_collection.get(textures.Name.water_frame_1),
-                2 => texture_collection.get(textures.Name.water_frame_2),
+                else => texture_collection.get(.water_frame_0),
+                1 => texture_collection.get(.water_frame_1),
+                2 => texture_collection.get(.water_frame_2),
             },
         };
     }
@@ -899,9 +899,9 @@ const Wall = struct {
 
     fn getTexture(self: Wall, texture_collection: textures.Collection) rl.Texture {
         return switch (self.wall_type) {
-            .metal_fence, .short_metal_fence => texture_collection.get(textures.Name.metal_fence),
-            .tall_hedge => texture_collection.get(textures.Name.hedge),
-            else => texture_collection.get(textures.Name.wall),
+            .metal_fence, .short_metal_fence => texture_collection.get(.metal_fence),
+            .tall_hedge => texture_collection.get(.hedge),
+            else => texture_collection.get(.wall),
         };
     }
 };
@@ -954,7 +954,7 @@ const BillboardObject = struct {
 
     fn getTexture(self: BillboardObject, texture_collection: textures.Collection) rl.Texture {
         return switch (self.object_type) {
-            .small_bush => texture_collection.get(textures.Name.small_bush),
+            .small_bush => texture_collection.get(.small_bush),
         };
     }
 };
