@@ -6,6 +6,7 @@ const std = @import("std");
 const util = @import("util.zig");
 const textures = @import("textures.zig");
 const glad = @cImport(@cInclude("external/glad.h"));
+const Error = @import("error.zig").Error;
 
 pub const LevelGeometry = struct {
     object_id_counter: u64,
@@ -56,13 +57,13 @@ pub const LevelGeometry = struct {
 
         for (tree.walls) |wall| {
             const wall_type = std.meta.stringToEnum(WallType, wall.wall_type) orelse {
-                return util.Error.FailedToDeserializeLevelGeometry;
+                return Error.FailedToDeserializeLevelGeometry;
             };
             _ = try geometry.addWall(wall.start_position, wall.end_position, wall_type);
         }
         for (tree.floors) |floor| {
             const floor_type = std.meta.stringToEnum(FloorType, floor.floor_type) orelse {
-                return util.Error.FailedToDeserializeLevelGeometry;
+                return Error.FailedToDeserializeLevelGeometry;
             };
             _ = try geometry.addFloor(
                 floor.side_a_start,
@@ -73,7 +74,7 @@ pub const LevelGeometry = struct {
         }
         for (tree.billboard_objects) |billboard| {
             const object_type = std.meta.stringToEnum(BillboardObjectType, billboard.object_type) orelse {
-                return util.Error.FailedToDeserializeLevelGeometry;
+                return Error.FailedToDeserializeLevelGeometry;
             };
             _ = try geometry.addBillboardObject(object_type, billboard.position);
         }

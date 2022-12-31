@@ -143,12 +143,6 @@ pub const TickTimer = struct {
     };
 };
 
-pub const Error = error{
-    FailedToLoadTextureFile,
-    FailedToCompileAndLinkShader,
-    FailedToDeserializeLevelGeometry,
-};
-
 pub fn getPreviousEnumWrapAround(value: anytype) @TypeOf(value) {
     comptime {
         const argument_is_enum = switch (@typeInfo(@TypeOf(value))) {

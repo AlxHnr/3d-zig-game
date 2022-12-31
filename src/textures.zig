@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const rl = @import("raylib");
-const util = @import("util.zig");
+const Error = @import("error.zig").Error;
 
 pub const Name = enum {
     gem,
@@ -40,7 +40,7 @@ pub const Collection = struct {
                     }
                     rl.UnloadTexture(mapping_to_destroy.value.*);
                 }
-                return util.Error.FailedToLoadTextureFile;
+                return Error.FailedToLoadTextureFile;
             }
 
             const texture = textureFromImage(&image, mapping.key);

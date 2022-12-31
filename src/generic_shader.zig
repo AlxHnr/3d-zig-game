@@ -1,9 +1,9 @@
 //! Contains an adaption of raylibs default shader for rendering textures with fully transparent
 //! fragments.
 
-const util = @import("util.zig");
 const rl = @import("raylib");
 const rlgl = @cImport(@cInclude("rlgl.h"));
+const Error = @import("error.zig").Error;
 
 const vertex_shader =
     \\ #version 330
@@ -41,10 +41,10 @@ const fragment_shader =
 ;
 
 /// To be freed via raylib.UnloadShader();
-pub fn load() util.Error!rl.Shader {
+pub fn load() Error!rl.Shader {
     const shader = rl.LoadShaderFromMemory(vertex_shader, fragment_shader);
     if (shader.id == rlgl.rlGetShaderIdDefault()) {
-        return util.Error.FailedToCompileAndLinkShader;
+        return Error.FailedToCompileAndLinkShader;
     }
     return shader;
 }
