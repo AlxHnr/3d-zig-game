@@ -44,6 +44,43 @@ pub const LevelGeometry = struct {
         };
     }
 
+    /// Stores the given allocator internally for its entire lifetime.
+    pub fn createFromJson(allocator: std.mem.Allocator, json: []const u8) !LevelGeometry {
+        var geometry = try create(allocator);
+        errdefer geometry.destroy(allocator);
+
+        const options = .{ .allocator = allocator };
+        const tree = try std.json
+            .parse(Json.SerializableData, &std.json.TokenStream.init(json), options);
+        defer std.json.parseFree(Json.SerializableData, tree, options);
+
+        for (tree.walls) |wall| {
+            const wall_type = std.meta.stringToEnum(WallType, wall.wall_type) orelse {
+                return util.Error.FailedToDeserializeLevelGeometry;
+            };
+            _ = try geometry.addWall(wall.start_position, wall.end_position, wall_type);
+        }
+        for (tree.floors) |floor| {
+            const floor_type = std.meta.stringToEnum(FloorType, floor.floor_type) orelse {
+                return util.Error.FailedToDeserializeLevelGeometry;
+            };
+            _ = try geometry.addFloor(
+                floor.side_a_start,
+                floor.side_a_end,
+                floor.side_b_length,
+                floor_type,
+            );
+        }
+        for (tree.billboard_objects) |billboard| {
+            const object_type = std.meta.stringToEnum(BillboardObjectType, billboard.object_type) orelse {
+                return util.Error.FailedToDeserializeLevelGeometry;
+            };
+            _ = try geometry.addBillboardObject(object_type, billboard.position);
+        }
+
+        return geometry;
+    }
+
     pub fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
         for (self.walls.items) |*wall| {
             wall.destroy();
@@ -100,6 +137,45 @@ pub const LevelGeometry = struct {
 
     pub fn processElapsedTick(self: *LevelGeometry) void {
         self.floor_animation_cycle.processStep(0.02);
+    }
+
+    pub fn toJson(self: LevelGeometry, allocator: std.mem.Allocator, outstream: anytype) !void {
+        var walls = try allocator.alloc(Json.Wall, self.walls.items.len);
+        defer allocator.free(walls);
+        for (self.walls.items) |wall, index| {
+            walls[index] = .{
+                .wall_type = @tagName(wall.wall_type),
+                .start_position = wall.start_position,
+                .end_position = wall.end_position,
+            };
+        }
+
+        var floors = try allocator.alloc(Json.Floor, self.floors.items.len);
+        defer allocator.free(floors);
+        for (self.floors.items) |floor, index| {
+            floors[index] = .{
+                .floor_type = @tagName(floor.floor_type),
+                .side_a_start = floor.side_a_start,
+                .side_a_end = floor.side_a_end,
+                .side_b_length = floor.side_b_length,
+            };
+        }
+
+        var billboards = try allocator.alloc(Json.BillboardObject, self.billboard_objects.items.len);
+        defer allocator.free(billboards);
+        for (self.billboard_objects.items) |billboard, index| {
+            billboards[index] = .{
+                .object_type = @tagName(billboard.object_type),
+                .position = billboard.boundaries.position,
+            };
+        }
+
+        const data = Json.SerializableData{
+            .walls = walls,
+            .floors = floors,
+            .billboard_objects = billboards,
+        };
+        try std.json.stringify(data, .{ .whitespace = .{ .indent = .{ .Space = 2 } } }, outstream);
     }
 
     pub const WallType = enum {
@@ -423,6 +499,11 @@ const Floor = struct {
     boundaries: collision.Rectangle,
     tint: rl.Color,
 
+    /// Values used to generate this floor.
+    side_a_start: util.FlatVector,
+    side_a_end: util.FlatVector,
+    side_b_length: f32,
+
     /// Side a and b can be chosen arbitrarily, but must be adjacent.
     fn create(
         object_id: u64,
@@ -472,6 +553,9 @@ const Floor = struct {
             ), rm.MatrixTranslate(center.x, 0, center.z)),
             .boundaries = collision.Rectangle.create(side_a_start, side_a_end, side_b_length),
             .tint = getDefaultTint(floor_type),
+            .side_a_start = side_a_start,
+            .side_a_end = side_a_end,
+            .side_b_length = side_b_length,
         };
     }
 
@@ -526,6 +610,10 @@ const Wall = struct {
     boundaries: collision.Rectangle,
     wall_type: LevelGeometry.WallType,
 
+    /// Values used to generate this wall.
+    start_position: util.FlatVector,
+    end_position: util.FlatVector,
+
     /// Keeps a reference to the given vertices for its entire lifetime.
     fn create(
         object_id: u64,
@@ -579,6 +667,8 @@ const Wall = struct {
                 width,
             ),
             .wall_type = wall_type,
+            .start_position = start_position,
+            .end_position = end_position,
         };
     }
 
@@ -895,3 +985,29 @@ fn generateMesh(
     mesh.texcoords = null; // Was copied to GPU.
     return mesh;
 }
+
+const Json = struct {
+    const SerializableData = struct {
+        walls: []Json.Wall,
+        floors: []Json.Floor,
+        billboard_objects: []Json.BillboardObject,
+    };
+
+    const Wall = struct {
+        wall_type: []const u8,
+        start_position: util.FlatVector,
+        end_position: util.FlatVector,
+    };
+
+    const Floor = struct {
+        floor_type: []const u8,
+        side_a_start: util.FlatVector,
+        side_a_end: util.FlatVector,
+        side_b_length: f32,
+    };
+
+    const BillboardObject = struct {
+        object_type: []const u8,
+        position: util.FlatVector,
+    };
+};
