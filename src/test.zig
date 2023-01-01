@@ -5,13 +5,14 @@ const expect = std.testing.expect;
 const expectApproxEqRel = std.testing.expectApproxEqRel;
 
 const collision = @import("collision.zig");
+const FlatVector = @import("flat_vector.zig").FlatVector;
 const util = @import("util.zig");
 const epsilon = util.Constants.epsilon;
 
 test "Create collision rectangle" {
     const rectangle = collision.Rectangle.create(
-        util.FlatVector{ .x = 12, .z = -3.1 },
-        util.FlatVector{ .x = 6.16, .z = 27.945 },
+        .{ .x = 12, .z = -3.1 },
+        .{ .x = 6.16, .z = 27.945 },
         19.18,
     );
     const expected_angle = util.degreesToRadians(10.653624);
@@ -27,40 +28,40 @@ test "Create collision rectangle" {
 
 test "Collisions between lines" {
     try expect(collision.lineCollidesWithLine(
-        util.FlatVector{ .x = -1, .z = -3 },
-        util.FlatVector{ .x = 2.5, .z = -0.5 },
-        util.FlatVector{ .x = 2, .z = -1.5 },
-        util.FlatVector{ .x = 0.5, .z = 2 },
+        .{ .x = -1, .z = -3 },
+        .{ .x = 2.5, .z = -0.5 },
+        .{ .x = 2, .z = -1.5 },
+        .{ .x = 0.5, .z = 2 },
     ));
     try expect(collision.lineCollidesWithLine(
-        util.FlatVector{ .x = 2.5, .z = -0.5 },
-        util.FlatVector{ .x = -1, .z = -3 },
-        util.FlatVector{ .x = 2, .z = -1.5 },
-        util.FlatVector{ .x = 0.5, .z = 2 },
+        .{ .x = 2.5, .z = -0.5 },
+        .{ .x = -1, .z = -3 },
+        .{ .x = 2, .z = -1.5 },
+        .{ .x = 0.5, .z = 2 },
     ));
     try expect(collision.lineCollidesWithLine(
-        util.FlatVector{ .x = 2.5, .z = -0.5 },
-        util.FlatVector{ .x = -1, .z = -3 },
-        util.FlatVector{ .x = 0.5, .z = 2 },
-        util.FlatVector{ .x = 2, .z = -1.5 },
+        .{ .x = 2.5, .z = -0.5 },
+        .{ .x = -1, .z = -3 },
+        .{ .x = 0.5, .z = 2 },
+        .{ .x = 2, .z = -1.5 },
     ));
     try expect(collision.lineCollidesWithLine(
-        util.FlatVector{ .x = -1, .z = -3 },
-        util.FlatVector{ .x = 2.5, .z = -0.5 },
-        util.FlatVector{ .x = 0.5, .z = 2 },
-        util.FlatVector{ .x = 2, .z = -1.5 },
+        .{ .x = -1, .z = -3 },
+        .{ .x = 2.5, .z = -0.5 },
+        .{ .x = 0.5, .z = 2 },
+        .{ .x = 2, .z = -1.5 },
     ));
 
     try expect(!collision.lineCollidesWithLine(
-        util.FlatVector{ .x = -1, .z = -3 },
-        util.FlatVector{ .x = 2.5, .z = -0.5 },
-        util.FlatVector{ .x = 0.5, .z = 2 },
-        util.FlatVector{ .x = -2, .z = -1.5 },
+        .{ .x = -1, .z = -3 },
+        .{ .x = 2.5, .z = -0.5 },
+        .{ .x = 0.5, .z = 2 },
+        .{ .x = -2, .z = -1.5 },
     ));
     try expect(!collision.lineCollidesWithLine(
-        util.FlatVector{ .x = -1.5, .z = 7 },
-        util.FlatVector{ .x = 1.5, .z = 7 },
-        util.FlatVector{ .x = -2.5, .z = 8 },
-        util.FlatVector{ .x = 2.5, .z = 8 },
+        .{ .x = -1.5, .z = 7 },
+        .{ .x = 1.5, .z = 7 },
+        .{ .x = -2.5, .z = 8 },
+        .{ .x = 2.5, .z = 8 },
     ));
 }

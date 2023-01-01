@@ -4,7 +4,7 @@ const collision = @import("collision.zig");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
 const std = @import("std");
-const util = @import("util.zig");
+const FlatVector = @import("flat_vector.zig").FlatVector;
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 
 pub const CollisionObject = struct {
@@ -59,7 +59,7 @@ pub const Collection = struct {
         }
     }
 
-    pub fn addGem(self: *Collection, position: util.FlatVector) !void {
+    pub fn addGem(self: *Collection, position: FlatVector) !void {
         const gem = try self.gems.addOne();
         const gem_state = Gem.create(position);
         gem.* = InterpolatableGem{
@@ -98,7 +98,7 @@ const Gem = struct {
     /// pickup_animation_progress is not null.
     collided_object_id: u64,
 
-    fn create(position: util.FlatVector) Gem {
+    fn create(position: FlatVector) Gem {
         return Gem{
             .side_length = 0.4,
             .boundaries = collision.Circle{

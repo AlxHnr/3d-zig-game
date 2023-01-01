@@ -3,12 +3,13 @@
 const std = @import("std");
 const math = std.math;
 const rm = @import("raylib-math");
-const util = @import("util.zig");
+const FlatVector = @import("flat_vector.zig").FlatVector;
+const epsilon = @import("util.zig").Constants.epsilon;
 
 pub const Rectangle = struct {
     /// Game-world coordinates rotated around the worlds origin to axis-align this rectangle.
-    first_corner: util.FlatVector,
-    third_corner: util.FlatVector,
+    first_corner: FlatVector,
+    third_corner: FlatVector,
     /// Precomputed sine/cosine values for replicating this rectangles rotation around the game
     /// worlds origin.
     rotation: Rotation,
@@ -24,8 +25,8 @@ pub const Rectangle = struct {
             return Rotation{ .sine = math.sin(angle), .cosine = math.cos(angle) };
         }
 
-        fn rotate(self: Rotation, vector: util.FlatVector) util.FlatVector {
-            return util.FlatVector{
+        fn rotate(self: Rotation, vector: FlatVector) FlatVector {
+            return .{
                 .x = vector.x * self.cosine + vector.z * self.sine,
                 .z = -vector.x * self.sine + vector.z * self.cosine,
             };
@@ -33,19 +34,15 @@ pub const Rectangle = struct {
     };
 
     /// Takes game-world coordinates. Side a and b can be chosen arbitrarily, but must be adjacent.
-    pub fn create(
-        side_a_start: util.FlatVector,
-        side_a_end: util.FlatVector,
-        side_b_length: f32,
-    ) Rectangle {
+    pub fn create(side_a_start: FlatVector, side_a_end: FlatVector, side_b_length: f32) Rectangle {
         const side_a_length = side_a_start.subtract(side_a_end).length();
         const rotation_angle = side_a_start.subtract(side_a_end)
-            .computeRotationToOtherVector(util.FlatVector{ .x = 0, .z = -1 });
+            .computeRotationToOtherVector(.{ .x = 0, .z = -1 });
         const rotation = Rotation.create(rotation_angle);
         const first_corner = rotation.rotate(side_a_end);
         return Rectangle{
             .first_corner = first_corner,
-            .third_corner = util.FlatVector{
+            .third_corner = .{
                 .x = first_corner.x + side_b_length,
                 .z = first_corner.z - side_a_length,
             },
@@ -55,11 +52,11 @@ pub const Rectangle = struct {
     }
 
     /// Check if this rectangle collides with the given line (game-world coordinates).
-    pub fn collidesWithLine(self: Rectangle, line_start: util.FlatVector, line_end: util.FlatVector) bool {
+    pub fn collidesWithLine(self: Rectangle, line_start: FlatVector, line_end: FlatVector) bool {
         const start = self.rotation.rotate(line_start);
         const end = self.rotation.rotate(line_end);
-        const second_corner = util.FlatVector{ .x = self.third_corner.x, .z = self.first_corner.z };
-        const fourth_corner = util.FlatVector{ .x = self.first_corner.x, .z = self.third_corner.z };
+        const second_corner = FlatVector{ .x = self.third_corner.x, .z = self.first_corner.z };
+        const fourth_corner = FlatVector{ .x = self.first_corner.x, .z = self.third_corner.z };
         return self.collidesWithRotatedPoint(start) or
             self.collidesWithRotatedPoint(end) or
             lineCollidesWithLine(start, end, self.first_corner, fourth_corner) or
@@ -68,11 +65,11 @@ pub const Rectangle = struct {
             lineCollidesWithLine(start, end, self.third_corner, second_corner);
     }
 
-    pub fn collidesWithPoint(self: Rectangle, point: util.FlatVector) bool {
+    pub fn collidesWithPoint(self: Rectangle, point: FlatVector) bool {
         return self.collidesWithRotatedPoint(self.rotation.rotate(point));
     }
 
-    fn collidesWithRotatedPoint(self: Rectangle, rotated_point: util.FlatVector) bool {
+    fn collidesWithRotatedPoint(self: Rectangle, rotated_point: FlatVector) bool {
         return rotated_point.x > self.first_corner.x and
             rotated_point.x < self.third_corner.x and
             rotated_point.z < self.first_corner.z and
@@ -82,7 +79,7 @@ pub const Rectangle = struct {
 
 pub const Circle = struct {
     /// Contains game-world coordinates.
-    position: util.FlatVector,
+    position: FlatVector,
     radius: f32,
 
     /// Interpolate between this circles state and another circle based on the given interval from
@@ -97,15 +94,15 @@ pub const Circle = struct {
 
     /// If a collision occurs, return a displacement vector for moving self out of other. The
     /// returned displacement vector must be added to self.position to resolve the collision.
-    pub fn collidesWithCircle(self: Circle, other: Circle) ?util.FlatVector {
+    pub fn collidesWithCircle(self: Circle, other: Circle) ?FlatVector {
         const offset_to_other = self.position.subtract(other.position).toVector3();
         const max_distance = self.radius + other.radius;
         const max_distance_squared = max_distance * max_distance;
-        if (max_distance_squared - rm.Vector3LengthSqr(offset_to_other) < util.Constants.epsilon) {
+        if (max_distance_squared - rm.Vector3LengthSqr(offset_to_other) < epsilon) {
             return null;
         }
 
-        return util.FlatVector.fromVector3(rm.Vector3Scale(
+        return FlatVector.fromVector3(rm.Vector3Scale(
             rm.Vector3Normalize(offset_to_other),
             max_distance - rm.Vector3Length(offset_to_other),
         ));
@@ -113,9 +110,9 @@ pub const Circle = struct {
 
     /// If a collision occurs, return a displacement vector for moving self out of other. The
     /// returned displacement vector must be added to self.position to resolve the collision.
-    pub fn collidesWithRectangle(self: Circle, rectangle: Rectangle) ?util.FlatVector {
+    pub fn collidesWithRectangle(self: Circle, rectangle: Rectangle) ?FlatVector {
         const rotated_self_position = rectangle.rotation.rotate(self.position);
-        const reference_point = util.FlatVector{
+        const reference_point = FlatVector{
             .x = if (rotated_self_position.x < rectangle.first_corner.x)
                 rectangle.first_corner.x
             else if (rotated_self_position.x > rectangle.third_corner.x)
@@ -142,10 +139,11 @@ pub const Circle = struct {
             rectangle.first_corner.z - rotated_self_position.z + self.radius,
             rectangle.third_corner.z - rotated_self_position.z - self.radius,
         );
-        const displacement_vector = if (math.fabs(displacement_x) < math.fabs(displacement_z))
-            util.FlatVector{ .x = displacement_x, .z = 0 }
+        const displacement_vector =
+            if (math.fabs(displacement_x) < math.fabs(displacement_z))
+            FlatVector{ .x = displacement_x, .z = 0 }
         else
-            util.FlatVector{ .x = 0, .z = displacement_z };
+            FlatVector{ .x = 0, .z = displacement_z };
 
         return rectangle.inverse_rotation.rotate(displacement_vector);
     }
@@ -159,27 +157,27 @@ pub const Circle = struct {
 };
 
 pub fn lineCollidesWithLine(
-    first_line_start: util.FlatVector,
-    first_line_end: util.FlatVector,
-    second_line_start: util.FlatVector,
-    second_line_end: util.FlatVector,
+    first_line_start: FlatVector,
+    first_line_end: FlatVector,
+    second_line_start: FlatVector,
+    second_line_end: FlatVector,
 ) bool {
-    const first_line_lengths = util.FlatVector{
+    const first_line_lengths = FlatVector{
         .x = first_line_end.x - first_line_start.x,
         .z = first_line_end.z - first_line_start.z,
     };
-    const second_line_lengths = util.FlatVector{
+    const second_line_lengths = FlatVector{
         .x = second_line_end.x - second_line_start.x,
         .z = second_line_end.z - second_line_start.z,
     };
     const divisor =
         second_line_lengths.z * first_line_lengths.x -
         second_line_lengths.x * first_line_lengths.z;
-    if (math.fabs(divisor) < util.Constants.epsilon) {
+    if (math.fabs(divisor) < epsilon) {
         return false;
     }
 
-    const line_start_offsets = util.FlatVector{
+    const line_start_offsets = FlatVector{
         .x = first_line_start.x - second_line_start.x,
         .z = first_line_start.z - second_line_start.z,
     };
