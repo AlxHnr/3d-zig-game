@@ -64,8 +64,8 @@ pub const BottomlessCube = struct {
 fn populateVertices(vertices: []f32, corners: []const [3]f32, corner_indices: []const u3) void {
     var index: usize = 0;
     while (index < vertices.len) : (index += 3) {
-        vertices[index] = corners[corner_indices[index / 3]].x;
-        vertices[index + 1] = corners[corner_indices[index / 3]].y;
-        vertices[index + 2] = corners[corner_indices[index / 3]].z;
+        vertices[index] = corners[corner_indices[index / 3]][0];
+        vertices[index + 1] = corners[corner_indices[index / 3]][1];
+        vertices[index + 2] = corners[corner_indices[index / 3]][2];
     }
 }
