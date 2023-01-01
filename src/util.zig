@@ -109,3 +109,11 @@ pub fn drawMesh(
 
     rl.DrawMesh(mesh, material, transform_matrix);
 }
+
+pub fn getCurrentRaylibVpMatrix() rl.Matrix {
+    // Cast is necessary because rlgl.h was included per cImport.
+    const view_matrix = @bitCast(rl.Matrix, rlgl.rlGetMatrixModelview());
+    const projection_matrix = @bitCast(rl.Matrix, rlgl.rlGetMatrixProjection());
+    const transform_matrix = @bitCast(rl.Matrix, rlgl.rlGetMatrixTransform());
+    return rm.MatrixMultiply(rm.MatrixMultiply(transform_matrix, view_matrix), projection_matrix);
+}
