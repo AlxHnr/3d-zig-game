@@ -25,7 +25,7 @@ pub const BottomlessCube = struct {
     /// Describes how texture coordinates are derived in the vertex shader. Each side of a
     /// transformed cube can have a different length. This enum is used to prevent texture
     /// stretching and ensure proper tiling/repetition.
-    pub const TextureCoordScale = enum {
+    pub const TextureCoordScale = enum(u8) {
         none_none,
         width_none,
         width_height,
