@@ -1,6 +1,6 @@
 const assert = @import("std").debug.assert;
 const glad = @cImport(@cInclude("external/glad.h"));
-const mesh = @import("mesh.zig");
+const meshes = @import("meshes.zig");
 const Shader = @import("shader.zig").Shader;
 
 pub const WallRenderer = struct {
@@ -28,12 +28,12 @@ pub const WallRenderer = struct {
 
         var vao_id = createAndBindVao();
 
-        const vertices = mesh.BottomlessCube.vertices;
+        const vertices = meshes.BottomlessCube.vertices;
         var vertex_vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
         glad.glVertexAttribPointer(loc_position, 3, glad.GL_FLOAT, 0, 0, null);
         glad.glEnableVertexAttribArray(loc_position);
 
-        const texture_coord_scale = mesh.BottomlessCube.texture_coord_scale_values;
+        const texture_coord_scale = meshes.BottomlessCube.texture_coord_scale_values;
         var texture_coord_scales_vbo_id = createAndBindVbo(
             &texture_coord_scale,
             @sizeOf(@TypeOf(texture_coord_scale)),
@@ -108,7 +108,7 @@ pub const WallRenderer = struct {
 
     /// The given matrix has the same row order as the float16 returned by raymath.MatrixToFloatV().
     pub fn render(self: WallRenderer, vp_matrix: [16]f32, texture_id: c_uint) void {
-        const vertex_count = mesh.BottomlessCube.vertices.len;
+        const vertex_count = meshes.BottomlessCube.vertices.len;
 
         self.shader.enable();
         glad.glBindVertexArray(self.vao_id);
@@ -150,7 +150,7 @@ pub const WallRenderer = struct {
         \\ in vec3 position;
         \\ in mat4 model_matrix;
         \\ in vec4 texture_source_rect; // (x, y, w, h) ranging from 0 to 1, (0, 0) == top left.
-        \\ in int texcoord_scale; // See TextureCoordScale in mesh.zig.
+        \\ in int texcoord_scale; // See TextureCoordScale in meshes.zig.
         \\ in vec3 texture_repeat_dimensions; // The walls dimensions divided by texture scale.
         \\ in vec3 tint;
         \\ uniform mat4 vp_matrix;

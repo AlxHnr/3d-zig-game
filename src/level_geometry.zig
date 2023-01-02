@@ -8,7 +8,7 @@ const util = @import("util.zig");
 const textures = @import("textures.zig");
 const glad = @cImport(@cInclude("external/glad.h"));
 const Error = @import("error.zig").Error;
-const BottomlessCube = @import("mesh.zig").BottomlessCube;
+const meshes = @import("meshes.zig");
 
 pub const LevelGeometry = struct {
     object_id_counter: u64,
@@ -27,7 +27,7 @@ pub const LevelGeometry = struct {
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
-        const precomputed_wall_vertices = Wall.computeBottomlessCubeVertices();
+        const precomputed_wall_vertices = meshes.BottomlessCube.vertices;
         var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
         errdefer allocator.free(shared_wall_vertices);
         std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
@@ -370,17 +370,17 @@ pub const LevelGeometry = struct {
 
     /// Find the id of the closest wall hit by the given ray, if available.
     pub fn cast3DRayToWalls(self: LevelGeometry, ray: rl.Ray, ignore_fences: bool) ?RayCollision {
-        var wall_mesh = std.mem.zeroes(rl.Mesh);
-        var vertices = BottomlessCube.vertices; // Copy needed for Mesh.vertices.
-        wall_mesh.vertices = vertices[0..];
-        wall_mesh.triangleCount = BottomlessCube.vertices.len / 9;
+        var mesh = std.mem.zeroes(rl.Mesh);
+        var vertices = meshes.BottomlessCube.vertices; // Copy needed for Mesh.vertices.
+        mesh.vertices = vertices[0..];
+        mesh.triangleCount = meshes.BottomlessCube.vertices.len / 9;
 
         var result: ?RayCollision = null;
         for (self.walls.items) |wall| {
             if (ignore_fences and Wall.isFence(wall.wall_type)) {
                 continue;
             }
-            const hit = rl.GetRayCollisionMesh(ray, wall_mesh, wall.precomputed_matrix);
+            const hit = rl.GetRayCollisionMesh(ray, mesh, wall.precomputed_matrix);
             result = getCloserRayHit(hit, wall.object_id, result);
         }
         return result;
@@ -705,7 +705,7 @@ const Wall = struct {
             1, 0, 2, 2, 0, 3, // Back side.
             0, 3, 4, 4, 3, 5, // Right side.
         };
-        var texcoords_buffer: [BottomlessCube.vertices.len / 3 * 2]f32 = undefined;
+        var texcoords_buffer: [meshes.BottomlessCube.vertices.len / 3 * 2]f32 = undefined;
         return generateMesh(
             shared_vertices,
             texture_corners[0..],
