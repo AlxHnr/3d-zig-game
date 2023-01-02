@@ -30,12 +30,12 @@ pub const WallRenderer = struct {
         glad.glGenVertexArrays(1, &vao_id);
         glad.glBindVertexArray(vao_id);
 
-        const vertices = mesh.BottomlessCube.getVertices();
+        const vertices = mesh.BottomlessCube.vertices;
         var vertex_vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
         glad.glVertexAttribPointer(loc_position, 3, glad.GL_FLOAT, 0, 0, null);
         glad.glEnableVertexAttribArray(loc_position);
 
-        const texture_coord_scale = mesh.BottomlessCube.getTextureCornerCoordScaleValues();
+        const texture_coord_scale = mesh.BottomlessCube.texture_coord_scale_values;
         var texture_coord_scales_vbo_id = createAndBindVbo(
             &texture_coord_scale,
             @sizeOf(@TypeOf(texture_coord_scale)),
@@ -104,7 +104,7 @@ pub const WallRenderer = struct {
 
     /// The given matrix has the same row order as the float16 returned by raymath.MatrixToFloatV().
     pub fn render(self: WallRenderer, vp_matrix: [16]f32, texture_id: c_uint) void {
-        const vertex_count = mesh.BottomlessCube.getVertices().len;
+        const vertex_count = mesh.BottomlessCube.vertices.len;
 
         self.shader.enable();
         glad.glBindVertexArray(self.vao_id);
