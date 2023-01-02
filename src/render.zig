@@ -15,7 +15,7 @@ pub const WallRenderer = struct {
     vp_matrix_location: c_int,
 
     pub fn create() !WallRenderer {
-        var shader = try Shader.load(vertex_shader_source, fragment_shader_source);
+        var shader = try Shader.create(vertex_shader_source, fragment_shader_source);
         errdefer shader.destroy();
         const loc_position = try shader.getAttributeLocation("position");
         const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
@@ -26,9 +26,7 @@ pub const WallRenderer = struct {
         const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
-        var vao_id: c_uint = undefined;
-        glad.glGenVertexArrays(1, &vao_id);
-        glad.glBindVertexArray(vao_id);
+        var vao_id = createAndBindVao();
 
         const vertices = mesh.BottomlessCube.vertices;
         var vertex_vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
@@ -48,13 +46,19 @@ pub const WallRenderer = struct {
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, wall_data_vbo_id);
 
         // // Matrices (mat4) are specifiend in groups of 4 floats.
-        setupVertexAttribute(loc_model_matrix, 4, 0);
-        setupVertexAttribute(loc_model_matrix + 1, 4, @sizeOf([4]f32));
-        setupVertexAttribute(loc_model_matrix + 2, 4, @sizeOf([8]f32));
-        setupVertexAttribute(loc_model_matrix + 3, 4, @sizeOf([12]f32));
-        setupVertexAttribute(loc_texture_source_rect, 4, @offsetOf(WallData, "texture_source_rect"));
-        setupVertexAttribute(loc_texture_repeat_dimensions, 3, @offsetOf(WallData, "texture_repeat_dimensions"));
-        setupVertexAttribute(loc_tint, 3, @offsetOf(WallData, "tint"));
+        setupVertexAttribute(loc_model_matrix, 4, 0, @sizeOf(WallData));
+        setupVertexAttribute(loc_model_matrix + 1, 4, @sizeOf([4]f32), @sizeOf(WallData));
+        setupVertexAttribute(loc_model_matrix + 2, 4, @sizeOf([8]f32), @sizeOf(WallData));
+        setupVertexAttribute(loc_model_matrix + 3, 4, @sizeOf([12]f32), @sizeOf(WallData));
+        setupVertexAttribute(loc_texture_source_rect, 4, @offsetOf(
+            WallData,
+            "texture_source_rect",
+        ), @sizeOf(WallData));
+        setupVertexAttribute(loc_texture_repeat_dimensions, 3, @offsetOf(
+            WallData,
+            "texture_repeat_dimensions",
+        ), @sizeOf(WallData));
+        setupVertexAttribute(loc_tint, 3, @offsetOf(WallData, "tint"), @sizeOf(WallData));
         comptime {
             assert(@sizeOf(WallData) == 104);
             assert(@offsetOf(WallData, "texture_source_rect") == 64);
@@ -140,31 +144,6 @@ pub const WallRenderer = struct {
         },
     };
 
-    fn createAndBindVbo(data: *const anyopaque, size: isize) c_uint {
-        var id: c_uint = undefined;
-        glad.glGenBuffers(1, &id);
-        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, id);
-        glad.glBufferData(glad.GL_ARRAY_BUFFER, size, data, glad.GL_STATIC_DRAW);
-        return id;
-    }
-
-    fn setupVertexAttribute(
-        attribute_location: c_uint,
-        component_count: c_int,
-        offset_to_first_component: usize,
-    ) void {
-        glad.glEnableVertexAttribArray(attribute_location);
-        glad.glVertexAttribPointer(
-            attribute_location,
-            component_count,
-            glad.GL_FLOAT,
-            0,
-            @sizeOf(WallData),
-            @intToPtr(?*u8, offset_to_first_component),
-        );
-        glad.glVertexAttribDivisor(attribute_location, 1);
-    }
-
     const vertex_shader_source =
         \\ #version 330
         \\
@@ -224,3 +203,36 @@ pub const WallRenderer = struct {
         \\ }
     ;
 };
+
+fn createAndBindVao() c_uint {
+    var vao_id: c_uint = undefined;
+    glad.glGenVertexArrays(1, &vao_id);
+    glad.glBindVertexArray(vao_id);
+    return vao_id;
+}
+
+fn createAndBindVbo(data: *const anyopaque, size: isize) c_uint {
+    var id: c_uint = undefined;
+    glad.glGenBuffers(1, &id);
+    glad.glBindBuffer(glad.GL_ARRAY_BUFFER, id);
+    glad.glBufferData(glad.GL_ARRAY_BUFFER, size, data, glad.GL_STATIC_DRAW);
+    return id;
+}
+
+fn setupVertexAttribute(
+    attribute_location: c_uint,
+    component_count: c_int,
+    offset_to_first_component: usize,
+    all_components_size: c_int,
+) void {
+    glad.glEnableVertexAttribArray(attribute_location);
+    glad.glVertexAttribPointer(
+        attribute_location,
+        component_count,
+        glad.GL_FLOAT,
+        0,
+        all_components_size,
+        @intToPtr(?*u8, offset_to_first_component),
+    );
+    glad.glVertexAttribDivisor(attribute_location, 1);
+}

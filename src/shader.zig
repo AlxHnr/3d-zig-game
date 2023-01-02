@@ -7,7 +7,7 @@ pub const Shader = struct {
     vertex_shader_id: c_uint,
     fragment_shader_id: c_uint,
 
-    pub fn load(vertex_shader_source: [:0]const u8, fragment_shader_source: [:0]const u8) !Shader {
+    pub fn create(vertex_shader_source: [:0]const u8, fragment_shader_source: [:0]const u8) !Shader {
         const program_id = glad.glCreateProgram();
         if (program_id == 0) {
             return Error.FailedToCompileAndLinkShader;
