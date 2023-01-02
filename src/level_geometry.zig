@@ -8,6 +8,7 @@ const util = @import("util.zig");
 const textures = @import("textures.zig");
 const glad = @cImport(@cInclude("external/glad.h"));
 const Error = @import("error.zig").Error;
+const BottomlessCube = @import("mesh.zig").BottomlessCube;
 
 pub const LevelGeometry = struct {
     object_id_counter: u64,
@@ -369,12 +370,17 @@ pub const LevelGeometry = struct {
 
     /// Find the id of the closest wall hit by the given ray, if available.
     pub fn cast3DRayToWalls(self: LevelGeometry, ray: rl.Ray, ignore_fences: bool) ?RayCollision {
+        var wall_mesh = std.mem.zeroes(rl.Mesh);
+        var vertices = BottomlessCube.vertices; // Copy needed for Mesh.vertices.
+        wall_mesh.vertices = vertices[0..];
+        wall_mesh.triangleCount = BottomlessCube.vertices.len / 9;
+
         var result: ?RayCollision = null;
         for (self.walls.items) |wall| {
             if (ignore_fences and Wall.isFence(wall.wall_type)) {
                 continue;
             }
-            const hit = rl.GetRayCollisionMesh(ray, wall.mesh, wall.precomputed_matrix);
+            const hit = rl.GetRayCollisionMesh(ray, wall_mesh, wall.precomputed_matrix);
             result = getCloserRayHit(hit, wall.object_id, result);
         }
         return result;
@@ -567,11 +573,10 @@ const Floor = struct {
 
     /// If the given ray hits this object, return the position on the floor.
     fn cast3DRay(self: Floor, ray: rl.Ray) ?FlatVector {
-        const ray_collision = rl.GetRayCollisionMesh(ray, self.mesh, self.precomputed_matrix);
-        return if (ray_collision.hit)
-            FlatVector.fromVector3(ray_collision.point)
-        else
-            null;
+        if (self.cast3DRayToGround(ray)) |position| {
+            return self.boundaries.collidesWithPoint(position);
+        }
+        return null;
     }
 
     fn getDefaultTextureScale(floor_type: LevelGeometry.FloorType) f32 {
