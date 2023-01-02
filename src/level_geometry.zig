@@ -634,7 +634,7 @@ const Wall = struct {
         const offset = wall_type_properties.corrected_end_position.subtract(
             wall_type_properties.corrected_start_position,
         );
-        const width = offset.length();
+        const length = offset.length();
         const x_axis = FlatVector{ .x = 1, .z = 0 };
         const rotation_angle = x_axis.computeRotationToOtherVector(offset);
 
@@ -645,32 +645,29 @@ const Wall = struct {
         const thickness = wall_type_properties.thickness;
 
         const mesh = if (isFence(wall_type))
-            generateDoubleSidedPlane(width, height, texture_scale, shared_fence_vertices)
+            generateDoubleSidedPlane(length, height, texture_scale, shared_fence_vertices)
         else
             generateBottomlessCube(1, 1, 1, texture_scale, shared_wall_vertices);
         const scale_matrix = if (isFence(wall_type))
-            rm.MatrixScale(width, height, 1)
+            rm.MatrixScale(length, height, 1)
         else
-            rm.MatrixScale(width, height, thickness);
+            rm.MatrixScale(length, height, thickness);
 
         const side_a_up_offset =
             FlatVector.normalize(.{ .x = offset.z, .z = -offset.x }).scale(thickness / 2);
+        const center = wall_type_properties.corrected_start_position.add(offset.scale(0.5));
         return Wall{
             .object_id = object_id,
             .mesh = mesh,
             .precomputed_matrix = rm.MatrixMultiply(
                 rm.MatrixMultiply(scale_matrix, rm.MatrixRotateY(rotation_angle)),
-                rm.MatrixTranslate(
-                    wall_type_properties.corrected_start_position.x,
-                    0,
-                    wall_type_properties.corrected_start_position.z,
-                ),
+                rm.MatrixTranslate(center.x, height / 2, center.z),
             ),
             .tint = Wall.getDefaultTint(wall_type),
             .boundaries = collision.Rectangle.create(
                 wall_type_properties.corrected_start_position.add(side_a_up_offset),
                 wall_type_properties.corrected_start_position.subtract(side_a_up_offset),
-                width,
+                length,
             ),
             .wall_type = wall_type,
             .start_position = start_position,
@@ -685,7 +682,7 @@ const Wall = struct {
 
     /// Will keep a reference to the given vertices for the rest of its lifetime.
     fn generateBottomlessCube(
-        width: f32,
+        length: f32,
         height: f32,
         thickness: f32,
         texture_scale: f32,
@@ -693,12 +690,12 @@ const Wall = struct {
     ) rl.Mesh {
         const texture_corners = [8]rl.Vector2{
             rl.Vector2{ .x = 0, .y = 0 },
-            rl.Vector2{ .x = width / texture_scale, .y = 0 },
-            rl.Vector2{ .x = width / texture_scale, .y = height / texture_scale },
+            rl.Vector2{ .x = length / texture_scale, .y = 0 },
+            rl.Vector2{ .x = length / texture_scale, .y = height / texture_scale },
             rl.Vector2{ .x = 0, .y = height / texture_scale },
             rl.Vector2{ .x = thickness / texture_scale, .y = 0 },
             rl.Vector2{ .x = thickness / texture_scale, .y = height / texture_scale },
-            rl.Vector2{ .x = width / texture_scale, .y = thickness / texture_scale },
+            rl.Vector2{ .x = length / texture_scale, .y = thickness / texture_scale },
             rl.Vector2{ .x = 0, .y = thickness / texture_scale },
         };
         const texture_corner_indices = [30]u3{
@@ -708,38 +705,13 @@ const Wall = struct {
             1, 0, 2, 2, 0, 3, // Back side.
             0, 3, 4, 4, 3, 5, // Right side.
         };
-        var texcoords_buffer: [computeBottomlessCubeVertices().len / 3 * 2]f32 = undefined;
+        var texcoords_buffer: [BottomlessCube.vertices.len / 3 * 2]f32 = undefined;
         return generateMesh(
             shared_vertices,
             texture_corners[0..],
             texture_corner_indices[0..],
             &texcoords_buffer,
         );
-    }
-
-    // Return the mesh of a wall. It has fixed dimensions of 1 and must be scaled by individual
-    // transformation matrices to the desired size. This mesh has no bottom.
-    fn computeBottomlessCubeVertices() [90]f32 {
-        const corners = [8]rl.Vector3{
-            rl.Vector3{ .x = 0, .y = 1, .z = 0.5 },
-            rl.Vector3{ .x = 0, .y = 0, .z = 0.5 },
-            rl.Vector3{ .x = 1, .y = 1, .z = 0.5 },
-            rl.Vector3{ .x = 1, .y = 0, .z = 0.5 },
-            rl.Vector3{ .x = 0, .y = 1, .z = -0.5 },
-            rl.Vector3{ .x = 0, .y = 0, .z = -0.5 },
-            rl.Vector3{ .x = 1, .y = 1, .z = -0.5 },
-            rl.Vector3{ .x = 1, .y = 0, .z = -0.5 },
-        };
-        const corner_indices = [30]u3{
-            0, 1, 2, 1, 3, 2, // Front side.
-            0, 4, 5, 0, 5, 1, // Left side.
-            0, 6, 4, 0, 2, 6, // Top side.
-            4, 6, 5, 5, 6, 7, // Back side.
-            2, 3, 6, 6, 3, 7, // Right side.
-        };
-        var vertices: [90]f32 = undefined;
-        populateVertices(&vertices, corners[0..], corner_indices[0..]);
-        return vertices;
     }
 
     /// Will keep a reference to the given vertices for the rest of its lifetime.
