@@ -117,3 +117,38 @@ pub fn getCurrentRaylibVpMatrix() rl.Matrix {
     const transform_matrix = @bitCast(rl.Matrix, rlgl.rlGetMatrixTransform());
     return rm.MatrixMultiply(rm.MatrixMultiply(transform_matrix, view_matrix), projection_matrix);
 }
+
+/// Contains informations about how to scale a piece of a texture onto a quad without breaking the
+/// pieces aspect ratio.
+pub const TextureQuadMapping = struct {
+    /// Values ranging from 0 to 1, where (0, 0) is the top left corner of the texture.
+    source_texcoords: rl.Rectangle,
+    /// Factor by which the texture should be repeated along each axis to prevent stretching.
+    repeat_dimensions: rl.Vector2,
+};
+
+pub fn scaleTextureToQuad(
+    texture: rl.Texture,
+    source_pixels: rl.Rectangle,
+    target_quad_size: rl.Vector2,
+    scale_factor: f32,
+) TextureQuadMapping {
+    const texture_width = @intToFloat(f32, texture.width);
+    const texture_height = @intToFloat(f32, texture.height);
+    const texcoords = .{
+        .x = source_pixels.x / texture_width,
+        .y = source_pixels.y / texture_height,
+        .width = source_pixels.width / texture_width,
+        .height = source_pixels.height / texture_height,
+    };
+    const aspect_ratio = source_pixels.height / source_pixels.width;
+    const pixels_per_unit_of_length = 32;
+    const repetitions = pixels_per_unit_of_length / source_pixels.width / scale_factor;
+    return .{
+        .source_texcoords = texcoords,
+        .repeat_dimensions = .{
+            .x = repetitions * target_quad_size.x,
+            .y = repetitions * target_quad_size.y / aspect_ratio,
+        },
+    };
+}
