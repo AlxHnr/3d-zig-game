@@ -173,6 +173,155 @@ pub const WallRenderer = struct {
     ;
 };
 
+pub const FloorRenderer = struct {
+    vao_id: c_uint,
+    vertex_vbo_id: c_uint,
+    floor_data_vbo_id: c_uint,
+    floors_uploaded_to_vbo: c_int,
+    shader: Shader,
+    vp_matrix_location: c_int,
+
+    pub fn create() !FloorRenderer {
+        var shader = try Shader.create(vertex_shader_source, shared_fragment_shader_source);
+        errdefer shader.destroy();
+        const loc_position = try shader.getAttributeLocation("position");
+        const loc_texture_coords = try shader.getAttributeLocation("texture_coords");
+        const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
+        const loc_texture_source_rect = try shader.getAttributeLocation("texture_source_rect");
+        const loc_texture_repeat_dimensions = try shader.getAttributeLocation("texture_repeat_dimensions");
+        const loc_tint = try shader.getAttributeLocation("tint");
+        const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
+        const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
+
+        var vao_id = createAndBindVao();
+
+        const vertices = meshes.StandingQuad.vertex_data;
+        const stride = @sizeOf([4]f32); // x, y, u, v.
+        var vertex_vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
+        glad.glVertexAttribPointer(loc_position, 2, glad.GL_FLOAT, 0, stride, null); // x, y
+        glad.glEnableVertexAttribArray(loc_position);
+        glad.glVertexAttribPointer(loc_texture_coords, 2, glad.GL_FLOAT, 0, stride, @intToPtr(
+            ?*u8,
+            @sizeOf([2]f32), // u, v
+        ));
+        glad.glEnableVertexAttribArray(loc_texture_coords);
+
+        var floor_data_vbo_id: c_uint = undefined;
+        glad.glGenBuffers(1, &floor_data_vbo_id);
+        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, floor_data_vbo_id);
+        setupModelMatrixAttribute(loc_model_matrix, @sizeOf(FloorData));
+        setupVertexAttribute(loc_texture_source_rect, 4, @offsetOf(
+            FloorData,
+            "texture_source_rect",
+        ), @sizeOf(FloorData));
+        setupVertexAttribute(loc_texture_repeat_dimensions, 2, @offsetOf(
+            FloorData,
+            "texture_repeat_dimensions",
+        ), @sizeOf(FloorData));
+        setupVertexAttribute(loc_tint, 3, @offsetOf(FloorData, "tint"), @sizeOf(FloorData));
+        comptime {
+            assert(@sizeOf(FloorData) == 100);
+            assert(@offsetOf(FloorData, "texture_source_rect") == 64);
+            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 80);
+            assert(@offsetOf(FloorData, "tint") == 88);
+        }
+
+        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
+        glad.glBindVertexArray(0);
+        setTextureSamplerId(shader, loc_texture_sampler);
+
+        return FloorRenderer{
+            .vao_id = vao_id,
+            .vertex_vbo_id = vertex_vbo_id,
+            .floor_data_vbo_id = floor_data_vbo_id,
+            .floors_uploaded_to_vbo = 0,
+            .shader = shader,
+            .vp_matrix_location = loc_vp_matrix,
+        };
+    }
+
+    pub fn destroy(self: *FloorRenderer) void {
+        self.shader.destroy();
+        glad.glDeleteBuffers(1, &self.floor_data_vbo_id);
+        glad.glDeleteBuffers(1, &self.vertex_vbo_id);
+        glad.glDeleteVertexArrays(1, &self.vao_id);
+    }
+
+    /// The given floors will be rendered in the same order as in the given slice.
+    pub fn uploadFloors(self: *FloorRenderer, floors: []const FloorData) void {
+        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, self.floor_data_vbo_id);
+        defer glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
+
+        const size = @intCast(c_int, floors.len * @sizeOf(FloorData));
+        if (floors.len <= self.floors_uploaded_to_vbo) {
+            glad.glBufferSubData(glad.GL_ARRAY_BUFFER, 0, size, floors.ptr);
+        } else {
+            glad.glBufferData(glad.GL_ARRAY_BUFFER, size, floors.ptr, glad.GL_STATIC_DRAW);
+        }
+        self.floors_uploaded_to_vbo = @intCast(c_int, floors.len);
+    }
+
+    /// The given matrix has the same row order as the float16 returned by raymath.MatrixToFloatV().
+    pub fn render(self: FloorRenderer, vp_matrix: [16]f32, texture_id: c_uint) void {
+        const vertex_count = meshes.BottomlessCube.vertices.len;
+
+        self.shader.enable();
+        glad.glBindVertexArray(self.vao_id);
+        glad.glBindTexture(glad.GL_TEXTURE_2D, texture_id);
+        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix);
+        glad.glDrawArraysInstanced(glad.GL_TRIANGLES, 0, vertex_count, self.floors_uploaded_to_vbo);
+        glad.glBindTexture(glad.GL_TEXTURE_2D, 0);
+        glad.glBindVertexArray(0);
+        glad.glUseProgram(0);
+    }
+
+    pub const FloorData = extern struct {
+        /// Same row order as the float16 returned by raymath.MatrixToFloatV().
+        model_matrix: [16]f32,
+        /// These values range from 0 to 1, where (0, 0) is the top left corner of the texture.
+        texture_source_rect: extern struct {
+            x: f32,
+            y: f32,
+            w: f32,
+            h: f32,
+        },
+        /// How often the texture should repeat along the floors width and height.
+        texture_repeat_dimensions: extern struct {
+            x: f32,
+            y: f32,
+        },
+        /// Color values from 0 to 1.
+        tint: extern struct {
+            r: f32,
+            g: f32,
+            b: f32,
+        },
+    };
+
+    const vertex_shader_source =
+        \\ #version 330
+        \\
+        \\ in vec2 position;
+        \\ in vec2 texture_coords;
+        \\ in mat4 model_matrix;
+        \\ in vec4 texture_source_rect; // (x, y, w, h) ranging from 0 to 1, (0, 0) == top left.
+        \\ in vec2 texture_repeat_dimensions; // How often the texture should repeat along each axis.
+        \\ in vec3 tint;
+        \\ uniform mat4 vp_matrix;
+        \\
+        \\ out vec4 fragment_texture_source_rect;
+        \\ out vec2 fragment_texture_repeat;
+        \\ out vec3 fragment_tint;
+        \\
+        \\ void main() {
+        \\     gl_Position = vp_matrix * model_matrix * vec4(position, 0, 1);
+        \\     fragment_texture_source_rect = texture_source_rect;
+        \\     fragment_texture_repeat = texture_coords * texture_repeat_dimensions;
+        \\     fragment_tint = tint;
+        \\ }
+    ;
+};
+
 const shared_fragment_shader_source =
     \\ #version 330
     \\
