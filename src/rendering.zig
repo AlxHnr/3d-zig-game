@@ -15,7 +15,7 @@ pub const WallRenderer = struct {
     vp_matrix_location: c_int,
 
     pub fn create() !WallRenderer {
-        var shader = try Shader.create(vertex_shader_source, shared_fragment_shader_source);
+        var shader = try Shader.create(vertex_shader_source, level_geometry_fragment_shader);
         errdefer shader.destroy();
         const loc_position = try shader.getAttributeLocation("position");
         const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
@@ -43,16 +43,15 @@ pub const WallRenderer = struct {
         var wall_data_vbo_id: c_uint = undefined;
         glad.glGenBuffers(1, &wall_data_vbo_id);
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, wall_data_vbo_id);
-        setupModelMatrixAttribute(loc_model_matrix, @sizeOf(WallData));
+        setupLevelGeometryPropertyAttributes(loc_model_matrix, loc_tint, @sizeOf(WallData));
         setupVertexAttribute(loc_texture_repeat_dimensions, 3, @offsetOf(
             WallData,
             "texture_repeat_dimensions",
         ), @sizeOf(WallData));
-        setupVertexAttribute(loc_tint, 3, @offsetOf(WallData, "tint"), @sizeOf(WallData));
         comptime {
+            assert(@offsetOf(WallData, "properties") == 0);
+            assert(@offsetOf(WallData, "texture_repeat_dimensions") == 76);
             assert(@sizeOf(WallData) == 88);
-            assert(@offsetOf(WallData, "texture_repeat_dimensions") == 64);
-            assert(@offsetOf(WallData, "tint") == 76);
         }
 
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
@@ -107,19 +106,12 @@ pub const WallRenderer = struct {
     }
 
     pub const WallData = extern struct {
-        /// Same row order as the float16 returned by raymath.MatrixToFloatV().
-        model_matrix: [16]f32,
+        properties: LevelGeometryProperties,
         // How often the texture should repeat along each axis.
         texture_repeat_dimensions: extern struct {
             x: f32,
             y: f32,
             z: f32,
-        },
-        /// Color values from 0 to 1.
-        tint: extern struct {
-            r: f32,
-            g: f32,
-            b: f32,
         },
     };
 
@@ -166,7 +158,7 @@ pub const FloorRenderer = struct {
     vp_matrix_location: c_int,
 
     pub fn create() !FloorRenderer {
-        var shader = try Shader.create(vertex_shader_source, shared_fragment_shader_source);
+        var shader = try Shader.create(vertex_shader_source, level_geometry_fragment_shader);
         errdefer shader.destroy();
         const loc_position = try shader.getAttributeLocation("position");
         const loc_texture_coords = try shader.getAttributeLocation("texture_coords");
@@ -192,16 +184,15 @@ pub const FloorRenderer = struct {
         var floor_data_vbo_id: c_uint = undefined;
         glad.glGenBuffers(1, &floor_data_vbo_id);
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, floor_data_vbo_id);
-        setupModelMatrixAttribute(loc_model_matrix, @sizeOf(FloorData));
+        setupLevelGeometryPropertyAttributes(loc_model_matrix, loc_tint, @sizeOf(FloorData));
         setupVertexAttribute(loc_texture_repeat_dimensions, 2, @offsetOf(
             FloorData,
             "texture_repeat_dimensions",
         ), @sizeOf(FloorData));
-        setupVertexAttribute(loc_tint, 3, @offsetOf(FloorData, "tint"), @sizeOf(FloorData));
         comptime {
+            assert(@offsetOf(FloorData, "properties") == 0);
+            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 76);
             assert(@sizeOf(FloorData) == 84);
-            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 64);
-            assert(@offsetOf(FloorData, "tint") == 72);
         }
 
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
@@ -254,18 +245,11 @@ pub const FloorRenderer = struct {
     }
 
     pub const FloorData = extern struct {
-        /// Same row order as the float16 returned by raymath.MatrixToFloatV().
-        model_matrix: [16]f32,
+        properties: LevelGeometryProperties,
         /// How often the texture should repeat along the floors width and height.
         texture_repeat_dimensions: extern struct {
             x: f32,
             y: f32,
-        },
-        /// Color values from 0 to 1.
-        tint: extern struct {
-            r: f32,
-            g: f32,
-            b: f32,
         },
     };
 
@@ -290,7 +274,18 @@ pub const FloorRenderer = struct {
     ;
 };
 
-const shared_fragment_shader_source =
+pub const LevelGeometryProperties = extern struct {
+    /// Same row order as the float16 returned by raymath.MatrixToFloatV().
+    model_matrix: [16]f32,
+    /// Color values from 0 to 1.
+    tint: extern struct {
+        r: f32,
+        g: f32,
+        b: f32,
+    },
+};
+
+const level_geometry_fragment_shader =
     \\ #version 330
     \\
     \\ in vec2 fragment_texcoords;
@@ -341,12 +336,19 @@ fn setupVertexAttribute(
     glad.glVertexAttribDivisor(attribute_location, 1);
 }
 
-fn setupModelMatrixAttribute(loc_model_matrix: c_uint, stride: c_int) void {
+/// Configures LevelGeometryProperties as vertex attributes at offset 0.
+fn setupLevelGeometryPropertyAttributes(loc_model_matrix: c_uint, loc_tint: c_uint, stride: c_int) void {
     // Matrices (mat4) are specified in groups of 4 floats.
     setupVertexAttribute(loc_model_matrix + 0, 4, 0, stride);
     setupVertexAttribute(loc_model_matrix + 1, 4, @sizeOf([4]f32), stride);
     setupVertexAttribute(loc_model_matrix + 2, 4, @sizeOf([8]f32), stride);
     setupVertexAttribute(loc_model_matrix + 3, 4, @sizeOf([12]f32), stride);
+    setupVertexAttribute(loc_tint, 3, @offsetOf(LevelGeometryProperties, "tint"), stride);
+    comptime {
+        assert(@offsetOf(LevelGeometryProperties, "model_matrix") == 0);
+        assert(@offsetOf(LevelGeometryProperties, "tint") == 64);
+        assert(@sizeOf(LevelGeometryProperties) == 76);
+    }
 }
 
 fn setTextureSamplerId(shader: Shader, loc_texture_sampler: c_int) void {
