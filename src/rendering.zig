@@ -274,6 +274,7 @@ pub const FloorRenderer = struct {
     ;
 };
 
+/// Basic geometry data to be uploaded as vertex attributes to the GPU.
 pub const LevelGeometryProperties = extern struct {
     /// Same row order as the float16 returned by raymath.MatrixToFloatV().
     model_matrix: [16]f32,
