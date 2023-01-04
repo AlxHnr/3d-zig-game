@@ -15,7 +15,7 @@ pub const WallRenderer = struct {
     vp_matrix_location: c_int,
 
     pub fn create() !WallRenderer {
-        var shader = try Shader.create(vertex_shader_source, fragment_shader_source);
+        var shader = try Shader.create(vertex_shader_source, shared_fragment_shader_source);
         errdefer shader.destroy();
         const loc_position = try shader.getAttributeLocation("position");
         const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
@@ -44,12 +44,7 @@ pub const WallRenderer = struct {
         var wall_data_vbo_id: c_uint = undefined;
         glad.glGenBuffers(1, &wall_data_vbo_id);
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, wall_data_vbo_id);
-
-        // // Matrices (mat4) are specifiend in groups of 4 floats.
-        setupVertexAttribute(loc_model_matrix, 4, 0, @sizeOf(WallData));
-        setupVertexAttribute(loc_model_matrix + 1, 4, @sizeOf([4]f32), @sizeOf(WallData));
-        setupVertexAttribute(loc_model_matrix + 2, 4, @sizeOf([8]f32), @sizeOf(WallData));
-        setupVertexAttribute(loc_model_matrix + 3, 4, @sizeOf([12]f32), @sizeOf(WallData));
+        setupModelMatrixAttribute(loc_model_matrix, @sizeOf(WallData));
         setupVertexAttribute(loc_texture_source_rect, 4, @offsetOf(
             WallData,
             "texture_source_rect",
@@ -68,11 +63,7 @@ pub const WallRenderer = struct {
 
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
         glad.glBindVertexArray(0);
-
-        shader.enable();
-        var texture_sampler_id: c_int = 0;
-        glad.glUniform1iv(loc_texture_sampler, 1, &texture_sampler_id);
-        glad.glUseProgram(0);
+        setTextureSamplerId(shader, loc_texture_sampler);
 
         return WallRenderer{
             .vao_id = vao_id,
@@ -93,6 +84,7 @@ pub const WallRenderer = struct {
         self.shader.destroy();
     }
 
+    /// The given walls will be rendered in the same order as in the given slice.
     pub fn uploadWalls(self: *WallRenderer, walls: []const WallData) void {
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, self.wall_data_vbo_id);
         defer glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
@@ -130,7 +122,7 @@ pub const WallRenderer = struct {
             w: f32,
             h: f32,
         },
-        /// Contains the walls dimensions divided by the textures scale.
+        // How often the texture should repeat along each axis.
         texture_repeat_dimensions: extern struct {
             x: f32,
             y: f32,
@@ -151,7 +143,7 @@ pub const WallRenderer = struct {
         \\ in mat4 model_matrix;
         \\ in vec4 texture_source_rect; // (x, y, w, h) ranging from 0 to 1, (0, 0) == top left.
         \\ in int texcoord_scale; // See TextureCoordScale in meshes.zig.
-        \\ in vec3 texture_repeat_dimensions; // The walls dimensions divided by texture scale.
+        \\ in vec3 texture_repeat_dimensions; // How often the texture should repeat along each axis.
         \\ in vec3 tint;
         \\ uniform mat4 vp_matrix;
         \\
@@ -173,36 +165,36 @@ pub const WallRenderer = struct {
         \\ }
         \\
         \\ void main() {
-        \\     gl_Position = vp_matrix * model_matrix * vec4(position, 1.0);
+        \\     gl_Position = vp_matrix * model_matrix * vec4(position, 1);
         \\     fragment_texture_source_rect = texture_source_rect;
-        \\     fragment_texture_repeat =
-        \\         getFragmentRepeat() * vec2(1, texture_source_rect.z / texture_source_rect.w);
+        \\     fragment_texture_repeat = getFragmentRepeat();
         \\     fragment_tint = tint;
         \\ }
     ;
-    const fragment_shader_source =
-        \\ #version 330
-        \\
-        \\ in vec4 fragment_texture_source_rect;
-        \\ in vec2 fragment_texture_repeat;
-        \\ in vec3 fragment_tint;
-        \\ uniform sampler2D texture_sampler;
-        \\
-        \\ out vec4 final_color;
-        \\
-        \\ void main() {
-        \\     vec2 source_position =
-        \\         fragment_texture_source_rect.xy
-        \\         + mod(fragment_texture_repeat, 1)
-        \\         * fragment_texture_source_rect.zw;
-        \\     vec4 texel_color = texture(texture_sampler, source_position);
-        \\     if (texel_color.a < 0.5) {
-        \\         discard;
-        \\     }
-        \\     final_color = texel_color * vec4(fragment_tint, 1.0);
-        \\ }
-    ;
 };
+
+const shared_fragment_shader_source =
+    \\ #version 330
+    \\
+    \\ in vec4 fragment_texture_source_rect;
+    \\ in vec2 fragment_texture_repeat;
+    \\ in vec3 fragment_tint;
+    \\ uniform sampler2D texture_sampler;
+    \\
+    \\ out vec4 final_color;
+    \\
+    \\ void main() {
+    \\     vec2 source_position =
+    \\         fragment_texture_source_rect.xy
+    \\         + fragment_texture_repeat
+    \\         * fragment_texture_source_rect.zw;
+    \\     vec4 texel_color = texture(texture_sampler, source_position);
+    \\     if (texel_color.a < 0.5) {
+    \\         discard;
+    \\     }
+    \\     final_color = texel_color * vec4(fragment_tint, 1);
+    \\ }
+;
 
 fn createAndBindVao() c_uint {
     var vao_id: c_uint = undefined;
@@ -235,4 +227,19 @@ fn setupVertexAttribute(
         @intToPtr(?*u8, offset_to_first_component),
     );
     glad.glVertexAttribDivisor(attribute_location, 1);
+}
+
+fn setupModelMatrixAttribute(loc_model_matrix: c_uint, stride: c_int) void {
+    // Matrices (mat4) are specified in groups of 4 floats.
+    setupVertexAttribute(loc_model_matrix + 0, 4, 0, stride);
+    setupVertexAttribute(loc_model_matrix + 1, 4, @sizeOf([4]f32), stride);
+    setupVertexAttribute(loc_model_matrix + 2, 4, @sizeOf([8]f32), stride);
+    setupVertexAttribute(loc_model_matrix + 3, 4, @sizeOf([12]f32), stride);
+}
+
+fn setTextureSamplerId(shader: Shader, loc_texture_sampler: c_int) void {
+    shader.enable();
+    var texture_sampler_id: c_int = 0;
+    glad.glUniform1iv(loc_texture_sampler, 1, &texture_sampler_id);
+    glad.glUseProgram(0);
 }
