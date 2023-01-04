@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const rl = @import("raylib");
+const glad = @cImport(@cInclude("external/glad.h"));
 const Error = @import("error.zig").Error;
 
 pub const Name = enum {
@@ -43,8 +44,7 @@ pub const Collection = struct {
                 return Error.FailedToLoadTextureFile;
             }
 
-            const texture = textureFromImage(&image, mapping.key);
-            mapping.value.* = texture;
+            mapping.value.* = try textureFromImage(&image);
         }
 
         return Collection{ .textures = textures };
@@ -64,18 +64,22 @@ pub const Collection = struct {
 };
 
 /// Will consume the given image.
-fn textureFromImage(image: *rl.Image, texture_name: Name) rl.Texture {
+fn textureFromImage(image: *rl.Image) !rl.Texture {
     defer rl.UnloadImage(image.*);
 
-    // Apply some tricks to make the artwork look pixely from nearby but not grainy from the
-    // distance.
-    switch (texture_name) {
-        else => return rl.LoadTextureFromImage(image.*),
-        .hedge => rl.ImageResizeNN(image, image.width * 5, image.height * 5),
-        .stone_floor => rl.ImageResizeNN(image, image.width * 10, image.height * 10),
-    }
     var texture = rl.LoadTextureFromImage(image.*);
+    if (texture.id == 0) {
+        return Error.FailedToLoadTextureFile;
+    }
+
+    glad.glBindTexture(glad.GL_TEXTURE_2D, texture.id);
+    glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_WRAP_S, glad.GL_REPEAT);
+    glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_WRAP_T, glad.GL_REPEAT);
+    glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_MAG_FILTER, glad.GL_NEAREST);
+    glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_MIN_FILTER, glad.GL_LINEAR_MIPMAP_NEAREST);
+    glad.glBindTexture(glad.GL_TEXTURE_2D, 0);
+
     rl.GenTextureMipmaps(&texture);
-    rl.SetTextureFilter(texture, @enumToInt(rl.FILTER_BILINEAR));
+
     return texture;
 }
