@@ -20,7 +20,6 @@ pub const WallRenderer = struct {
         const loc_position = try shader.getAttributeLocation("position");
         const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
         const loc_texcoord_scale = try shader.getAttributeLocation("texcoord_scale");
-        const loc_texture_source_rect = try shader.getAttributeLocation("texture_source_rect");
         const loc_texture_repeat_dimensions = try shader.getAttributeLocation("texture_repeat_dimensions");
         const loc_tint = try shader.getAttributeLocation("tint");
         const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
@@ -45,20 +44,15 @@ pub const WallRenderer = struct {
         glad.glGenBuffers(1, &wall_data_vbo_id);
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, wall_data_vbo_id);
         setupModelMatrixAttribute(loc_model_matrix, @sizeOf(WallData));
-        setupVertexAttribute(loc_texture_source_rect, 4, @offsetOf(
-            WallData,
-            "texture_source_rect",
-        ), @sizeOf(WallData));
         setupVertexAttribute(loc_texture_repeat_dimensions, 3, @offsetOf(
             WallData,
             "texture_repeat_dimensions",
         ), @sizeOf(WallData));
         setupVertexAttribute(loc_tint, 3, @offsetOf(WallData, "tint"), @sizeOf(WallData));
         comptime {
-            assert(@sizeOf(WallData) == 104);
-            assert(@offsetOf(WallData, "texture_source_rect") == 64);
-            assert(@offsetOf(WallData, "texture_repeat_dimensions") == 80);
-            assert(@offsetOf(WallData, "tint") == 92);
+            assert(@sizeOf(WallData) == 88);
+            assert(@offsetOf(WallData, "texture_repeat_dimensions") == 64);
+            assert(@offsetOf(WallData, "tint") == 76);
         }
 
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
@@ -115,13 +109,6 @@ pub const WallRenderer = struct {
     pub const WallData = extern struct {
         /// Same row order as the float16 returned by raymath.MatrixToFloatV().
         model_matrix: [16]f32,
-        /// These values range from 0 to 1, where (0, 0) is the top left corner of the texture.
-        texture_source_rect: extern struct {
-            x: f32,
-            y: f32,
-            w: f32,
-            h: f32,
-        },
         // How often the texture should repeat along each axis.
         texture_repeat_dimensions: extern struct {
             x: f32,
@@ -141,14 +128,12 @@ pub const WallRenderer = struct {
         \\
         \\ in vec3 position;
         \\ in mat4 model_matrix;
-        \\ in vec4 texture_source_rect; // (x, y, w, h) ranging from 0 to 1, (0, 0) == top left.
         \\ in int texcoord_scale; // See TextureCoordScale in meshes.zig.
         \\ in vec3 texture_repeat_dimensions; // How often the texture should repeat along each axis.
         \\ in vec3 tint;
         \\ uniform mat4 vp_matrix;
         \\
-        \\ out vec4 fragment_texture_source_rect;
-        \\ out vec2 fragment_texture_repeat;
+        \\ out vec2 fragment_texcoords;
         \\ out vec3 fragment_tint;
         \\
         \\ vec2 getFragmentRepeat() {
@@ -166,8 +151,7 @@ pub const WallRenderer = struct {
         \\
         \\ void main() {
         \\     gl_Position = vp_matrix * model_matrix * vec4(position, 1);
-        \\     fragment_texture_source_rect = texture_source_rect;
-        \\     fragment_texture_repeat = getFragmentRepeat();
+        \\     fragment_texcoords = getFragmentRepeat();
         \\     fragment_tint = tint;
         \\ }
     ;
@@ -187,7 +171,6 @@ pub const FloorRenderer = struct {
         const loc_position = try shader.getAttributeLocation("position");
         const loc_texture_coords = try shader.getAttributeLocation("texture_coords");
         const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
-        const loc_texture_source_rect = try shader.getAttributeLocation("texture_source_rect");
         const loc_texture_repeat_dimensions = try shader.getAttributeLocation("texture_repeat_dimensions");
         const loc_tint = try shader.getAttributeLocation("tint");
         const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
@@ -210,20 +193,15 @@ pub const FloorRenderer = struct {
         glad.glGenBuffers(1, &floor_data_vbo_id);
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, floor_data_vbo_id);
         setupModelMatrixAttribute(loc_model_matrix, @sizeOf(FloorData));
-        setupVertexAttribute(loc_texture_source_rect, 4, @offsetOf(
-            FloorData,
-            "texture_source_rect",
-        ), @sizeOf(FloorData));
         setupVertexAttribute(loc_texture_repeat_dimensions, 2, @offsetOf(
             FloorData,
             "texture_repeat_dimensions",
         ), @sizeOf(FloorData));
         setupVertexAttribute(loc_tint, 3, @offsetOf(FloorData, "tint"), @sizeOf(FloorData));
         comptime {
-            assert(@sizeOf(FloorData) == 100);
-            assert(@offsetOf(FloorData, "texture_source_rect") == 64);
-            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 80);
-            assert(@offsetOf(FloorData, "tint") == 88);
+            assert(@sizeOf(FloorData) == 84);
+            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 64);
+            assert(@offsetOf(FloorData, "tint") == 72);
         }
 
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
@@ -278,13 +256,6 @@ pub const FloorRenderer = struct {
     pub const FloorData = extern struct {
         /// Same row order as the float16 returned by raymath.MatrixToFloatV().
         model_matrix: [16]f32,
-        /// These values range from 0 to 1, where (0, 0) is the top left corner of the texture.
-        texture_source_rect: extern struct {
-            x: f32,
-            y: f32,
-            w: f32,
-            h: f32,
-        },
         /// How often the texture should repeat along the floors width and height.
         texture_repeat_dimensions: extern struct {
             x: f32,
@@ -304,19 +275,16 @@ pub const FloorRenderer = struct {
         \\ in vec2 position;
         \\ in vec2 texture_coords;
         \\ in mat4 model_matrix;
-        \\ in vec4 texture_source_rect; // (x, y, w, h) ranging from 0 to 1, (0, 0) == top left.
         \\ in vec2 texture_repeat_dimensions; // How often the texture should repeat along each axis.
         \\ in vec3 tint;
         \\ uniform mat4 vp_matrix;
         \\
-        \\ out vec4 fragment_texture_source_rect;
-        \\ out vec2 fragment_texture_repeat;
+        \\ out vec2 fragment_texcoords;
         \\ out vec3 fragment_tint;
         \\
         \\ void main() {
         \\     gl_Position = vp_matrix * model_matrix * vec4(position, 0, 1);
-        \\     fragment_texture_source_rect = texture_source_rect;
-        \\     fragment_texture_repeat = texture_coords * texture_repeat_dimensions;
+        \\     fragment_texcoords = texture_coords * texture_repeat_dimensions;
         \\     fragment_tint = tint;
         \\ }
     ;
@@ -325,19 +293,14 @@ pub const FloorRenderer = struct {
 const shared_fragment_shader_source =
     \\ #version 330
     \\
-    \\ in vec4 fragment_texture_source_rect;
-    \\ in vec2 fragment_texture_repeat;
+    \\ in vec2 fragment_texcoords;
     \\ in vec3 fragment_tint;
     \\ uniform sampler2D texture_sampler;
     \\
     \\ out vec4 final_color;
     \\
     \\ void main() {
-    \\     vec2 source_position =
-    \\         fragment_texture_source_rect.xy
-    \\         + fragment_texture_repeat
-    \\         * fragment_texture_source_rect.zw;
-    \\     vec4 texel_color = texture(texture_sampler, source_position);
+    \\     vec4 texel_color = texture(texture_sampler, fragment_texcoords);
     \\     if (texel_color.a < 0.5) {
     \\         discard;
     \\     }
