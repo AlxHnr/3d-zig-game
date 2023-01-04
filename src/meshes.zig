@@ -66,3 +66,17 @@ pub const BottomlessCube = struct {
         return result;
     }
 };
+
+/// Quad on the xy axis with zero depth, centered at (0, 0) with dimensions of (1, 1). Has UVs which
+/// point into the texture, with (0, 0) at the top left corner.
+pub const StandingQuad = struct {
+    pub const vertex_data = [24]f32{
+        // x    y   u  v
+        -0.5, -0.5, 0, 1,
+        0.5,  0.5,  1, 0,
+        -0.5, 0.5,  0, 0,
+        -0.5, -0.5, 0, 1,
+        0.5,  -0.5, 1, 1,
+        0.5,  0.5,  1, 0,
+    };
+};
