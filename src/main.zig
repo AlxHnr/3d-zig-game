@@ -447,8 +447,8 @@ fn reloadDefaultMap(allocator: std.mem.Allocator, level_geometry: *LevelGeometry
 }
 
 pub fn main() !void {
-    var screen_width: u16 = 1280;
-    var screen_height: u16 = 720;
+    var screen_width: u16 = 1600;
+    var screen_height: u16 = 900;
     rl.InitWindow(screen_width, screen_height, "3D Zig Game");
     defer rl.CloseWindow();
 
