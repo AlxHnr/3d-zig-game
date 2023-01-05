@@ -628,6 +628,7 @@ const Floor = struct {
     fn getTextureScale(self: Floor) f32 {
         return switch (self.floor_type) {
             else => 5.0,
+            .grass => 2.0,
             .water => 3.0,
         };
     }
@@ -717,84 +718,60 @@ const Wall = struct {
         end_position: FlatVector,
         wall_type: LevelGeometry.WallType,
     ) WallTypeProperties {
-        const fence_thickness = 0.25; // Only needed for collision boundaries.
-        return switch (wall_type) {
-            else => {
-                return WallTypeProperties{
-                    .corrected_start_position = start_position,
-                    .corrected_end_position = end_position,
-                    .height = 10,
-                    .thickness = 1,
-                    .texture_scale = 5.0,
-                };
-            },
+        const fence_thickness = 0.25; // Only needed for collision boundaries, fences are flat.
+        var properties = WallTypeProperties{
+            .corrected_start_position = start_position,
+            .corrected_end_position = end_position,
+            .height = 10,
+            .thickness = fence_thickness,
+            .texture_scale = 1.0,
+        };
+        switch (wall_type) {
             .small_wall => {
-                return WallTypeProperties{
-                    .corrected_start_position = start_position,
-                    .corrected_end_position = end_position,
-                    .height = 5,
-                    .thickness = 0.25,
-                    .texture_scale = 5.0,
-                };
+                properties.height = 5;
+                properties.texture_scale = 5.0;
+            },
+            .medium_wall => {
+                properties.height = 10;
+                properties.thickness = 1;
+                properties.texture_scale = 5.0;
             },
             .castle_wall => {
-                return WallTypeProperties{
-                    .corrected_start_position = start_position,
-                    .corrected_end_position = end_position,
-                    .height = 15,
-                    .thickness = 2,
-                    .texture_scale = 7.5,
-                };
+                properties.height = 15;
+                properties.thickness = 2;
+                properties.texture_scale = 7.5;
             },
             .castle_tower => {
+                // Towers are centered around their start position.
                 const half_side_length = 3;
                 const rescaled_offset =
                     end_position.subtract(start_position).normalize().scale(half_side_length);
-                return WallTypeProperties{
-                    .corrected_start_position = start_position.subtract(rescaled_offset),
-                    .corrected_end_position = start_position.add(rescaled_offset),
-                    .height = 18,
-                    .thickness = half_side_length * 2,
-                    .texture_scale = 9,
-                };
+                properties.corrected_start_position = start_position.subtract(rescaled_offset);
+                properties.corrected_end_position = start_position.add(rescaled_offset);
+                properties.height = 18;
+                properties.thickness = half_side_length * 2;
+                properties.texture_scale = 9;
             },
             .metal_fence => {
-                return WallTypeProperties{
-                    .corrected_start_position = start_position,
-                    .corrected_end_position = end_position,
-                    .height = 3.5,
-                    .thickness = fence_thickness,
-                    .texture_scale = 3.5,
-                };
+                properties.height = 3.5;
+                properties.texture_scale = 3.5;
             },
             .short_metal_fence => {
-                return WallTypeProperties{
-                    .corrected_start_position = start_position,
-                    .corrected_end_position = end_position,
-                    .height = 1,
-                    .thickness = fence_thickness,
-                    .texture_scale = 1.5,
-                };
+                properties.height = 1;
+                properties.texture_scale = 1.5;
             },
             .tall_hedge => {
-                return WallTypeProperties{
-                    .corrected_start_position = start_position,
-                    .corrected_end_position = end_position,
-                    .height = 8,
-                    .thickness = 3,
-                    .texture_scale = 3.5,
-                };
+                properties.height = 8;
+                properties.thickness = 3;
+                properties.texture_scale = 3.5;
             },
             .giga_wall => {
-                return WallTypeProperties{
-                    .corrected_start_position = start_position,
-                    .corrected_end_position = end_position,
-                    .height = 140,
-                    .thickness = 6,
-                    .texture_scale = 16.0,
-                };
+                properties.height = 140;
+                properties.thickness = 6;
+                properties.texture_scale = 16.0;
             },
-        };
+        }
+        return properties;
     }
 
     fn isFence(wall_type: LevelGeometry.WallType) bool {
