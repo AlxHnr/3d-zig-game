@@ -142,7 +142,7 @@ pub fn scaleTextureToQuad(
         .height = source_pixels.height / texture_height,
     };
     const aspect_ratio = source_pixels.height / source_pixels.width;
-    const pixels_per_unit_of_length = 32;
+    const pixels_per_unit_of_length = 100;
     const repetitions = pixels_per_unit_of_length / source_pixels.width / scale_factor;
     return .{
         .source_texcoords = texcoords,
