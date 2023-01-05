@@ -335,6 +335,7 @@ const Player = struct {
 };
 
 fn drawEverything(
+    allocator: std.mem.Allocator,
     screen_height: u16,
     players: []const Player,
     current_player: Player,
@@ -344,7 +345,7 @@ fn drawEverything(
     shader: rl.Shader,
     edit_mode_state: edit_mode.State,
     interval_between_previous_and_current_tick: f32,
-) void {
+) !void {
     const lerped_camera = current_player.getCamera(interval_between_previous_and_current_tick);
 
     const max_distance_from_target =
@@ -361,7 +362,8 @@ fn drawEverything(
     glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
     glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
 
-    level_geometry.draw(raylib_camera, shader, texture_collection);
+    try level_geometry.prepareRender(allocator);
+    level_geometry.render(raylib_camera, shader, texture_collection);
 
     var collision_objects: [4]gems.CollisionObject = undefined;
     std.debug.assert(players.len <= collision_objects.len);
@@ -442,7 +444,7 @@ fn reloadDefaultMap(allocator: std.mem.Allocator, level_geometry: *LevelGeometry
     defer allocator.free(json);
 
     const geometry = try LevelGeometry.createFromJson(allocator, json);
-    level_geometry.destroy(allocator);
+    level_geometry.destroy();
     level_geometry.* = geometry;
 }
 
@@ -465,13 +467,13 @@ pub fn main() !void {
     defer texture_collection.destroy();
 
     var players = [_]Player{
-        Player.create(0, 0, 0, texture_collection.get(.player)),
-        Player.create(1, 5, 14, texture_collection.get(.player)),
+        Player.create(0, 0, -10, texture_collection.get(.player)),
+        Player.create(1, 0, 10, texture_collection.get(.player)),
     };
     var controllable_player_index: usize = 0;
 
     var level_geometry = try LevelGeometry.create(gpa.allocator());
-    defer level_geometry.destroy(gpa.allocator());
+    defer level_geometry.destroy();
     try reloadDefaultMap(gpa.allocator(), &level_geometry);
 
     var gem_collection = gems.Collection.create(gpa.allocator());
@@ -492,7 +494,8 @@ pub fn main() !void {
             }
         }
 
-        drawEverything(
+        try drawEverything(
+            gpa.allocator(),
             screen_height,
             players[0..],
             players[controllable_player_index],

@@ -8,49 +8,67 @@ const util = @import("util.zig");
 const textures = @import("textures.zig");
 const glad = @cImport(@cInclude("external/glad.h"));
 const Error = @import("error.zig").Error;
+const rendering = @import("rendering.zig");
 const meshes = @import("meshes.zig");
 
 pub const LevelGeometry = struct {
+    /// Gives every object owned by this struct a unique id.
     object_id_counter: u64,
 
+    /// Contains all textures needed to render the environment.
+    array_texture_id: c_uint,
+
     walls: std.ArrayList(Wall),
+    wall_renderer: rendering.WallRenderer,
+    walls_have_changed: bool,
 
-    /// These vertices are needed for ray casting in edit mode.
-    shared_wall_vertices: []f32,
-    shared_fence_vertices: []f32,
-
-    /// Floors are rendered in order, with the last floor at the top.
+    /// Floors in this array will be rendered last to first without overpainting one another. This
+    /// leads to the last floor in the array being shown above all others.
     floors: std.ArrayList(Floor),
-    floor_animation_cycle: animation.FourStepCycle,
+    floor_animation_state: animation.FourStepCycle,
+    floor_renderer: rendering.FloorRenderer,
+    floors_have_changed: bool,
 
     billboard_objects: std.ArrayList(BillboardObject),
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
-        const precomputed_wall_vertices = meshes.BottomlessCube.vertices;
-        var shared_wall_vertices = try allocator.alloc(f32, precomputed_wall_vertices.len);
-        errdefer allocator.free(shared_wall_vertices);
-        std.mem.copy(f32, shared_wall_vertices, precomputed_wall_vertices[0..]);
-
-        const precomputed_fence_vertices = Wall.computeDoubleSidedPlaneVertices();
-        var shared_fence_vertices = try allocator.alloc(f32, precomputed_fence_vertices.len);
-        std.mem.copy(f32, shared_fence_vertices, precomputed_fence_vertices[0..]);
+        const array_texture_id = try textures.loadTextureArray();
+        errdefer glad.glDeleteTextures(1, &array_texture_id);
+        var wall_renderer = try rendering.WallRenderer.create();
+        errdefer wall_renderer.destroy();
+        var floor_renderer = try rendering.FloorRenderer.create();
+        errdefer floor_renderer.destroy();
 
         return LevelGeometry{
             .object_id_counter = 0,
+            .array_texture_id = array_texture_id,
             .walls = std.ArrayList(Wall).init(allocator),
-            .shared_wall_vertices = shared_wall_vertices,
-            .shared_fence_vertices = shared_fence_vertices,
+            .wall_renderer = wall_renderer,
+            .walls_have_changed = false,
             .floors = std.ArrayList(Floor).init(allocator),
-            .floor_animation_cycle = animation.FourStepCycle.create(),
+            .floor_animation_state = animation.FourStepCycle.create(),
+            .floor_renderer = floor_renderer,
+            .floors_have_changed = false,
             .billboard_objects = std.ArrayList(BillboardObject).init(allocator),
         };
+    }
+
+    pub fn destroy(self: *LevelGeometry) void {
+        self.billboard_objects.deinit();
+
+        self.floor_renderer.destroy();
+        self.floors.deinit();
+
+        self.wall_renderer.destroy();
+        self.walls.deinit();
+        glad.glDeleteTextures(1, &self.array_texture_id);
     }
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn createFromJson(allocator: std.mem.Allocator, json: []const u8) !LevelGeometry {
         var geometry = try create(allocator);
-        errdefer geometry.destroy(allocator);
+        errdefer geometry.destroy();
 
         const options = .{ .allocator = allocator };
         const tree = try std.json
@@ -84,32 +102,30 @@ pub const LevelGeometry = struct {
         return geometry;
     }
 
-    pub fn destroy(self: *LevelGeometry, allocator: std.mem.Allocator) void {
-        for (self.walls.items) |*wall| {
-            wall.destroy();
+    pub fn prepareRender(self: *LevelGeometry, allocator: std.mem.Allocator) !void {
+        if (self.walls_have_changed) {
+            try self.uploadWallsToRenderer(allocator);
+            self.walls_have_changed = false;
         }
-        self.walls.deinit();
-        allocator.free(self.shared_wall_vertices);
-        allocator.free(self.shared_fence_vertices);
-
-        for (self.floors.items) |*floor| {
-            floor.destroy();
+        if (self.floors_have_changed) {
+            try self.uploadFloorsToRenderer(allocator);
+            self.floors_have_changed = false;
         }
-        self.floors.deinit();
-
-        self.billboard_objects.deinit();
     }
 
-    pub fn draw(
+    pub fn render(
         self: LevelGeometry,
         camera: rl.Camera,
         shader: rl.Shader,
         texture_collection: textures.Collection,
     ) void {
-        for (self.walls.items) |wall| {
-            const texture = wall.getTexture(texture_collection);
-            util.drawMesh(wall.mesh, wall.precomputed_matrix, texture, wall.tint, shader);
-        }
+        const vp_matrix = rm.MatrixToFloatV(util.getCurrentRaylibVpMatrix()).v;
+        self.wall_renderer.render(vp_matrix, self.array_texture_id);
+
+        // Prevent floors from overpainting each other.
+        glad.glStencilFunc(glad.GL_NOTEQUAL, 1, 0xff);
+        self.floor_renderer.render(vp_matrix, self.array_texture_id, self.floor_animation_state);
+        glad.glStencilFunc(glad.GL_ALWAYS, 1, 0xff);
 
         rl.BeginShaderMode(shader);
         for (self.billboard_objects.items) |billboard| {
@@ -126,20 +142,10 @@ pub const LevelGeometry = struct {
             );
         }
         rl.EndShaderMode();
-
-        // Render last floor above all others.
-        glad.glStencilFunc(glad.GL_NOTEQUAL, 1, 0xff);
-        var counter: usize = 0;
-        while (counter < self.floors.items.len) : (counter += 1) {
-            const floor = self.floors.items[self.floors.items.len - counter - 1];
-            const texture = floor.getTexture(self.floor_animation_cycle, texture_collection);
-            util.drawMesh(floor.mesh, floor.precomputed_matrix, texture, floor.tint, shader);
-        }
-        glad.glStencilFunc(glad.GL_ALWAYS, 1, 0xff);
     }
 
     pub fn processElapsedTick(self: *LevelGeometry) void {
-        self.floor_animation_cycle.processStep(0.02);
+        self.floor_animation_state.processStep(0.02);
     }
 
     pub fn toJson(self: LevelGeometry, allocator: std.mem.Allocator, outstream: anytype) !void {
@@ -202,13 +208,12 @@ pub const LevelGeometry = struct {
         const wall = try self.walls.addOne();
         wall.* = Wall.create(
             self.object_id_counter,
+            wall_type,
             start_position,
             end_position,
-            wall_type,
-            self.shared_wall_vertices,
-            self.shared_fence_vertices,
         );
         self.object_id_counter = self.object_id_counter + 1;
+        self.walls_have_changed = true;
         return wall.object_id;
     }
 
@@ -222,16 +227,14 @@ pub const LevelGeometry = struct {
         if (self.findWall(object_id)) |wall| {
             const tint = wall.tint;
             const wall_type = wall.wall_type;
-            wall.destroy();
             wall.* = Wall.create(
                 object_id,
+                wall_type,
                 start_position,
                 end_position,
-                wall_type,
-                self.shared_wall_vertices,
-                self.shared_fence_vertices,
             );
             wall.tint = tint;
+            self.walls_have_changed = true;
         }
     }
 
@@ -253,12 +256,13 @@ pub const LevelGeometry = struct {
         const floor = try self.floors.addOne();
         floor.* = Floor.create(
             self.object_id_counter,
+            floor_type,
             side_a_start,
             side_a_end,
             side_b_length,
-            floor_type,
         );
         self.object_id_counter = self.object_id_counter + 1;
+        self.floors_have_changed = true;
         return floor.object_id;
     }
 
@@ -275,12 +279,13 @@ pub const LevelGeometry = struct {
             const floor_type = floor.floor_type;
             floor.* = Floor.create(
                 object_id,
+                floor_type,
                 side_a_start,
                 side_a_end,
                 side_b_length,
-                floor_type,
             );
             floor.tint = tint;
+            self.floors_have_changed = true;
         }
     }
 
@@ -304,15 +309,15 @@ pub const LevelGeometry = struct {
     pub fn removeObject(self: *LevelGeometry, object_id: u64) void {
         for (self.walls.items) |*wall, index| {
             if (wall.object_id == object_id) {
-                wall.destroy();
                 _ = self.walls.orderedRemove(index);
+                self.walls_have_changed = true;
                 return;
             }
         }
         for (self.floors.items) |*floor, index| {
             if (floor.object_id == object_id) {
-                floor.destroy();
                 _ = self.floors.orderedRemove(index);
+                self.floors_have_changed = true;
                 return;
             }
         }
@@ -327,8 +332,10 @@ pub const LevelGeometry = struct {
     pub fn tintObject(self: *LevelGeometry, object_id: u64, tint: rl.Color) void {
         if (self.findWall(object_id)) |wall| {
             wall.tint = tint;
+            self.walls_have_changed = true;
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = tint;
+            self.floors_have_changed = true;
         } else if (self.findBillboardObject(object_id)) |billboard| {
             billboard.tint = tint;
         }
@@ -337,8 +344,10 @@ pub const LevelGeometry = struct {
     pub fn untintObject(self: *LevelGeometry, object_id: u64) void {
         if (self.findWall(object_id)) |wall| {
             wall.tint = Wall.getDefaultTint(wall.wall_type);
+            self.walls_have_changed = true;
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = Floor.getDefaultTint(floor.floor_type);
+            self.floors_have_changed = true;
         } else if (self.findBillboardObject(object_id)) |billboard| {
             billboard.tint = BillboardObject.getDefaultTint(billboard.object_type);
         }
@@ -380,7 +389,7 @@ pub const LevelGeometry = struct {
             if (ignore_fences and Wall.isFence(wall.wall_type)) {
                 continue;
             }
-            const hit = rl.GetRayCollisionMesh(ray, mesh, wall.precomputed_matrix);
+            const hit = rl.GetRayCollisionMesh(ray, mesh, wall.model_matrix);
             result = getCloserRayHit(hit, wall.object_id, result);
         }
         return result;
@@ -497,13 +506,78 @@ pub const LevelGeometry = struct {
         }
         return current_collision;
     }
+
+    fn uploadWallsToRenderer(self: *LevelGeometry, allocator: std.mem.Allocator) !void {
+        var data = try allocator.alloc(rendering.WallRenderer.WallData, self.walls.items.len);
+        defer allocator.free(data);
+
+        for (self.walls.items) |wall, index| {
+            const wall_properties =
+                Wall.getWallTypeProperties(wall.start_position, wall.end_position, wall.wall_type);
+            const length = wall_properties.corrected_end_position
+                .subtract(wall_properties.corrected_start_position).length();
+            data[index] = .{
+                .properties = makeRenderProperties(
+                    wall.model_matrix,
+                    wall.getTextureName(),
+                    wall.tint,
+                ),
+                .texture_repeat_dimensions = .{
+                    .x = length / wall_properties.texture_scale,
+                    .y = wall_properties.height / wall_properties.texture_scale,
+                    .z = wall_properties.thickness / wall_properties.texture_scale,
+                },
+            };
+        }
+        self.wall_renderer.uploadWalls(data);
+    }
+
+    fn uploadFloorsToRenderer(self: *LevelGeometry, allocator: std.mem.Allocator) !void {
+        var data = try allocator.alloc(rendering.FloorRenderer.FloorData, self.floors.items.len);
+        defer allocator.free(data);
+
+        // Upload floors in reverse-order, so they won't be overpainted by floors below them.
+        var index: usize = 0;
+        while (index < self.floors.items.len) : (index += 1) {
+            const floor = self.floors.items[self.floors.items.len - index - 1];
+            const side_a_length = floor.side_a_end.subtract(floor.side_a_start).length();
+            data[index] = .{
+                .properties = makeRenderProperties(
+                    floor.model_matrix,
+                    floor.getTextureName(),
+                    floor.tint,
+                ),
+                .affected_by_animation_cycle = if (floor.isAffectedByAnimationCycle()) 1 else 0,
+                .texture_repeat_dimensions = .{
+                    .x = floor.side_b_length / floor.getTextureScale(),
+                    .y = side_a_length / floor.getTextureScale(),
+                },
+            };
+        }
+        self.floor_renderer.uploadFloors(data);
+    }
+
+    fn makeRenderProperties(
+        model_matrix: rl.Matrix,
+        texture_name: textures.Name,
+        tint: rl.Color,
+    ) rendering.LevelGeometryProperties {
+        return .{
+            .model_matrix = rm.MatrixToFloatV(model_matrix).v,
+            .texture_layer_id = @intToFloat(f32, @enumToInt(texture_name)),
+            .tint = .{
+                .r = @intToFloat(f32, tint.r) / 255.0,
+                .g = @intToFloat(f32, tint.g) / 255.0,
+                .b = @intToFloat(f32, tint.b) / 255.0,
+            },
+        };
+    }
 };
 
 const Floor = struct {
     object_id: u64,
     floor_type: LevelGeometry.FloorType,
-    mesh: rl.Mesh,
-    precomputed_matrix: rl.Matrix,
+    model_matrix: rl.Matrix,
     boundaries: collision.Rectangle,
     tint: rl.Color,
 
@@ -515,60 +589,32 @@ const Floor = struct {
     /// Side a and b can be chosen arbitrarily, but must be adjacent.
     fn create(
         object_id: u64,
+        floor_type: LevelGeometry.FloorType,
         side_a_start: FlatVector,
         side_a_end: FlatVector,
         side_b_length: f32,
-        floor_type: LevelGeometry.FloorType,
     ) Floor {
         const offset_a = side_a_end.subtract(side_a_start);
         const side_a_length = offset_a.length();
-
-        var floor_vertices = [18]f32{
-            -0.5, 0, 0.5,
-            0.5,  0, -0.5,
-            -0.5, 0, -0.5,
-            -0.5, 0, 0.5,
-            0.5,  0, 0.5,
-            0.5,  0, -0.5,
-        };
-        const texture_scale = getDefaultTextureScale(floor_type);
-        const texture_corners = [4]rl.Vector2{
-            .{ .x = 0, .y = 0 },
-            .{ .x = side_b_length / texture_scale, .y = side_a_length / texture_scale },
-            .{ .x = 0, .y = side_a_length / texture_scale },
-            .{ .x = side_b_length / texture_scale, .y = 0 },
-        };
-        const texture_corner_indices = [6]u3{ 0, 1, 2, 0, 3, 1 };
-        var texcoords_buffer: [12]f32 = undefined;
-        var mesh = generateMesh(
-            floor_vertices[0..],
-            texture_corners[0..],
-            texture_corner_indices[0..],
-            &texcoords_buffer,
-        );
-        mesh.vertices = null; // Not needed for floors.
-
         const rotation = offset_a.computeRotationToOtherVector(.{ .x = 0, .z = 1 });
         const offset_b = offset_a.rotateRightBy90Degrees().negate().normalize().scale(side_b_length);
         const center = side_a_start.add(offset_a.scale(0.5)).add(offset_b.scale(0.5));
         return Floor{
             .object_id = object_id,
             .floor_type = floor_type,
-            .mesh = mesh,
-            .precomputed_matrix = rm.MatrixMultiply(rm.MatrixMultiply(
-                rm.MatrixScale(side_b_length, 1, side_a_length),
-                rm.MatrixRotateY(-rotation),
-            ), rm.MatrixTranslate(center.x, 0, center.z)),
+            .model_matrix = rm.MatrixMultiply(
+                rm.MatrixMultiply(rm.MatrixMultiply(
+                    rm.MatrixRotateX(util.degreesToRadians(-90)),
+                    rm.MatrixScale(side_b_length, 1, side_a_length),
+                ), rm.MatrixRotateY(-rotation)),
+                rm.MatrixTranslate(center.x, 0, center.z),
+            ),
             .boundaries = collision.Rectangle.create(side_a_start, side_a_end, side_b_length),
             .tint = getDefaultTint(floor_type),
             .side_a_start = side_a_start,
             .side_a_end = side_a_end,
             .side_b_length = side_b_length,
         };
-    }
-
-    fn destroy(self: *Floor) void {
-        rl.UnloadMesh(self.mesh);
     }
 
     /// If the given ray hits this object, return the position on the floor.
@@ -579,8 +625,8 @@ const Floor = struct {
         return null;
     }
 
-    fn getDefaultTextureScale(floor_type: LevelGeometry.FloorType) f32 {
-        return switch (floor_type) {
+    fn getTextureScale(self: Floor) f32 {
+        return switch (self.floor_type) {
             else => 5.0,
             .water => 3.0,
         };
@@ -592,43 +638,35 @@ const Floor = struct {
         };
     }
 
-    fn getTexture(
-        self: Floor,
-        floor_animation_cycle: animation.FourStepCycle,
-        texture_collection: textures.Collection,
-    ) rl.Texture {
+    fn getTextureName(self: Floor) textures.Name {
         return switch (self.floor_type) {
-            .grass => texture_collection.get(.grass),
-            .stone => texture_collection.get(.stone_floor),
-            .water => switch (floor_animation_cycle.getFrame()) {
-                else => texture_collection.get(.water_frame_0),
-                1 => texture_collection.get(.water_frame_1),
-                2 => texture_collection.get(.water_frame_2),
-            },
+            .grass => .grass,
+            .stone => .stone_floor,
+            .water => textures.Name.water_frame_0, // Animation offsets are applied by the renderer.
         };
+    }
+
+    fn isAffectedByAnimationCycle(self: Floor) bool {
+        return self.floor_type == .water;
     }
 };
 
 const Wall = struct {
     object_id: u64,
-    mesh: rl.Mesh,
-    precomputed_matrix: rl.Matrix,
-    tint: rl.Color,
-    boundaries: collision.Rectangle,
     wall_type: LevelGeometry.WallType,
+    model_matrix: rl.Matrix,
+    boundaries: collision.Rectangle,
+    tint: rl.Color,
 
     /// Values used to generate this wall.
     start_position: FlatVector,
     end_position: FlatVector,
 
-    /// Keeps a reference to the given vertices for its entire lifetime.
     fn create(
         object_id: u64,
+        wall_type: LevelGeometry.WallType,
         start_position: FlatVector,
         end_position: FlatVector,
-        wall_type: LevelGeometry.WallType,
-        shared_wall_vertices: []f32,
-        shared_fence_vertices: []f32,
     ) Wall {
         const wall_type_properties = getWallTypeProperties(start_position, end_position, wall_type);
         const offset = wall_type_properties.corrected_end_position.subtract(
@@ -637,19 +675,11 @@ const Wall = struct {
         const length = offset.length();
         const x_axis = FlatVector{ .x = 1, .z = 0 };
         const rotation_angle = x_axis.computeRotationToOtherVector(offset);
-
         const height = wall_type_properties.height;
-        const texture_scale = wall_type_properties.texture_scale;
-
-        // When generating a fence, the thickness is only relevant for collision boundaries.
         const thickness = wall_type_properties.thickness;
 
-        const mesh = if (isFence(wall_type))
-            generateDoubleSidedPlane(length, height, texture_scale, shared_fence_vertices)
-        else
-            generateBottomlessCube(1, 1, 1, texture_scale, shared_wall_vertices);
         const scale_matrix = if (isFence(wall_type))
-            rm.MatrixScale(length, height, 1)
+            rm.MatrixScale(length, height, 0) // Fences are flat, thickness is only for collision.
         else
             rm.MatrixScale(length, height, thickness);
 
@@ -658,8 +688,7 @@ const Wall = struct {
         const center = wall_type_properties.corrected_start_position.add(offset.scale(0.5));
         return Wall{
             .object_id = object_id,
-            .mesh = mesh,
-            .precomputed_matrix = rm.MatrixMultiply(
+            .model_matrix = rm.MatrixMultiply(
                 rm.MatrixMultiply(scale_matrix, rm.MatrixRotateY(rotation_angle)),
                 rm.MatrixTranslate(center.x, height / 2, center.z),
             ),
@@ -673,98 +702,6 @@ const Wall = struct {
             .start_position = start_position,
             .end_position = end_position,
         };
-    }
-
-    fn destroy(self: *Wall) void {
-        self.mesh.vertices = null; // Prevent raylib from freeing our shared mesh.
-        rl.UnloadMesh(self.mesh);
-    }
-
-    /// Will keep a reference to the given vertices for the rest of its lifetime.
-    fn generateBottomlessCube(
-        length: f32,
-        height: f32,
-        thickness: f32,
-        texture_scale: f32,
-        shared_vertices: []f32,
-    ) rl.Mesh {
-        const texture_corners = [8]rl.Vector2{
-            rl.Vector2{ .x = 0, .y = 0 },
-            rl.Vector2{ .x = length / texture_scale, .y = 0 },
-            rl.Vector2{ .x = length / texture_scale, .y = height / texture_scale },
-            rl.Vector2{ .x = 0, .y = height / texture_scale },
-            rl.Vector2{ .x = thickness / texture_scale, .y = 0 },
-            rl.Vector2{ .x = thickness / texture_scale, .y = height / texture_scale },
-            rl.Vector2{ .x = length / texture_scale, .y = thickness / texture_scale },
-            rl.Vector2{ .x = 0, .y = thickness / texture_scale },
-        };
-        const texture_corner_indices = [30]u3{
-            0, 3, 1, 3, 2, 1, // Front side.
-            4, 0, 3, 4, 3, 5, // Left side.
-            7, 1, 0, 7, 6, 1, // Top side.
-            1, 0, 2, 2, 0, 3, // Back side.
-            0, 3, 4, 4, 3, 5, // Right side.
-        };
-        var texcoords_buffer: [meshes.BottomlessCube.vertices.len / 3 * 2]f32 = undefined;
-        return generateMesh(
-            shared_vertices,
-            texture_corners[0..],
-            texture_corner_indices[0..],
-            &texcoords_buffer,
-        );
-    }
-
-    /// Will keep a reference to the given vertices for the rest of its lifetime.
-    fn generateDoubleSidedPlane(
-        width: f32,
-        height: f32,
-        texture_scale: f32,
-        shared_vertices: []f32,
-    ) rl.Mesh {
-        const texture_corners = [4]rl.Vector2{
-            rl.Vector2{ .x = 0, .y = 0 },
-            rl.Vector2{ .x = width / texture_scale, .y = 0 },
-            rl.Vector2{ .x = width / texture_scale, .y = height / texture_scale },
-            rl.Vector2{ .x = 0, .y = height / texture_scale },
-        };
-        const texture_corner_indices = [12]u3{
-            0, 3, 1, 3, 2, 1, // Front side.
-            1, 0, 2, 2, 0, 3, // Back side.
-        };
-        var texcoords_buffer: [computeDoubleSidedPlaneVertices().len / 3 * 2]f32 = undefined;
-        return generateMesh(
-            shared_vertices,
-            texture_corners[0..],
-            texture_corner_indices[0..],
-            &texcoords_buffer,
-        );
-    }
-
-    // Return the mesh of a fence. It has fixed dimensions of 1 and must be scaled by individual
-    // transformation matrices to the desired size.
-    fn computeDoubleSidedPlaneVertices() [36]f32 {
-        const corners = [4]rl.Vector3{
-            rl.Vector3{ .x = 0, .y = 1, .z = 0 },
-            rl.Vector3{ .x = 0, .y = 0, .z = 0 },
-            rl.Vector3{ .x = 1, .y = 1, .z = 0 },
-            rl.Vector3{ .x = 1, .y = 0, .z = 0 },
-        };
-        const corner_indices = [12]u3{
-            0, 1, 2, 1, 3, 2, // Front side.
-            0, 2, 1, 1, 2, 3, // Back side.
-        };
-        var vertices: [36]f32 = undefined;
-        populateVertices(&vertices, corners[0..], corner_indices[0..]);
-        return vertices;
-    }
-
-    fn populateVertices(vertices: []f32, corners: []const rl.Vector3, corner_indices: []const u3) void {
-        var index: usize = 0;
-        while (index < vertices.len) : (index += 3) {
-            vertices[index] = corners[corner_indices[index / 3]].x;
-            vertices[index + 1] = corners[corner_indices[index / 3]].y;
-            vertices[index + 2] = corners[corner_indices[index / 3]].z;
-        }
     }
 
     const WallTypeProperties = struct {
@@ -875,11 +812,11 @@ const Wall = struct {
         };
     }
 
-    fn getTexture(self: Wall, texture_collection: textures.Collection) rl.Texture {
+    fn getTextureName(self: Wall) textures.Name {
         return switch (self.wall_type) {
-            .metal_fence, .short_metal_fence => texture_collection.get(.metal_fence),
-            .tall_hedge => texture_collection.get(.hedge),
-            else => texture_collection.get(.wall),
+            .metal_fence, .short_metal_fence => .metal_fence,
+            .tall_hedge => .hedge,
+            else => .wall,
         };
     }
 };
@@ -936,33 +873,6 @@ const BillboardObject = struct {
         };
     }
 };
-
-/// The returned mesh will keep a reference to the given shared_vertices.
-fn generateMesh(
-    shared_vertices: []f32,
-    texture_corners: []const rl.Vector2,
-    texture_corner_indices: []const u3,
-    texcoords_buffer: []f32,
-) rl.Mesh {
-    const texcoords_count = shared_vertices.len / 3 * 2;
-    std.debug.assert(texcoords_buffer.len >= texcoords_count);
-
-    var mesh = std.mem.zeroes(rl.Mesh);
-    mesh.vertices = shared_vertices.ptr;
-    mesh.vertexCount = @intCast(c_int, shared_vertices.len / 3);
-    mesh.triangleCount = @intCast(c_int, shared_vertices.len / 9);
-
-    mesh.texcoords = texcoords_buffer.ptr;
-    var index: usize = 0;
-    while (index < texcoords_count) : (index += 2) {
-        texcoords_buffer[index] = texture_corners[texture_corner_indices[index / 2]].x;
-        texcoords_buffer[index + 1] = texture_corners[texture_corner_indices[index / 2]].y;
-    }
-
-    rl.UploadMesh(&mesh, false);
-    mesh.texcoords = null; // Was copied to GPU.
-    return mesh;
-}
 
 const Json = struct {
     const SerializableData = struct {
