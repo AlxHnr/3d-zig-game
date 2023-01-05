@@ -107,8 +107,8 @@ pub const Collection = struct {
                 .{@tagName(mapping.key)},
             );
 
-            var image = rl.LoadImage(texture_path);
-            if (image.data == null) {
+            const texture = rl.LoadTexture(texture_path);
+            if (texture.id == 0) {
                 var cleanup_iterator = textures.iterator();
                 while (cleanup_iterator.next()) |mapping_to_destroy| {
                     if (mapping_to_destroy.key == mapping.key) {
@@ -119,7 +119,13 @@ pub const Collection = struct {
                 return Error.FailedToLoadTextureFile;
             }
 
-            mapping.value.* = try textureFromImage(&image);
+            glad.glBindTexture(glad.GL_TEXTURE_2D, texture.id);
+            glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_WRAP_S, glad.GL_REPEAT);
+            glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_WRAP_T, glad.GL_REPEAT);
+            glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_MAG_FILTER, glad.GL_NEAREST);
+            glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_MIN_FILTER, glad.GL_NEAREST);
+            glad.glBindTexture(glad.GL_TEXTURE_2D, 0);
+            mapping.value.* = texture;
         }
 
         return Collection{ .textures = textures };
@@ -137,24 +143,3 @@ pub const Collection = struct {
         return self.textures.get(name);
     }
 };
-
-/// Will consume the given image.
-fn textureFromImage(image: *rl.Image) !rl.Texture {
-    defer rl.UnloadImage(image.*);
-
-    var texture = rl.LoadTextureFromImage(image.*);
-    if (texture.id == 0) {
-        return Error.FailedToLoadTextureFile;
-    }
-
-    glad.glBindTexture(glad.GL_TEXTURE_2D, texture.id);
-    glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_WRAP_S, glad.GL_REPEAT);
-    glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_WRAP_T, glad.GL_REPEAT);
-    glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_MAG_FILTER, glad.GL_NEAREST);
-    glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_MIN_FILTER, glad.GL_LINEAR_MIPMAP_NEAREST);
-    glad.glBindTexture(glad.GL_TEXTURE_2D, 0);
-
-    rl.GenTextureMipmaps(&texture);
-
-    return texture;
-}
