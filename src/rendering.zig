@@ -27,24 +27,22 @@ pub const WallRenderer = struct {
         const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
-        var vao_id = createAndBindVao();
+        const vao_id = createAndBindVao();
 
         const vertices = meshes.BottomlessCube.vertices;
-        var vertex_vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
+        const vertex_vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
         glad.glVertexAttribPointer(loc_position, 3, glad.GL_FLOAT, 0, 0, null);
         glad.glEnableVertexAttribArray(loc_position);
 
         const texture_coord_scale = meshes.BottomlessCube.texture_coord_scale_values;
-        var texture_coord_scales_vbo_id = createAndBindVbo(
+        const texture_coord_scales_vbo_id = createAndBindVbo(
             &texture_coord_scale,
             @sizeOf(@TypeOf(texture_coord_scale)),
         );
         glad.glVertexAttribIPointer(loc_texcoord_scale, 1, glad.GL_UNSIGNED_BYTE, 0, null);
         glad.glEnableVertexAttribArray(loc_texcoord_scale);
 
-        var wall_data_vbo_id: c_uint = undefined;
-        glad.glGenBuffers(1, &wall_data_vbo_id);
-        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, wall_data_vbo_id);
+        const wall_data_vbo_id = createAndBindEmptyVbo();
         setupLevelGeometryPropertyAttributes(
             loc_model_matrix,
             loc_texture_layer_id,
@@ -185,18 +183,8 @@ pub const FloorRenderer = struct {
             try shader.getUniformLocation("current_animation_frame");
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
-        var vao_id = createAndBindVao();
-
-        const vertices = meshes.StandingQuad.vertex_data;
-        const stride = @sizeOf([4]f32); // x, y, u, v.
-        var vertex_vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
-        glad.glVertexAttribPointer(loc_position, 2, glad.GL_FLOAT, 0, stride, null); // x, y
-        glad.glEnableVertexAttribArray(loc_position);
-        glad.glVertexAttribPointer(loc_texture_coords, 2, glad.GL_FLOAT, 0, stride, @intToPtr(
-            ?*u8,
-            @sizeOf([2]f32), // u, v
-        ));
-        glad.glEnableVertexAttribArray(loc_texture_coords);
+        const vao_id = createAndBindVao();
+        const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_position, loc_texture_coords);
 
         var floor_data_vbo_id: c_uint = undefined;
         glad.glGenBuffers(1, &floor_data_vbo_id);
@@ -358,12 +346,32 @@ fn createAndBindVao() c_uint {
     return vao_id;
 }
 
-fn createAndBindVbo(data: *const anyopaque, size: isize) c_uint {
+fn createAndBindEmptyVbo() c_uint {
     var id: c_uint = undefined;
     glad.glGenBuffers(1, &id);
     glad.glBindBuffer(glad.GL_ARRAY_BUFFER, id);
+    return id;
+}
+
+fn createAndBindVbo(data: *const anyopaque, size: isize) c_uint {
+    const id = createAndBindEmptyVbo();
     glad.glBufferData(glad.GL_ARRAY_BUFFER, size, data, glad.GL_STATIC_DRAW);
     return id;
+}
+
+/// Returns a bound vbo containing StandingQuad.vertex_data.
+fn setupAndBindStandingQuadVbo(position_location: c_uint, texture_coords_location: c_uint) c_uint {
+    const vertices = meshes.StandingQuad.vertex_data;
+    const vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
+    const stride = @sizeOf([4]f32); // x, y, u, v.
+    glad.glVertexAttribPointer(position_location, 2, glad.GL_FLOAT, 0, stride, null); // x, y
+    glad.glEnableVertexAttribArray(position_location);
+    glad.glVertexAttribPointer(texture_coords_location, 2, glad.GL_FLOAT, 0, stride, @intToPtr(
+        ?*u8,
+        @sizeOf([2]f32), // u, v
+    ));
+    glad.glEnableVertexAttribArray(texture_coords_location);
+    return vbo_id;
 }
 
 fn setupVertexAttribute(
