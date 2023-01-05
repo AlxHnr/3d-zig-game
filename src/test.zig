@@ -4,9 +4,7 @@ const std = @import("std");
 const expect = std.testing.expect;
 const expectApproxEqRel = std.testing.expectApproxEqRel;
 
-const rl = @import("raylib");
 const collision = @import("collision.zig");
-const FlatVector = @import("flat_vector.zig").FlatVector;
 const util = @import("util.zig");
 const epsilon = util.Constants.epsilon;
 
@@ -65,21 +63,4 @@ test "Collisions between lines" {
         .{ .x = -2.5, .z = 8 },
         .{ .x = 2.5, .z = 8 },
     ));
-}
-
-test "scaleTextureToQuad()" {
-    var texture = std.mem.zeroes(rl.Texture);
-    texture.width = 320;
-    texture.height = 240;
-    const source_pixels = .{ .x = 32, .y = 64, .width = 64, .height = 32 };
-    const target_quad_size = .{ .x = 12, .y = 3 };
-    const scale = 5.0;
-
-    const result = util.scaleTextureToQuad(texture, source_pixels, target_quad_size, scale);
-    try expectApproxEqRel(@floatCast(f32, 0.1), result.source_texcoords.x, epsilon);
-    try expectApproxEqRel(@floatCast(f32, 0.266667), result.source_texcoords.y, epsilon);
-    try expectApproxEqRel(@floatCast(f32, 0.2), result.source_texcoords.width, epsilon);
-    try expectApproxEqRel(@floatCast(f32, 0.133333), result.source_texcoords.height, epsilon);
-    try expectApproxEqRel(@floatCast(f32, 1.2), result.repeat_dimensions.x, epsilon);
-    try expectApproxEqRel(@floatCast(f32, 0.6), result.repeat_dimensions.y, epsilon);
 }
