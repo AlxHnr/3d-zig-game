@@ -1,3 +1,4 @@
+const animation = @import("animation.zig");
 const assert = @import("std").debug.assert;
 const glad = @cImport(@cInclude("external/glad.h"));
 const meshes = @import("meshes.zig");
@@ -165,6 +166,7 @@ pub const FloorRenderer = struct {
     floors_uploaded_to_vbo: c_int,
     shader: Shader,
     vp_matrix_location: c_int,
+    current_animation_frame_location: c_int,
 
     pub fn create() !FloorRenderer {
         var shader = try Shader.create(vertex_shader_source, level_geometry_fragment_shader);
@@ -172,10 +174,15 @@ pub const FloorRenderer = struct {
         const loc_position = try shader.getAttributeLocation("position");
         const loc_texture_coords = try shader.getAttributeLocation("texture_coords");
         const loc_texture_layer_id = try shader.getAttributeLocation("texture_layer_id");
+        const loc_affected_by_animation_cycle =
+            try shader.getAttributeLocation("affected_by_animation_cycle");
         const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
-        const loc_texture_repeat_dimensions = try shader.getAttributeLocation("texture_repeat_dimensions");
+        const loc_texture_repeat_dimensions =
+            try shader.getAttributeLocation("texture_repeat_dimensions");
         const loc_tint = try shader.getAttributeLocation("tint");
         const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
+        const loc_current_animation_frame =
+            try shader.getUniformLocation("current_animation_frame");
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
         var vao_id = createAndBindVao();
@@ -200,14 +207,19 @@ pub const FloorRenderer = struct {
             loc_tint,
             @sizeOf(FloorData),
         );
+        setupVertexAttribute(loc_affected_by_animation_cycle, 1, @offsetOf(
+            FloorData,
+            "affected_by_animation_cycle",
+        ), @sizeOf(FloorData));
         setupVertexAttribute(loc_texture_repeat_dimensions, 2, @offsetOf(
             FloorData,
             "texture_repeat_dimensions",
         ), @sizeOf(FloorData));
         comptime {
             assert(@offsetOf(FloorData, "properties") == 0);
-            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 80);
-            assert(@sizeOf(FloorData) == 88);
+            assert(@offsetOf(FloorData, "affected_by_animation_cycle") == 80);
+            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 84);
+            assert(@sizeOf(FloorData) == 92);
         }
 
         glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
@@ -221,6 +233,7 @@ pub const FloorRenderer = struct {
             .floors_uploaded_to_vbo = 0,
             .shader = shader,
             .vp_matrix_location = loc_vp_matrix,
+            .current_animation_frame_location = loc_current_animation_frame,
         };
     }
 
@@ -246,13 +259,20 @@ pub const FloorRenderer = struct {
     }
 
     /// The given matrix has the same row order as the float16 returned by raymath.MatrixToFloatV().
-    pub fn render(self: FloorRenderer, vp_matrix: [16]f32, array_texture_id: c_uint) void {
+    pub fn render(
+        self: FloorRenderer,
+        vp_matrix: [16]f32,
+        array_texture_id: c_uint,
+        floor_animation_state: animation.FourStepCycle,
+    ) void {
         const vertex_count = meshes.BottomlessCube.vertices.len;
+        const animation_frame: c_int = floor_animation_state.getFrame();
 
         self.shader.enable();
         glad.glBindVertexArray(self.vao_id);
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, array_texture_id);
         glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix);
+        glad.glUniform1iv(self.current_animation_frame_location, 1, &animation_frame);
         glad.glDrawArraysInstanced(glad.GL_TRIANGLES, 0, vertex_count, self.floors_uploaded_to_vbo);
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, 0);
         glad.glBindVertexArray(0);
@@ -261,6 +281,8 @@ pub const FloorRenderer = struct {
 
     pub const FloorData = extern struct {
         properties: LevelGeometryProperties,
+        /// Either 1 or 0. Animations work by adding 0, 1 or 2 to `.properties.texture_layer_id`.
+        affected_by_animation_cycle: f32,
         /// How often the texture should repeat along the floors width and height.
         texture_repeat_dimensions: extern struct {
             x: f32,
@@ -274,10 +296,12 @@ pub const FloorRenderer = struct {
         \\ in vec2 position;
         \\ in vec2 texture_coords;
         \\ in float texture_layer_id; // Index in the current array texture, will be rounded.
+        \\ in float affected_by_animation_cycle; // 1 when the floor should cycle trough animations.
         \\ in mat4 model_matrix;
         \\ in vec2 texture_repeat_dimensions; // How often the texture should repeat along each axis.
         \\ in vec3 tint;
         \\ uniform mat4 vp_matrix;
+        \\ uniform int current_animation_frame; // Must be 0, 1 or 2.
         \\
         \\ out vec2 fragment_texcoords;
         \\ out float fragment_texture_layer_id;
@@ -286,7 +310,8 @@ pub const FloorRenderer = struct {
         \\ void main() {
         \\     gl_Position = vp_matrix * model_matrix * vec4(position, 0, 1);
         \\     fragment_texcoords = texture_coords * texture_repeat_dimensions;
-        \\     fragment_texture_layer_id = texture_layer_id;
+        \\     fragment_texture_layer_id =
+        \\         texture_layer_id + current_animation_frame * affected_by_animation_cycle;
         \\     fragment_tint = tint;
         \\ }
     ;
