@@ -113,7 +113,7 @@ pub const WallRenderer = struct {
     }
 
     pub const WallData = extern struct {
-        properties: LevelGeometryProperties,
+        properties: LevelGeometryAttributes,
         // How often the texture should repeat along each axis.
         texture_repeat_dimensions: extern struct {
             x: f32,
@@ -280,7 +280,7 @@ pub const FloorRenderer = struct {
     }
 
     pub const FloorData = extern struct {
-        properties: LevelGeometryProperties,
+        properties: LevelGeometryAttributes,
         /// Either 1 or 0. Animations work by adding 0, 1 or 2 to `.properties.texture_layer_id`.
         affected_by_animation_cycle: f32,
         /// How often the texture should repeat along the floors width and height.
@@ -318,7 +318,7 @@ pub const FloorRenderer = struct {
 };
 
 /// Basic geometry data to be uploaded as vertex attributes to the GPU.
-pub const LevelGeometryProperties = extern struct {
+pub const LevelGeometryAttributes = extern struct {
     /// Same row order as the float16 returned by raymath.MatrixToFloatV().
     model_matrix: [16]f32,
     /// Index of the layer in the array texture passed to render(). Will be rounded.
@@ -384,7 +384,7 @@ fn setupVertexAttribute(
     glad.glVertexAttribDivisor(attribute_location, 1);
 }
 
-/// Configures LevelGeometryProperties as vertex attributes at offset 0.
+/// Configures LevelGeometryAttributes as vertex attributes at offset 0.
 fn setupLevelGeometryPropertyAttributes(
     loc_model_matrix: c_uint,
     loc_texture_layer_id: c_uint,
@@ -397,15 +397,15 @@ fn setupLevelGeometryPropertyAttributes(
     setupVertexAttribute(loc_model_matrix + 2, 4, @sizeOf([8]f32), stride);
     setupVertexAttribute(loc_model_matrix + 3, 4, @sizeOf([12]f32), stride);
     setupVertexAttribute(loc_texture_layer_id, 1, @offsetOf(
-        LevelGeometryProperties,
+        LevelGeometryAttributes,
         "texture_layer_id",
     ), stride);
-    setupVertexAttribute(loc_tint, 3, @offsetOf(LevelGeometryProperties, "tint"), stride);
+    setupVertexAttribute(loc_tint, 3, @offsetOf(LevelGeometryAttributes, "tint"), stride);
     comptime {
-        assert(@offsetOf(LevelGeometryProperties, "model_matrix") == 0);
-        assert(@offsetOf(LevelGeometryProperties, "texture_layer_id") == 64);
-        assert(@offsetOf(LevelGeometryProperties, "tint") == 68);
-        assert(@sizeOf(LevelGeometryProperties) == 80);
+        assert(@offsetOf(LevelGeometryAttributes, "model_matrix") == 0);
+        assert(@offsetOf(LevelGeometryAttributes, "texture_layer_id") == 64);
+        assert(@offsetOf(LevelGeometryAttributes, "tint") == 68);
+        assert(@sizeOf(LevelGeometryAttributes) == 80);
     }
 }
 

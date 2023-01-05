@@ -517,7 +517,7 @@ pub const LevelGeometry = struct {
             const length = wall_properties.corrected_end_position
                 .subtract(wall_properties.corrected_start_position).length();
             data[index] = .{
-                .properties = makeRenderProperties(
+                .properties = makeRenderingAttributes(
                     wall.model_matrix,
                     wall.getTextureName(),
                     wall.tint,
@@ -542,7 +542,7 @@ pub const LevelGeometry = struct {
             const floor = self.floors.items[self.floors.items.len - index - 1];
             const side_a_length = floor.side_a_end.subtract(floor.side_a_start).length();
             data[index] = .{
-                .properties = makeRenderProperties(
+                .properties = makeRenderingAttributes(
                     floor.model_matrix,
                     floor.getTextureName(),
                     floor.tint,
@@ -557,11 +557,11 @@ pub const LevelGeometry = struct {
         self.floor_renderer.uploadFloors(data);
     }
 
-    fn makeRenderProperties(
+    fn makeRenderingAttributes(
         model_matrix: rl.Matrix,
         texture_name: textures.Name,
         tint: rl.Color,
-    ) rendering.LevelGeometryProperties {
+    ) rendering.LevelGeometryAttributes {
         return .{
             .model_matrix = rm.MatrixToFloatV(model_matrix).v,
             .texture_layer_id = @intToFloat(f32, @enumToInt(texture_name)),
