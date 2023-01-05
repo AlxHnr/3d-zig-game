@@ -186,9 +186,7 @@ pub const FloorRenderer = struct {
         const vao_id = createAndBindVao();
         const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_position, loc_texture_coords);
 
-        var floor_data_vbo_id: c_uint = undefined;
-        glad.glGenBuffers(1, &floor_data_vbo_id);
-        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, floor_data_vbo_id);
+        const floor_data_vbo_id = createAndBindEmptyVbo();
         setupLevelGeometryPropertyAttributes(
             loc_model_matrix,
             loc_texture_layer_id,
@@ -253,7 +251,7 @@ pub const FloorRenderer = struct {
         array_texture_id: c_uint,
         floor_animation_state: animation.FourStepCycle,
     ) void {
-        const vertex_count = meshes.BottomlessCube.vertices.len;
+        const vertex_count = meshes.StandingQuad.vertex_data.len / 2;
         const animation_frame: c_int = floor_animation_state.getFrame();
 
         self.shader.enable();
