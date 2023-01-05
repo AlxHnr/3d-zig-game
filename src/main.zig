@@ -175,6 +175,8 @@ const Player = struct {
                 acceleration_direction = acceleration_direction.subtract(
                     state_rendered_to_screen.character.looking_direction.rotateRightBy90Degrees(),
                 );
+            } else if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT_CONTROL)) {
+                turning_direction -= 0.05;
             } else {
                 turning_direction -= 1;
             }
@@ -184,6 +186,8 @@ const Player = struct {
                 acceleration_direction = acceleration_direction.add(
                     state_rendered_to_screen.character.looking_direction.rotateRightBy90Degrees(),
                 );
+            } else if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT_CONTROL)) {
+                turning_direction += 0.05;
             } else {
                 turning_direction += 1;
             }
@@ -528,9 +532,6 @@ pub fn main() !void {
         if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_MIDDLE)) {
             edit_mode_state.cycleInsertedObjectType(&level_geometry);
         }
-        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_C)) {
-            edit_mode_state.toggleContinuousPlacement(&level_geometry);
-        }
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_T)) {
             switch (view_mode) {
                 .from_behind => {
@@ -560,10 +561,7 @@ pub fn main() !void {
             edit_mode_state.cycleMode(&level_geometry);
         }
         if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-            try edit_mode_state.startActionAtTarget(&level_geometry, ray);
-        }
-        if (rl.IsMouseButtonReleased(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-            edit_mode_state.completeCurrentAction(&level_geometry);
+            try edit_mode_state.handleActionAtTarget(&level_geometry, ray);
         }
         edit_mode_state
             .updateCurrentActionTarget(&level_geometry, ray, camera.getDirectionToTarget());

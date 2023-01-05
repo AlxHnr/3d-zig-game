@@ -8,7 +8,6 @@ pub const State = struct {
     mode: Mode,
     object_type_to_insert: ObjectTypeToInsert,
     currently_edited_object: ?CurrentlyEditedObject,
-    continuous_placement: bool,
 
     pub fn create() State {
         return State{
@@ -20,19 +19,20 @@ pub const State = struct {
                 .billboard = @intToEnum(LevelGeometry.BillboardObjectType, 0),
             },
             .currently_edited_object = null,
-            .continuous_placement = false,
         };
     }
 
-    pub fn startActionAtTarget(self: *State, level_geometry: *LevelGeometry, mouse_ray: rl.Ray) !void {
-        self.resetCurrentlyEditedObject(level_geometry);
+    pub fn handleActionAtTarget(self: *State, level_geometry: *LevelGeometry, mouse_ray: rl.Ray) !void {
         switch (self.mode) {
             .insert_objects => {
-                if (level_geometry.cast3DRayToGround(mouse_ray)) |ground_position| {
+                if (self.currently_edited_object != null) {
+                    self.resetCurrentlyEditedObject(level_geometry);
+                } else if (level_geometry.cast3DRayToGround(mouse_ray)) |ground_position| {
                     try self.startPlacingObject(level_geometry, ground_position);
                 }
             },
             .delete_objects => {
+                self.resetCurrentlyEditedObject(level_geometry);
                 if (level_geometry.cast3DRayToObjects(mouse_ray)) |ray_collision| {
                     level_geometry.removeObject(ray_collision.object_id);
                 }
@@ -62,12 +62,6 @@ pub const State = struct {
                     };
                 }
             },
-        }
-    }
-
-    pub fn completeCurrentAction(self: *State, level_geometry: *LevelGeometry) void {
-        if (self.mode == .insert_objects and !self.continuous_placement) {
-            self.resetCurrentlyEditedObject(level_geometry);
         }
     }
 
@@ -105,11 +99,6 @@ pub const State = struct {
         }
     }
 
-    pub fn toggleContinuousPlacement(self: *State, level_geometry: *LevelGeometry) void {
-        self.continuous_placement = !self.continuous_placement;
-        self.completeCurrentAction(level_geometry);
-    }
-
     /// Returns a slice describing the current edit mode state. Fails if the given buffer is too
     /// small.
     pub fn describe(self: State, string_buffer: []u8) ![:0]u8 {
@@ -120,14 +109,8 @@ pub const State = struct {
                     .floor => @tagName(self.object_type_to_insert.floor),
                     .billboard => @tagName(self.object_type_to_insert.billboard),
                 };
-                const continuous_string = if (self.continuous_placement and
-                    self.object_type_to_insert.used_field != .billboard)
-                    "continuous "
-                else
-                    "";
 
-                return std.fmt.bufPrintZ(string_buffer, "inserting {s}{s} of type {s}", .{
-                    continuous_string,
+                return std.fmt.bufPrintZ(string_buffer, "inserting {s} of type {s}", .{
                     @tagName(self.object_type_to_insert.used_field),
                     enum_string,
                 });
