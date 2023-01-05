@@ -332,7 +332,7 @@ const level_geometry_fragment_shader =
     \\ void main() {
     \\     vec4 texel_color = texture(texture_sampler,
     \\         vec3(fragment_texcoords, fragment_texture_layer_id));
-    \\     if (texel_color.a < 0.5) {
+    \\     if (texel_color.a < 0.01) {
     \\         discard;
     \\     }
     \\     final_color = texel_color * vec4(fragment_tint, 1);

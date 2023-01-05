@@ -120,12 +120,13 @@ pub const LevelGeometry = struct {
         texture_collection: textures.Collection,
     ) void {
         const vp_matrix = rm.MatrixToFloatV(util.getCurrentRaylibVpMatrix()).v;
-        self.wall_renderer.render(vp_matrix, self.array_texture_id);
 
         // Prevent floors from overpainting each other.
         glad.glStencilFunc(glad.GL_NOTEQUAL, 1, 0xff);
         self.floor_renderer.render(vp_matrix, self.array_texture_id, self.floor_animation_state);
         glad.glStencilFunc(glad.GL_ALWAYS, 1, 0xff);
+
+        self.wall_renderer.render(vp_matrix, self.array_texture_id);
 
         rl.BeginShaderMode(shader);
         for (self.billboard_objects.items) |billboard| {
