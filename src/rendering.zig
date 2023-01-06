@@ -10,7 +10,8 @@ pub const WallRenderer = struct {
     texture_coord_scales_vbo_id: c_uint,
 
     wall_data_vbo_id: c_uint,
-    walls_uploaded_to_vbo: c_int,
+    walls_uploaded_to_vbo: usize,
+    wall_capacity_in_vbo: usize,
 
     shader: Shader,
     vp_matrix_location: c_int,
@@ -69,6 +70,7 @@ pub const WallRenderer = struct {
             .texture_coord_scales_vbo_id = texture_coord_scales_vbo_id,
             .wall_data_vbo_id = wall_data_vbo_id,
             .walls_uploaded_to_vbo = 0,
+            .wall_capacity_in_vbo = 0,
             .shader = shader,
             .vp_matrix_location = loc_vp_matrix,
         };
@@ -84,16 +86,14 @@ pub const WallRenderer = struct {
 
     /// The given walls will be rendered in the same order as in the given slice.
     pub fn uploadWalls(self: *WallRenderer, walls: []const WallData) void {
-        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, self.wall_data_vbo_id);
-        defer glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
-
-        const size = @intCast(c_int, walls.len * @sizeOf(WallData));
-        if (walls.len <= self.walls_uploaded_to_vbo) {
-            glad.glBufferSubData(glad.GL_ARRAY_BUFFER, 0, size, walls.ptr);
-        } else {
-            glad.glBufferData(glad.GL_ARRAY_BUFFER, size, walls.ptr, glad.GL_STATIC_DRAW);
-        }
-        self.walls_uploaded_to_vbo = @intCast(c_int, walls.len);
+        updateVbo(
+            self.wall_data_vbo_id,
+            walls.ptr,
+            walls.len * @sizeOf(WallData),
+            &self.wall_capacity_in_vbo,
+            glad.GL_STATIC_DRAW,
+        );
+        self.walls_uploaded_to_vbo = walls.len;
     }
 
     /// The given matrix has the same row order as the float16 returned by raymath.MatrixToFloatV().
@@ -104,7 +104,12 @@ pub const WallRenderer = struct {
         glad.glBindVertexArray(self.vao_id);
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, array_texture_id);
         glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix);
-        glad.glDrawArraysInstanced(glad.GL_TRIANGLES, 0, vertex_count, self.walls_uploaded_to_vbo);
+        glad.glDrawArraysInstanced(
+            glad.GL_TRIANGLES,
+            0,
+            vertex_count,
+            @intCast(c_int, self.walls_uploaded_to_vbo),
+        );
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, 0);
         glad.glBindVertexArray(0);
         glad.glUseProgram(0);
@@ -161,7 +166,8 @@ pub const FloorRenderer = struct {
     vao_id: c_uint,
     vertex_vbo_id: c_uint,
     floor_data_vbo_id: c_uint,
-    floors_uploaded_to_vbo: c_int,
+    floors_uploaded_to_vbo: usize,
+    floor_capacity_in_vbo: usize,
     shader: Shader,
     vp_matrix_location: c_int,
     current_animation_frame_location: c_int,
@@ -217,6 +223,7 @@ pub const FloorRenderer = struct {
             .vertex_vbo_id = vertex_vbo_id,
             .floor_data_vbo_id = floor_data_vbo_id,
             .floors_uploaded_to_vbo = 0,
+            .floor_capacity_in_vbo = 0,
             .shader = shader,
             .vp_matrix_location = loc_vp_matrix,
             .current_animation_frame_location = loc_current_animation_frame,
@@ -232,16 +239,14 @@ pub const FloorRenderer = struct {
 
     /// The given floors will be rendered in the same order as in the given slice.
     pub fn uploadFloors(self: *FloorRenderer, floors: []const FloorData) void {
-        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, self.floor_data_vbo_id);
-        defer glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
-
-        const size = @intCast(c_int, floors.len * @sizeOf(FloorData));
-        if (floors.len <= self.floors_uploaded_to_vbo) {
-            glad.glBufferSubData(glad.GL_ARRAY_BUFFER, 0, size, floors.ptr);
-        } else {
-            glad.glBufferData(glad.GL_ARRAY_BUFFER, size, floors.ptr, glad.GL_STATIC_DRAW);
-        }
-        self.floors_uploaded_to_vbo = @intCast(c_int, floors.len);
+        updateVbo(
+            self.floor_data_vbo_id,
+            floors.ptr,
+            floors.len * @sizeOf(FloorData),
+            &self.floor_capacity_in_vbo,
+            glad.GL_STATIC_DRAW,
+        );
+        self.floors_uploaded_to_vbo = floors.len;
     }
 
     /// The given matrix has the same row order as the float16 returned by raymath.MatrixToFloatV().
@@ -259,7 +264,12 @@ pub const FloorRenderer = struct {
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, array_texture_id);
         glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix);
         glad.glUniform1iv(self.current_animation_frame_location, 1, &animation_frame);
-        glad.glDrawArraysInstanced(glad.GL_TRIANGLES, 0, vertex_count, self.floors_uploaded_to_vbo);
+        glad.glDrawArraysInstanced(
+            glad.GL_TRIANGLES,
+            0,
+            vertex_count,
+            @intCast(c_int, self.floors_uploaded_to_vbo),
+        );
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, 0);
         glad.glBindVertexArray(0);
         glad.glUseProgram(0);
@@ -370,6 +380,26 @@ fn setupAndBindStandingQuadVbo(position_location: c_uint, texture_coords_locatio
     ));
     glad.glEnableVertexAttribArray(texture_coords_location);
     return vbo_id;
+}
+
+fn updateVbo(
+    vbo_id: c_uint,
+    data: *const anyopaque,
+    size: usize,
+    /// Will be updated by this function.
+    current_capacity: *usize,
+    usage: glad.GLenum,
+) void {
+    const signed_size = @intCast(isize, size);
+
+    glad.glBindBuffer(glad.GL_ARRAY_BUFFER, vbo_id);
+    if (size <= current_capacity.*) {
+        glad.glBufferSubData(glad.GL_ARRAY_BUFFER, 0, signed_size, data);
+    } else {
+        glad.glBufferData(glad.GL_ARRAY_BUFFER, signed_size, data, usage);
+        current_capacity.* = size;
+    }
+    glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
 }
 
 fn setupVertexAttribute(
