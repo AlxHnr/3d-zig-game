@@ -26,6 +26,10 @@ pub const FlatVector = struct {
         return .{ .x = vector.x, .z = vector.z };
     }
 
+    pub fn toVector3d(self: FlatVector) Vector3d {
+        return .{ .x = self.x, .y = 0, .z = self.z };
+    }
+
     pub fn normalize(self: FlatVector) FlatVector {
         const own_length = self.length();
         return if (own_length < epsilon)
@@ -90,5 +94,77 @@ pub const FlatVector = struct {
 
     pub fn projectOnto(self: FlatVector, other: FlatVector) FlatVector {
         return other.scale(self.dotProduct(other) / other.dotProduct(other));
+    }
+};
+
+pub const Vector3d = struct {
+    x: f32,
+    y: f32,
+    z: f32,
+
+    pub const up = Vector3d{ .x = 0, .y = 1, .z = 0 };
+
+    pub fn fromVector3(vector: rl.Vector3) Vector3d {
+        return .{ .x = vector.x, .y = vector.y, .z = vector.z };
+    }
+
+    pub fn toVector3(self: Vector3d) rl.Vector3 {
+        return .{ .x = self.x, .y = self.y, .z = self.z };
+    }
+
+    /// Will cut off the height component.
+    pub fn toFlatVector(self: Vector3d) FlatVector {
+        return .{ .x = self.x, .z = self.z };
+    }
+
+    pub fn normalize(self: Vector3d) Vector3d {
+        const own_length = self.length();
+        return if (own_length < epsilon)
+            self
+        else .{ .x = self.x / own_length, .y = self.y / own_length, .z = self.z / own_length };
+    }
+
+    pub fn lerp(self: Vector3d, other: Vector3d, t: f32) Vector3d {
+        return .{
+            .x = _lerp(self.x, other.x, t),
+            .y = _lerp(self.y, other.y, t),
+            .z = _lerp(self.z, other.z, t),
+        };
+    }
+
+    pub fn scale(self: Vector3d, factor: f32) Vector3d {
+        return .{ .x = self.x * factor, .y = self.y * factor, .z = self.z * factor };
+    }
+
+    pub fn add(self: Vector3d, other: Vector3d) Vector3d {
+        return .{ .x = self.x + other.x, .y = self.y + other.y, .z = self.z + other.z };
+    }
+
+    pub fn subtract(self: Vector3d, other: Vector3d) Vector3d {
+        return .{ .x = self.x - other.x, .y = self.y - other.y, .z = self.z - other.z };
+    }
+
+    pub fn length(self: Vector3d) f32 {
+        return std.math.sqrt(self.lengthSquared());
+    }
+
+    pub fn lengthSquared(self: Vector3d) f32 {
+        return self.x * self.x + self.y * self.y + self.z * self.z;
+    }
+
+    pub fn cross(self: Vector3d, other: Vector3d) Vector3d {
+        return .{
+            .x = self.y * other.z - self.z * other.y,
+            .y = self.z * other.x - self.x * other.z,
+            .z = self.x * other.y - self.y * other.x,
+        };
+    }
+
+    pub fn rotate(self: Vector3d, axis: Vector3d, angle: f32) Vector3d {
+        const rescaled_axis = axis.normalize().scale(std.math.sin(angle / 2));
+        const rescaled_axis_cross = rescaled_axis.cross(self);
+        return self
+            .add(rescaled_axis_cross.scale(std.math.cos(angle / 2) * 2))
+            .add(rescaled_axis.cross(rescaled_axis_cross).scale(2));
     }
 };
