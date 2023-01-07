@@ -6,6 +6,13 @@ const rl = @import("raylib");
 /// Smallest viable number for game-world calculations.
 pub const epsilon = 0.00001;
 
+/// Linearly interpolate between a and b. T is a value between 0 and 1. Will be clamped into this
+/// range.
+pub const lerp = _lerp;
+fn _lerp(a: f32, b: f32, t: f32) f32 {
+    return a + (b - a) * std.math.clamp(t, 0, 1);
+}
+
 /// Vector on a flat plane with no height information.
 pub const FlatVector = struct {
     x: f32,
@@ -85,10 +92,3 @@ pub const FlatVector = struct {
         return other.scale(self.dotProduct(other) / other.dotProduct(other));
     }
 };
-
-/// Linearly interpolate between a and b. T is a value between 0 and 1. Will be clamped into this
-/// range.
-pub const lerp = _lerp;
-fn _lerp(a: f32, b: f32, t: f32) f32 {
-    return a + (b - a) * std.math.clamp(t, 0, 1);
-}
