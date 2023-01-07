@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const rl = @import("raylib");
-const rm = @import("raylib-math");
 
 /// Smallest viable number for game-world calculations.
 pub const epsilon = 0.00001;
@@ -21,7 +20,10 @@ pub const FlatVector = struct {
     }
 
     pub fn normalize(self: FlatVector) FlatVector {
-        return FlatVector.fromVector3(rm.Vector3Normalize(self.toVector3()));
+        const own_length = self.length();
+        return if (own_length < epsilon)
+            self
+        else .{ .x = self.x / own_length, .z = self.z / own_length };
     }
 
     pub fn lerp(self: FlatVector, other: FlatVector, t: f32) FlatVector {
@@ -41,7 +43,7 @@ pub const FlatVector = struct {
     }
 
     pub fn length(self: FlatVector) f32 {
-        return rm.Vector3Length(self.toVector3());
+        return std.math.sqrt(self.lengthSquared());
     }
 
     pub fn lengthSquared(self: FlatVector) f32 {
@@ -49,10 +51,7 @@ pub const FlatVector = struct {
     }
 
     pub fn dotProduct(self: FlatVector, other: FlatVector) f32 {
-        return rm.Vector2DotProduct(
-            rl.Vector2{ .x = self.x, .y = self.z },
-            rl.Vector2{ .x = other.x, .y = other.z },
-        );
+        return self.x * other.x + self.z * other.z;
     }
 
     /// Get the angle needed to rotate this vector to have the same direction as another vector. The
