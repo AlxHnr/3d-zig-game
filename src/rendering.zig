@@ -1,10 +1,10 @@
 const animation = @import("animation.zig");
-const assert = @import("std").debug.assert;
+const std = @import("std");
+const assert = std.debug.assert;
 const glad = @cImport(@cInclude("external/glad.h"));
-const math = @import("std").math;
+const math = @import("math.zig");
 const meshes = @import("meshes.zig");
 const Shader = @import("shader.zig").Shader;
-const FlatVector = @import("flat_vector.zig").FlatVector;
 
 pub const WallRenderer = struct {
     vao_id: c_uint,
@@ -413,14 +413,14 @@ pub const BillboardRenderer = struct {
     pub fn render(
         self: BillboardRenderer,
         vp_matrix: [16]f32,
-        camera_direction: FlatVector,
+        camera_direction: math.FlatVector,
         texture_id: c_uint,
     ) void {
         const camera_rotation_to_z_axis =
             camera_direction.computeRotationToOtherVector(.{ .x = 0, .z = 1 });
         const y_rotation_towards_camera = [2]f32{
-            math.sin(camera_rotation_to_z_axis),
-            math.cos(camera_rotation_to_z_axis),
+            std.math.sin(camera_rotation_to_z_axis),
+            std.math.cos(camera_rotation_to_z_axis),
         };
 
         self.shader.enable();

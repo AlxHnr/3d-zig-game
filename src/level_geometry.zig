@@ -1,6 +1,5 @@
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
-const FlatVector = @import("flat_vector.zig").FlatVector;
 const rl = @import("raylib");
 const rm = @import("raylib-math");
 const std = @import("std");
@@ -10,6 +9,7 @@ const glad = @cImport(@cInclude("external/glad.h"));
 const Error = @import("error.zig").Error;
 const rendering = @import("rendering.zig");
 const meshes = @import("meshes.zig");
+const math = @import("math.zig");
 
 pub const LevelGeometry = struct {
     /// Gives every object owned by this struct a unique id.
@@ -202,8 +202,8 @@ pub const LevelGeometry = struct {
     /// Returns the object id of the created wall on success.
     pub fn addWall(
         self: *LevelGeometry,
-        start_position: FlatVector,
-        end_position: FlatVector,
+        start_position: math.FlatVector,
+        end_position: math.FlatVector,
         wall_type: WallType,
     ) !u64 {
         const wall = try self.walls.addOne();
@@ -222,8 +222,8 @@ pub const LevelGeometry = struct {
     pub fn updateWall(
         self: *LevelGeometry,
         object_id: u64,
-        start_position: FlatVector,
-        end_position: FlatVector,
+        start_position: math.FlatVector,
+        end_position: math.FlatVector,
     ) void {
         if (self.findWall(object_id)) |wall| {
             const tint = wall.tint;
@@ -249,8 +249,8 @@ pub const LevelGeometry = struct {
     /// created floor on success.
     pub fn addFloor(
         self: *LevelGeometry,
-        side_a_start: FlatVector,
-        side_a_end: FlatVector,
+        side_a_start: math.FlatVector,
+        side_a_end: math.FlatVector,
         side_b_length: f32,
         floor_type: FloorType,
     ) !u64 {
@@ -271,8 +271,8 @@ pub const LevelGeometry = struct {
     pub fn updateFloor(
         self: *LevelGeometry,
         object_id: u64,
-        side_a_start: FlatVector,
-        side_a_end: FlatVector,
+        side_a_start: math.FlatVector,
+        side_a_end: math.FlatVector,
         side_b_length: f32,
     ) void {
         if (self.findFloor(object_id)) |floor| {
@@ -298,7 +298,7 @@ pub const LevelGeometry = struct {
     pub fn addBillboardObject(
         self: *LevelGeometry,
         object_type: BillboardObjectType,
-        position: FlatVector,
+        position: math.FlatVector,
     ) !u64 {
         const billboard = try self.billboard_objects.addOne();
         billboard.* = BillboardObject.create(self.object_id_counter, object_type, position);
@@ -356,21 +356,21 @@ pub const LevelGeometry = struct {
 
     /// If the given ray hits the ground within a not too large distance, return the position on the
     /// ground.
-    pub fn cast3DRayToGround(_: LevelGeometry, ray: rl.Ray) ?FlatVector {
+    pub fn cast3DRayToGround(_: LevelGeometry, ray: rl.Ray) ?math.FlatVector {
         if (std.math.signbit(ray.position.y) == std.math.signbit(ray.direction.y)) {
             return null;
         }
         if (std.math.fabs(ray.direction.y) < util.Constants.epsilon) {
             return null;
         }
-        const offset_from_start = FlatVector{
+        const offset_from_start = math.FlatVector{
             .x = -ray.position.y / (ray.direction.y / ray.direction.x),
             .z = -ray.position.y / (ray.direction.y / ray.direction.z),
         };
         if (offset_from_start.length() > 500) {
             return null;
         }
-        return FlatVector.fromVector3(ray.position).add(offset_from_start);
+        return math.FlatVector.fromVector3(ray.position).add(offset_from_start);
     }
 
     pub const RayCollision = struct {
@@ -430,7 +430,7 @@ pub const LevelGeometry = struct {
     /// If a collision occurs, return a displacement vector for moving the given circle out of the
     /// level geometry. The returned displacement vector must be added to the given circles position
     /// to resolve the collision.
-    pub fn collidesWithCircle(self: LevelGeometry, circle: collision.Circle) ?FlatVector {
+    pub fn collidesWithCircle(self: LevelGeometry, circle: collision.Circle) ?math.FlatVector {
         var found_collision = false;
         var displaced_circle = circle;
 
@@ -446,7 +446,11 @@ pub const LevelGeometry = struct {
     }
 
     /// Check if the given line (game-world coordinates) collides with the level geometry.
-    pub fn collidesWithLine(self: LevelGeometry, line_start: FlatVector, line_end: FlatVector) bool {
+    pub fn collidesWithLine(
+        self: LevelGeometry,
+        line_start: math.FlatVector,
+        line_end: math.FlatVector,
+    ) bool {
         for (self.walls.items) |wall| {
             if (wall.boundaries.collidesWithLine(line_start, line_end)) {
                 return true;
@@ -583,16 +587,16 @@ const Floor = struct {
     tint: rl.Color,
 
     /// Values used to generate this floor.
-    side_a_start: FlatVector,
-    side_a_end: FlatVector,
+    side_a_start: math.FlatVector,
+    side_a_end: math.FlatVector,
     side_b_length: f32,
 
     /// Side a and b can be chosen arbitrarily, but must be adjacent.
     fn create(
         object_id: u64,
         floor_type: LevelGeometry.FloorType,
-        side_a_start: FlatVector,
-        side_a_end: FlatVector,
+        side_a_start: math.FlatVector,
+        side_a_end: math.FlatVector,
         side_b_length: f32,
     ) Floor {
         const offset_a = side_a_end.subtract(side_a_start);
@@ -619,7 +623,7 @@ const Floor = struct {
     }
 
     /// If the given ray hits this object, return the position on the floor.
-    fn cast3DRay(self: Floor, ray: rl.Ray) ?FlatVector {
+    fn cast3DRay(self: Floor, ray: rl.Ray) ?math.FlatVector {
         if (self.cast3DRayToGround(ray)) |position| {
             return self.boundaries.collidesWithPoint(position);
         }
@@ -661,21 +665,21 @@ const Wall = struct {
     tint: rl.Color,
 
     /// Values used to generate this wall.
-    start_position: FlatVector,
-    end_position: FlatVector,
+    start_position: math.FlatVector,
+    end_position: math.FlatVector,
 
     fn create(
         object_id: u64,
         wall_type: LevelGeometry.WallType,
-        start_position: FlatVector,
-        end_position: FlatVector,
+        start_position: math.FlatVector,
+        end_position: math.FlatVector,
     ) Wall {
         const wall_type_properties = getWallTypeProperties(start_position, end_position, wall_type);
         const offset = wall_type_properties.corrected_end_position.subtract(
             wall_type_properties.corrected_start_position,
         );
         const length = offset.length();
-        const x_axis = FlatVector{ .x = 1, .z = 0 };
+        const x_axis = math.FlatVector{ .x = 1, .z = 0 };
         const rotation_angle = x_axis.computeRotationToOtherVector(offset);
         const height = wall_type_properties.height;
         const thickness = wall_type_properties.thickness;
@@ -686,7 +690,7 @@ const Wall = struct {
             rm.MatrixScale(length, height, thickness);
 
         const side_a_up_offset =
-            FlatVector.normalize(.{ .x = offset.z, .z = -offset.x }).scale(thickness / 2);
+            math.FlatVector.normalize(.{ .x = offset.z, .z = -offset.x }).scale(thickness / 2);
         const center = wall_type_properties.corrected_start_position.add(offset.scale(0.5));
         return Wall{
             .object_id = object_id,
@@ -707,16 +711,16 @@ const Wall = struct {
     }
 
     const WallTypeProperties = struct {
-        corrected_start_position: FlatVector,
-        corrected_end_position: FlatVector,
+        corrected_start_position: math.FlatVector,
+        corrected_end_position: math.FlatVector,
         height: f32,
         thickness: f32,
         texture_scale: f32,
     };
 
     fn getWallTypeProperties(
-        start_position: FlatVector,
-        end_position: FlatVector,
+        start_position: math.FlatVector,
+        end_position: math.FlatVector,
         wall_type: LevelGeometry.WallType,
     ) WallTypeProperties {
         const fence_thickness = 0.25; // Only needed for collision boundaries, fences are flat.
@@ -808,7 +812,7 @@ const BillboardObject = struct {
     fn create(
         object_id: u64,
         object_type: LevelGeometry.BillboardObjectType,
-        position: FlatVector,
+        position: math.FlatVector,
     ) BillboardObject {
         return .{
             .object_id = object_id,
@@ -861,19 +865,19 @@ const Json = struct {
 
     const Wall = struct {
         wall_type: []const u8,
-        start_position: FlatVector,
-        end_position: FlatVector,
+        start_position: math.FlatVector,
+        end_position: math.FlatVector,
     };
 
     const Floor = struct {
         floor_type: []const u8,
-        side_a_start: FlatVector,
-        side_a_end: FlatVector,
+        side_a_start: math.FlatVector,
+        side_a_end: math.FlatVector,
         side_b_length: f32,
     };
 
     const BillboardObject = struct {
         object_type: []const u8,
-        position: FlatVector,
+        position: math.FlatVector,
     };
 };

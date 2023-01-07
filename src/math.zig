@@ -1,4 +1,6 @@
-const math = @import("std").math;
+//! Contains extra math functions which are not in std.math.
+
+const std = @import("std");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
 
@@ -22,7 +24,7 @@ pub const FlatVector = struct {
     /// Interpolate between this vectors state and another vector based on the given interval from
     /// 0 and 1. The given interval will be clamped into this range.
     pub fn lerp(self: FlatVector, other: FlatVector, interval: f32) FlatVector {
-        const i = math.clamp(interval, 0, 1);
+        const i = std.math.clamp(interval, 0, 1);
         return .{ .x = rm.Lerp(self.x, other.x, i), .z = rm.Lerp(self.z, other.z, i) };
     }
 
@@ -57,7 +59,9 @@ pub const FlatVector = struct {
     /// given vectors don't need to be normalized.
     pub fn computeRotationToOtherVector(self: FlatVector, other: FlatVector) f32 {
         const other_normalized = other.normalize();
-        const angle = math.acos(math.clamp(self.normalize().dotProduct(other_normalized), -1, 1));
+        const angle = std.math.acos(std.math.clamp(self.normalize().dotProduct(
+            other_normalized,
+        ), -1, 1));
         return if (other_normalized.dotProduct(.{ .x = self.z, .z = -self.x }) < 0)
             -angle
         else
@@ -69,8 +73,8 @@ pub const FlatVector = struct {
     }
 
     pub fn rotate(self: FlatVector, angle: f32) FlatVector {
-        const sin = math.sin(angle);
-        const cos = math.cos(angle);
+        const sin = std.math.sin(angle);
+        const cos = std.math.cos(angle);
         return .{ .x = self.x * cos + self.z * sin, .z = -self.x * sin + self.z * cos };
     }
 

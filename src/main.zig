@@ -1,7 +1,6 @@
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const edit_mode = @import("edit_mode.zig");
-const FlatVector = @import("flat_vector.zig").FlatVector;
 const gems = @import("gems.zig");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
@@ -9,6 +8,7 @@ const std = @import("std");
 const textures = @import("textures.zig");
 const util = @import("util.zig");
 const glad = @cImport(@cInclude("external/glad.h"));
+const math = @import("math.zig");
 
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
@@ -25,16 +25,16 @@ fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
 
 const Character = struct {
     boundaries: collision.Circle,
-    looking_direction: FlatVector,
+    looking_direction: math.FlatVector,
     /// Values from -1 (turning left) to 1 (turning right).
     turning_direction: f32,
-    acceleration_direction: FlatVector,
-    velocity: FlatVector,
+    acceleration_direction: math.FlatVector,
+    velocity: math.FlatVector,
     height: f32,
 
     fn create(
-        position: FlatVector,
-        looking_direction: FlatVector,
+        position: math.FlatVector,
+        looking_direction: math.FlatVector,
         radius: f32,
         height: f32,
     ) Character {
@@ -63,7 +63,7 @@ const Character = struct {
     }
 
     /// Given direction values will be normalized.
-    fn setAcceleration(self: *Character, direction: FlatVector) void {
+    fn setAcceleration(self: *Character, direction: math.FlatVector) void {
         self.acceleration_direction = direction.normalize();
     }
 
@@ -72,7 +72,7 @@ const Character = struct {
         self.turning_direction = rm.Clamp(turning_direction, -1, 1);
     }
 
-    fn resolveCollision(self: *Character, displacement_vector: FlatVector) void {
+    fn resolveCollision(self: *Character, displacement_vector: math.FlatVector) void {
         self.boundaries.position = self.boundaries.position.add(displacement_vector);
         const dot_product = std.math.clamp(self.velocity.normalize()
             .dotProduct(displacement_vector.normalize()), -1, 1);
@@ -129,9 +129,9 @@ const Player = struct {
             std.math.fabs(starting_position_z) < util.Constants.epsilon;
         const direction_towards_center =
             if (position_is_zero)
-            FlatVector{ .x = 0, .z = -1 }
+            math.FlatVector{ .x = 0, .z = -1 }
         else
-            FlatVector.normalize(.{
+            math.FlatVector.normalize(.{
                 .x = -starting_position_x,
                 .z = -starting_position_z,
             });
@@ -168,7 +168,7 @@ const Player = struct {
             interval_between_previous_and_current_tick,
         );
 
-        var acceleration_direction = FlatVector{ .x = 0, .z = 0 };
+        var acceleration_direction = math.FlatVector{ .x = 0, .z = 0 };
         var turning_direction: f32 = 0;
         if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT)) {
             if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT_CONTROL)) {
@@ -440,7 +440,7 @@ const ViewMode = enum { from_behind, top_down };
 
 const CurrentlyEditedObject = struct {
     object_id: u64,
-    start_position: FlatVector,
+    start_position: math.FlatVector,
 };
 
 fn reloadDefaultMap(allocator: std.mem.Allocator, level_geometry: *LevelGeometry) !void {

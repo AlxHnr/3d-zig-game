@@ -1,8 +1,8 @@
 const rl = @import("raylib");
-const FlatVector = @import("flat_vector.zig").FlatVector;
 const util = @import("util.zig");
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const std = @import("std");
+const math = @import("math.zig");
 
 pub const State = struct {
     mode: Mode,
@@ -44,7 +44,7 @@ pub const State = struct {
         self: *State,
         level_geometry: *LevelGeometry,
         mouse_ray: rl.Ray,
-        camera_direction: FlatVector,
+        camera_direction: math.FlatVector,
     ) void {
         switch (self.mode) {
             .insert_objects => {
@@ -132,7 +132,7 @@ pub const State = struct {
 
     const CurrentlyEditedObject = struct {
         object_id: u64,
-        start_position: FlatVector,
+        start_position: math.FlatVector,
     };
 
     fn resetCurrentlyEditedObject(self: *State, level_geometry: *LevelGeometry) void {
@@ -145,7 +145,7 @@ pub const State = struct {
     fn startPlacingObject(
         self: *State,
         level_geometry: *LevelGeometry,
-        position: FlatVector,
+        position: math.FlatVector,
     ) !void {
         const object_type = &self.object_type_to_insert;
         const object_id = try switch (object_type.used_field) {
@@ -161,8 +161,8 @@ pub const State = struct {
     fn updateCurrentlyInsertedObject(
         self: *State,
         level_geometry: *LevelGeometry,
-        object_end_position: FlatVector,
-        camera_direction: FlatVector,
+        object_end_position: math.FlatVector,
+        camera_direction: math.FlatVector,
     ) void {
         if (self.currently_edited_object) |object| {
             switch (self.object_type_to_insert.used_field) {
@@ -184,7 +184,7 @@ pub const State = struct {
                         side_a_end = object.start_position;
                     }
                     if (camera_right_axis.dotProduct(offset) > 0) {
-                        std.mem.swap(FlatVector, &side_a_start, &side_a_end);
+                        std.mem.swap(math.FlatVector, &side_a_start, &side_a_end);
                     }
 
                     level_geometry.updateFloor(object.object_id, side_a_start, side_a_end, side_b_length);

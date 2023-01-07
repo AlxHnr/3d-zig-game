@@ -2,7 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
 const util = @import("util.zig");
-const FlatVector = @import("flat_vector.zig").FlatVector;
+const math = @import("math.zig");
 
 const camera_follow_speed = 0.15;
 const default_angle_from_ground = util.degreesToRadians(10);
@@ -20,7 +20,7 @@ pub const Camera = struct {
     /// Initialize the camera to look down at the given object from behind.
     pub fn create(
         target_object_position: rl.Vector3,
-        target_object_looking_direction: FlatVector,
+        target_object_looking_direction: math.FlatVector,
     ) Camera {
         var camera = std.mem.zeroes(rl.Camera);
         camera.up = util.Constants.up;
@@ -122,16 +122,16 @@ pub const Camera = struct {
         return self.camera;
     }
 
-    pub fn getDirectionToTarget(self: Camera) FlatVector {
-        const position = FlatVector.fromVector3(self.camera.position);
-        const target = FlatVector.fromVector3(self.camera.target);
+    pub fn getDirectionToTarget(self: Camera) math.FlatVector {
+        const position = math.FlatVector.fromVector3(self.camera.position);
+        const target = math.FlatVector.fromVector3(self.camera.target);
         return target.subtract(position).normalize();
     }
 
     pub fn processElapsedTick(
         self: *Camera,
         target_object_position: rl.Vector3,
-        target_object_looking_direction: FlatVector,
+        target_object_looking_direction: math.FlatVector,
     ) void {
         self.updateAngleFromGround();
         const y_rotated_camera_offset =
@@ -174,11 +174,11 @@ pub const Camera = struct {
 
     fn computeYRotatedCameraOffset(
         self: Camera,
-        target_object_looking_direction: FlatVector,
+        target_object_looking_direction: math.FlatVector,
     ) rl.Vector3 {
         const camera_offset = rm.Vector3Subtract(self.camera.position, self.camera.target);
         const object_back_direction = target_object_looking_direction.negate();
-        const rotation_step = camera_follow_speed * FlatVector.fromVector3(camera_offset)
+        const rotation_step = camera_follow_speed * math.FlatVector.fromVector3(camera_offset)
             .computeRotationToOtherVector(object_back_direction);
         return rm.Vector3RotateByAxisAngle(camera_offset, util.Constants.up, rotation_step);
     }
