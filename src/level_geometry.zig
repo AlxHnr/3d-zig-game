@@ -360,7 +360,7 @@ pub const LevelGeometry = struct {
         if (std.math.signbit(ray.position.y) == std.math.signbit(ray.direction.y)) {
             return null;
         }
-        if (std.math.fabs(ray.direction.y) < util.Constants.epsilon) {
+        if (std.math.fabs(ray.direction.y) < math.epsilon) {
             return null;
         }
         const offset_from_start = math.FlatVector{

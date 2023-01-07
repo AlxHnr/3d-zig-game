@@ -6,7 +6,7 @@ const expectApproxEqRel = std.testing.expectApproxEqRel;
 
 const collision = @import("collision.zig");
 const util = @import("util.zig");
-const epsilon = util.Constants.epsilon;
+const epsilon = @import("math.zig").epsilon;
 
 test "Create collision rectangle" {
     const rectangle = collision.Rectangle.create(

@@ -1,27 +1,25 @@
 //! Contains various helpers that belong nowhere else.
 
 const std = @import("std");
-const math = std.math;
+const math = @import("math.zig");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
 const rlgl = @cImport(@cInclude("rlgl.h"));
 
 pub const Constants = struct {
     pub const up = rl.Vector3{ .x = 0, .y = 1, .z = 0 };
-    /// Smallest viable number for game-world calculations.
-    pub const epsilon = 0.00001;
 };
 
 // TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
 pub fn degreesToRadians(degrees: f32) f32 {
-    return degrees * math.pi / 180;
+    return degrees * std.math.pi / 180;
 }
 pub fn radiansToDegrees(radians: f32) f32 {
-    return radians * 180 / math.pi;
+    return radians * 180 / std.math.pi;
 }
 
 pub fn isEqualFloat(a: f32, b: f32) bool {
-    return math.fabs(a - b) < Constants.epsilon;
+    return std.math.fabs(a - b) < math.epsilon;
 }
 
 /// Lap timer for measuring elapsed ticks.

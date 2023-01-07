@@ -86,7 +86,7 @@ const Character = struct {
     fn processElapsedTick(self: *Character) void {
         self.boundaries.position = self.boundaries.position.add(self.velocity);
 
-        const is_accelerating = self.acceleration_direction.length() > util.Constants.epsilon;
+        const is_accelerating = self.acceleration_direction.length() > math.epsilon;
         if (is_accelerating) {
             const max_velocity = 0.15;
             const acceleration = max_velocity / 5.0;
@@ -126,7 +126,7 @@ const Player = struct {
         spritesheet: rl.Texture,
     ) Player {
         const position_is_zero = std.math.fabs(starting_position_x) +
-            std.math.fabs(starting_position_z) < util.Constants.epsilon;
+            std.math.fabs(starting_position_z) < math.epsilon;
         const direction_towards_center =
             if (position_is_zero)
             math.FlatVector{ .x = 0, .z = -1 }
@@ -519,7 +519,7 @@ pub fn main() !void {
             }
             controllable_player_index = (controllable_player_index + 1) % players.len;
         }
-        if (std.math.fabs(rl.GetMouseWheelMoveV().y) > util.Constants.epsilon) {
+        if (std.math.fabs(rl.GetMouseWheelMoveV().y) > math.epsilon) {
             if (!rl.IsMouseButtonDown(rl.MouseButton.MOUSE_BUTTON_RIGHT)) {
                 players[controllable_player_index].state_at_next_tick.camera
                     .increaseDistanceToObject(-rl.GetMouseWheelMoveV().y * 2.5);

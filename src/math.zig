@@ -4,6 +4,9 @@ const std = @import("std");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
 
+/// Smallest viable number for game-world calculations.
+pub const epsilon = 0.00001;
+
 /// Vector on a flat plane with no height information.
 pub const FlatVector = struct {
     x: f32,

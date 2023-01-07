@@ -3,7 +3,6 @@
 const std = @import("std");
 const rm = @import("raylib-math");
 const math = @import("math.zig");
-const epsilon = @import("util.zig").Constants.epsilon;
 
 pub const Rectangle = struct {
     /// Game-world coordinates rotated around the worlds origin to axis-align this rectangle.
@@ -105,7 +104,7 @@ pub const Circle = struct {
         const offset_to_other = self.position.subtract(other.position).toVector3();
         const max_distance = self.radius + other.radius;
         const max_distance_squared = max_distance * max_distance;
-        if (max_distance_squared - rm.Vector3LengthSqr(offset_to_other) < epsilon) {
+        if (max_distance_squared - rm.Vector3LengthSqr(offset_to_other) < math.epsilon) {
             return null;
         }
 
@@ -180,7 +179,7 @@ pub fn lineCollidesWithLine(
     const divisor =
         second_line_lengths.z * first_line_lengths.x -
         second_line_lengths.x * first_line_lengths.z;
-    if (std.math.fabs(divisor) < epsilon) {
+    if (std.math.fabs(divisor) < math.epsilon) {
         return false;
     }
 
