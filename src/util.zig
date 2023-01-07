@@ -6,10 +6,6 @@ const rl = @import("raylib");
 const rm = @import("raylib-math");
 const rlgl = @cImport(@cInclude("rlgl.h"));
 
-pub const Constants = struct {
-    pub const up = rl.Vector3{ .x = 0, .y = 1, .z = 0 };
-};
-
 // TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
 pub fn degreesToRadians(degrees: f32) f32 {
     return degrees * std.math.pi / 180;

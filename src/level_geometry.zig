@@ -370,7 +370,7 @@ pub const LevelGeometry = struct {
         if (offset_from_start.length() > 500) {
             return null;
         }
-        return math.FlatVector.fromVector3(ray.position).add(offset_from_start);
+        return offset_from_start.add(.{ .x = ray.position.x, .z = ray.position.z });
     }
 
     pub const RayCollision = struct {

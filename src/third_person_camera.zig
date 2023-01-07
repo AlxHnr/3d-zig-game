@@ -23,7 +23,7 @@ pub const Camera = struct {
         target_object_looking_direction: math.FlatVector,
     ) Camera {
         var camera = std.mem.zeroes(rl.Camera);
-        camera.up = util.Constants.up;
+        camera.up = .{ .x = 0, .y = 1, .z = 0 };
         camera.fovy = 45;
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
         camera.target = scaleTargetPosition(target_object_position);
@@ -180,7 +180,7 @@ pub const Camera = struct {
         const object_back_direction = target_object_looking_direction.negate();
         const rotation_step = camera_follow_speed * math.FlatVector.fromVector3(camera_offset)
             .computeRotationToOtherVector(object_back_direction);
-        return rm.Vector3RotateByAxisAngle(camera_offset, util.Constants.up, rotation_step);
+        return rm.Vector3RotateByAxisAngle(camera_offset, self.camera.up, rotation_step);
     }
 
     fn updateCameraDistanceFromObject(self: *Camera) void {
@@ -200,6 +200,8 @@ pub const Camera = struct {
     }
 
     fn scaleTargetPosition(target_object_position: rl.Vector3) rl.Vector3 {
-        return rm.Vector3Add(target_object_position, rm.Vector3Scale(util.Constants.up, 3));
+        var result = target_object_position;
+        result.y = result.y + 3;
+        return result;
     }
 };

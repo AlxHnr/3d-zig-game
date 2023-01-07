@@ -101,17 +101,14 @@ pub const Circle = struct {
     /// If a collision occurs, return a displacement vector for moving self out of other. The
     /// returned displacement vector must be added to self.position to resolve the collision.
     pub fn collidesWithCircle(self: Circle, other: Circle) ?math.FlatVector {
-        const offset_to_other = self.position.subtract(other.position).toVector3();
+        const offset_to_other = self.position.subtract(other.position);
         const max_distance = self.radius + other.radius;
         const max_distance_squared = max_distance * max_distance;
-        if (max_distance_squared - rm.Vector3LengthSqr(offset_to_other) < math.epsilon) {
+        if (max_distance_squared - offset_to_other.lengthSquared() < math.epsilon) {
             return null;
         }
 
-        return math.FlatVector.fromVector3(rm.Vector3Scale(
-            rm.Vector3Normalize(offset_to_other),
-            max_distance - rm.Vector3Length(offset_to_other),
-        ));
+        return offset_to_other.normalize().scale(max_distance - offset_to_other.length());
     }
 
     /// If a collision occurs, return a displacement vector for moving self out of other. The
