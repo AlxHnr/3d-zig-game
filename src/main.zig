@@ -147,7 +147,7 @@ const Player = struct {
         const state = State{
             .character = character,
             .camera = ThirdPersonCamera.create(
-                character.boundaries.position.toVector3(),
+                character.boundaries.position,
                 character.looking_direction,
             ),
             .animation_cycle = animation.FourStepCycle.create(),
@@ -330,7 +330,7 @@ const Player = struct {
             }
             self.character.processElapsedTick();
             self.camera.processElapsedTick(
-                self.character.boundaries.position.toVector3(),
+                self.character.boundaries.position,
                 self.character.looking_direction,
             );
             self.animation_cycle.processStep(self.character.velocity.length() * 0.75);
