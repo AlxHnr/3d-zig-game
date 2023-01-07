@@ -1,8 +1,10 @@
 const animation = @import("animation.zig");
 const assert = @import("std").debug.assert;
 const glad = @cImport(@cInclude("external/glad.h"));
+const math = @import("std").math;
 const meshes = @import("meshes.zig");
 const Shader = @import("shader.zig").Shader;
+const FlatVector = @import("flat_vector.zig").FlatVector;
 
 pub const WallRenderer = struct {
     vao_id: c_uint,
@@ -256,7 +258,6 @@ pub const FloorRenderer = struct {
         array_texture_id: c_uint,
         floor_animation_state: animation.FourStepCycle,
     ) void {
-        const vertex_count = meshes.StandingQuad.vertex_data.len / 2;
         const animation_frame: c_int = floor_animation_state.getFrame();
 
         self.shader.enable();
@@ -264,12 +265,7 @@ pub const FloorRenderer = struct {
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, array_texture_id);
         glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix);
         glad.glUniform1iv(self.current_animation_frame_location, 1, &animation_frame);
-        glad.glDrawArraysInstanced(
-            glad.GL_TRIANGLES,
-            0,
-            vertex_count,
-            @intCast(c_int, self.floors_uploaded_to_vbo),
-        );
+        renderStandingQuadInstanced(self.floors_uploaded_to_vbo);
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, 0);
         glad.glBindVertexArray(0);
         glad.glUseProgram(0);
@@ -325,6 +321,184 @@ pub const LevelGeometryAttributes = extern struct {
         g: f32,
         b: f32,
     },
+};
+
+/// Renders sprites which rotate around the Y axis towards the camera.
+pub const BillboardRenderer = struct {
+    vao_id: c_uint,
+    vertex_vbo_id: c_uint,
+    billboard_data_vbo_id: c_uint,
+    billboards_uploaded_to_vbo: usize,
+    billboard_capacity_in_vbo: usize,
+    shader: Shader,
+    y_rotation_location: c_int,
+    vp_matrix_location: c_int,
+
+    pub fn create() !BillboardRenderer {
+        var shader = try Shader.create(vertex_shader_source, fragment_shader_source);
+        errdefer shader.destroy();
+        const loc_vertex_position = try shader.getAttributeLocation("vertex_position");
+        const loc_texture_coords = try shader.getAttributeLocation("texture_coords");
+        const loc_billboard_center_position =
+            try shader.getAttributeLocation("billboard_center_position");
+        const loc_size = try shader.getAttributeLocation("size");
+        const loc_z_rotation = try shader.getAttributeLocation("z_rotation");
+        const loc_source_rect = try shader.getAttributeLocation("source_rect");
+        const loc_tint = try shader.getAttributeLocation("tint");
+        const loc_y_rotation_towards_camera =
+            try shader.getUniformLocation("y_rotation_towards_camera");
+        const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
+        const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
+
+        const vao_id = createAndBindVao();
+        const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_position, loc_texture_coords);
+        const billboard_data_vbo_id = createAndBindEmptyVbo();
+        setupVertexAttribute(loc_billboard_center_position, 3, @offsetOf(
+            BillboardData,
+            "position",
+        ), @sizeOf(BillboardData));
+        setupVertexAttribute(loc_size, 2, @offsetOf(BillboardData, "size"), @sizeOf(BillboardData));
+        setupVertexAttribute(loc_z_rotation, 2, @offsetOf(
+            BillboardData,
+            "z_rotation",
+        ), @sizeOf(BillboardData));
+        setupVertexAttribute(loc_source_rect, 4, @offsetOf(BillboardData, "source_rect"), @sizeOf(
+            BillboardData,
+        ));
+        setupVertexAttribute(loc_tint, 3, @offsetOf(BillboardData, "tint"), @sizeOf(BillboardData));
+        comptime {
+            assert(@offsetOf(BillboardData, "position") == 0);
+            assert(@offsetOf(BillboardData, "size") == 12);
+            assert(@offsetOf(BillboardData, "z_rotation") == 20);
+            assert(@offsetOf(BillboardData, "source_rect") == 28);
+            assert(@offsetOf(BillboardData, "tint") == 44);
+            assert(@sizeOf(BillboardData) == 56);
+        }
+
+        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
+        glad.glBindVertexArray(0);
+        setTextureSamplerId(shader, loc_texture_sampler);
+
+        return BillboardRenderer{
+            .vao_id = vao_id,
+            .vertex_vbo_id = vertex_vbo_id,
+            .billboard_data_vbo_id = billboard_data_vbo_id,
+            .billboards_uploaded_to_vbo = 0,
+            .billboard_capacity_in_vbo = 0,
+            .shader = shader,
+            .y_rotation_location = loc_y_rotation_towards_camera,
+            .vp_matrix_location = loc_vp_matrix,
+        };
+    }
+
+    pub fn destroy(self: *BillboardRenderer) void {
+        self.shader.destroy();
+        glad.glDeleteBuffers(1, &self.billboard_data_vbo_id);
+        glad.glDeleteBuffers(1, &self.vertex_vbo_id);
+        glad.glDeleteVertexArrays(1, &self.vao_id);
+    }
+
+    /// Billboards are rendered in the same order as specified.
+    pub fn uploadBillboards(self: *BillboardRenderer, billboards: []const BillboardData) void {
+        updateVbo(
+            self.billboard_data_vbo_id,
+            billboards.ptr,
+            billboards.len * @sizeOf(BillboardData),
+            &self.billboard_capacity_in_vbo,
+            glad.GL_STREAM_DRAW,
+        );
+        self.billboards_uploaded_to_vbo = billboards.len;
+    }
+
+    pub fn render(
+        self: BillboardRenderer,
+        vp_matrix: [16]f32,
+        camera_direction: FlatVector,
+        texture_id: c_uint,
+    ) void {
+        const camera_rotation_to_z_axis =
+            camera_direction.computeRotationToOtherVector(.{ .x = 0, .z = 1 });
+        const y_rotation_towards_camera = [2]f32{
+            math.sin(camera_rotation_to_z_axis),
+            math.cos(camera_rotation_to_z_axis),
+        };
+
+        self.shader.enable();
+        glad.glBindVertexArray(self.vao_id);
+        glad.glBindTexture(glad.GL_TEXTURE_2D, texture_id);
+        glad.glUniform2fv(self.y_rotation_location, 1, &y_rotation_towards_camera);
+        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix);
+        renderStandingQuadInstanced(self.billboards_uploaded_to_vbo);
+        glad.glBindTexture(glad.GL_TEXTURE_2D, 0);
+        glad.glBindVertexArray(0);
+        glad.glUseProgram(0);
+    }
+
+    pub const BillboardData = extern struct {
+        /// Center of the object in game-world coordinates.
+        position: extern struct { x: f32, y: f32, z: f32 },
+        /// Game-world dimensions.
+        size: extern struct { w: f32, h: f32 },
+        /// Precomputed angle at which the billboard should be rotated around the Z axis.
+        z_rotation: extern struct { sine: f32, cosine: f32 },
+        /// Specifies the part of the currently bound texture which should be stretched onto the
+        /// billboard. Values range from 0 to 1, where (0, 0) is the top left corner of the texture.
+        source_rect: extern struct { x: f32, y: f32, w: f32, h: f32 },
+        /// Color values from 0 to 1.
+        tint: extern struct { r: f32, g: f32, b: f32 },
+    };
+
+    const vertex_shader_source =
+        \\ #version 330
+        \\
+        \\ in vec2 vertex_position;
+        \\ in vec2 texture_coords;
+        \\ in vec3 billboard_center_position;
+        \\ in vec2 size; // Width and height of the billboard.
+        \\ in vec2 z_rotation; // (sine, cosine) for rotating the billboard around the Z axis.
+        \\ in vec4 source_rect; // Values from 0 to 1, where (0, 0) is the top left of the texture.
+        \\ in vec3 tint;
+        \\ // (sine, cosine) for rotating towards the camera around the Y axis.
+        \\ uniform vec2 y_rotation_towards_camera;
+        \\ uniform mat4 vp_matrix;
+        \\
+        \\ out vec2 fragment_texcoords;
+        \\ out vec3 fragment_tint;
+        \\
+        \\ void main() {
+        \\     vec2 scaled_position = vertex_position * size;
+        \\     vec2 z_rotated_position = vec2(
+        \\         scaled_position.x * z_rotation[1] + scaled_position.y * z_rotation[0],
+        \\         -scaled_position.x * z_rotation[0] + scaled_position.y * z_rotation[1]
+        \\     );
+        \\     vec3 y_rotated_position = vec3(
+        \\         z_rotated_position.x * y_rotation_towards_camera[1],
+        \\         z_rotated_position.y,
+        \\         z_rotated_position.x * y_rotation_towards_camera[0]
+        \\     );
+        \\
+        \\     gl_Position = vp_matrix * vec4(y_rotated_position + billboard_center_position, 1);
+        \\     fragment_texcoords = source_rect.xy + source_rect.zw * texture_coords;
+        \\     fragment_tint = tint;
+        \\ }
+    ;
+    const fragment_shader_source =
+        \\ #version 330
+        \\
+        \\ in vec2 fragment_texcoords;
+        \\ in vec3 fragment_tint;
+        \\ uniform sampler2D texture_sampler;
+        \\
+        \\ out vec4 final_color;
+        \\
+        \\ void main() {
+        \\     vec4 texel_color = texture(texture_sampler, fragment_texcoords);
+        \\     if (texel_color.a < 0.01) {
+        \\         discard;
+        \\     }
+        \\     final_color = texel_color * vec4(fragment_tint, 1);
+        \\ }
+    ;
 };
 
 const level_geometry_fragment_shader =
@@ -450,4 +624,9 @@ fn setTextureSamplerId(shader: Shader, loc_texture_sampler: c_int) void {
     var texture_sampler_id: c_int = 0;
     glad.glUniform1iv(loc_texture_sampler, 1, &texture_sampler_id);
     glad.glUseProgram(0);
+}
+
+fn renderStandingQuadInstanced(instance_count: usize) void {
+    const vertex_count = meshes.StandingQuad.vertex_data.len / 2;
+    glad.glDrawArraysInstanced(glad.GL_TRIANGLES, 0, vertex_count, @intCast(c_int, instance_count));
 }
