@@ -115,9 +115,9 @@ const Gem = struct {
         const self_progress = self.pickup_animation_progress orelse 0;
         const other_progress = other.pickup_animation_progress orelse 0;
         return Gem{
-            .side_length = rm.Lerp(self.side_length, other.side_length, interval),
+            .side_length = math.lerp(self.side_length, other.side_length, interval),
             .boundaries = self.boundaries.lerp(other.boundaries, interval),
-            .spawn_animation_progress = rm.Lerp(
+            .spawn_animation_progress = math.lerp(
                 self.spawn_animation_progress,
                 other.spawn_animation_progress,
                 interval,
@@ -126,7 +126,7 @@ const Gem = struct {
                 other.pickup_animation_progress == null)
                 null
             else
-                rm.Lerp(self_progress, other_progress, interval),
+                math.lerp(self_progress, other_progress, interval),
             .collided_object_id = if (interval < 0.5)
                 self.collided_object_id
             else

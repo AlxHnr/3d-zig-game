@@ -1,5 +1,5 @@
-const rm = @import("raylib-math");
-const math = @import("std").math;
+const std = @import("std");
+const math = @import("math.zig");
 
 /// For cycling between 3 frames in a loop like this: 0 -> 1 -> 2 -> 1 -> 0.
 pub const FourStepCycle = struct {
@@ -13,7 +13,7 @@ pub const FourStepCycle = struct {
 
     /// Takes an interval from 0 to 1, where 1 means skipping to the next frame.
     pub fn processStep(self: *FourStepCycle, interval: f32) void {
-        self.cycle = self.cycle + math.max(0, interval);
+        self.cycle = self.cycle + std.math.max(0, interval);
         if (self.cycle > 1) {
             self.cycle = 0;
             self.step = self.step +% 1;
@@ -26,7 +26,7 @@ pub const FourStepCycle = struct {
 
     pub fn lerp(self: FourStepCycle, other: FourStepCycle, interval: f32) FourStepCycle {
         return .{
-            .cycle = rm.Lerp(self.cycle, other.cycle, interval),
+            .cycle = math.lerp(self.cycle, other.cycle, interval),
             .step = if (interval < 0.5) self.step else other.step,
         };
     }

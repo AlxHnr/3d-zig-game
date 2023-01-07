@@ -21,11 +21,8 @@ pub const FlatVector = struct {
         return FlatVector.fromVector3(rm.Vector3Normalize(self.toVector3()));
     }
 
-    /// Interpolate between this vectors state and another vector based on the given interval from
-    /// 0 and 1. The given interval will be clamped into this range.
-    pub fn lerp(self: FlatVector, other: FlatVector, interval: f32) FlatVector {
-        const i = std.math.clamp(interval, 0, 1);
-        return .{ .x = rm.Lerp(self.x, other.x, i), .z = rm.Lerp(self.z, other.z, i) };
+    pub fn lerp(self: FlatVector, other: FlatVector, t: f32) FlatVector {
+        return .{ .x = _lerp(self.x, other.x, t), .z = _lerp(self.z, other.z, t) };
     }
 
     pub fn add(self: FlatVector, other: FlatVector) FlatVector {
@@ -86,3 +83,10 @@ pub const FlatVector = struct {
         return other.scale(self.dotProduct(other) / other.dotProduct(other));
     }
 };
+
+/// Linearly interpolate between a and b. T is a value between 0 and 1. Will be clamped into this
+/// range.
+pub const lerp = _lerp;
+fn _lerp(a: f32, b: f32, t: f32) f32 {
+    return a + (b - a) * std.math.clamp(t, 0, 1);
+}

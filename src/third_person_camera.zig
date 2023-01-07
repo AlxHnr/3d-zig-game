@@ -59,18 +59,18 @@ pub const Camera = struct {
 
         return Camera{
             .camera = camera,
-            .distance_from_object = rm.Lerp(
+            .distance_from_object = math.lerp(
                 self.distance_from_object,
                 other.distance_from_object,
                 i,
             ),
-            .target_distance_from_object = rm.Lerp(
+            .target_distance_from_object = math.lerp(
                 self.target_distance_from_object,
                 other.target_distance_from_object,
                 i,
             ),
-            .angle_from_ground = rm.Lerp(self.angle_from_ground, other.angle_from_ground, i),
-            .target_angle_from_ground = rm.Lerp(
+            .angle_from_ground = math.lerp(self.angle_from_ground, other.angle_from_ground, i),
+            .target_angle_from_ground = math.lerp(
                 self.target_angle_from_ground,
                 other.target_angle_from_ground,
                 i,
@@ -149,7 +149,7 @@ pub const Camera = struct {
         if (util.isEqualFloat(self.angle_from_ground, self.target_angle_from_ground)) {
             return;
         }
-        self.angle_from_ground = rm.Lerp(
+        self.angle_from_ground = math.lerp(
             self.angle_from_ground,
             self.target_angle_from_ground,
             camera_follow_speed,
@@ -187,7 +187,7 @@ pub const Camera = struct {
         if (util.isEqualFloat(self.distance_from_object, self.target_distance_from_object)) {
             return;
         }
-        self.distance_from_object = rm.Lerp(
+        self.distance_from_object = math.lerp(
             self.distance_from_object,
             self.target_distance_from_object,
             camera_follow_speed,

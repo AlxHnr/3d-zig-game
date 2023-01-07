@@ -16,10 +16,10 @@ const loadGenericShader = @import("generic_shader.zig").load;
 
 fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
     return rl.Color{
-        .r = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.r), @intToFloat(f32, b.r), interval)),
-        .g = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.g), @intToFloat(f32, b.g), interval)),
-        .b = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.b), @intToFloat(f32, b.b), interval)),
-        .a = @floatToInt(u8, rm.Lerp(@intToFloat(f32, a.a), @intToFloat(f32, b.a), interval)),
+        .r = @floatToInt(u8, math.lerp(@intToFloat(f32, a.r), @intToFloat(f32, b.r), interval)),
+        .g = @floatToInt(u8, math.lerp(@intToFloat(f32, a.g), @intToFloat(f32, b.g), interval)),
+        .b = @floatToInt(u8, math.lerp(@intToFloat(f32, a.b), @intToFloat(f32, b.b), interval)),
+        .a = @floatToInt(u8, math.lerp(@intToFloat(f32, a.a), @intToFloat(f32, b.a), interval)),
     };
 }
 
@@ -55,10 +55,10 @@ const Character = struct {
         return Character{
             .boundaries = self.boundaries.lerp(other.boundaries, i),
             .looking_direction = self.looking_direction.lerp(other.looking_direction, i),
-            .turning_direction = rm.Lerp(self.turning_direction, other.turning_direction, i),
+            .turning_direction = math.lerp(self.turning_direction, other.turning_direction, i),
             .acceleration_direction = self.acceleration_direction.lerp(other.acceleration_direction, i),
             .velocity = self.velocity.lerp(other.velocity, i),
-            .height = rm.Lerp(self.height, other.height, i),
+            .height = math.lerp(self.height, other.height, i),
         };
     }
 
@@ -69,7 +69,7 @@ const Character = struct {
 
     /// Value from -1 (left) to 1 (right). Will be clamped into this range.
     fn setTurningDirection(self: *Character, turning_direction: f32) void {
-        self.turning_direction = rm.Clamp(turning_direction, -1, 1);
+        self.turning_direction = std.math.clamp(turning_direction, -1, 1);
     }
 
     fn resolveCollision(self: *Character, displacement_vector: math.FlatVector) void {

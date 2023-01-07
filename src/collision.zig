@@ -95,7 +95,7 @@ pub const Circle = struct {
         const i = std.math.clamp(interval, 0, 1);
         return Circle{
             .position = self.position.lerp(other.position, i),
-            .radius = rm.Lerp(self.radius, other.radius, i),
+            .radius = math.lerp(self.radius, other.radius, i),
         };
     }
 
