@@ -364,7 +364,7 @@ pub const BillboardRenderer = struct {
         texture_id: c_uint,
     ) void {
         const camera_rotation_to_z_axis =
-            camera_direction.computeRotationToOtherVector(.{ .x = 0, .z = 1 });
+            camera_direction.computeRotationToOtherVector(.{ .x = 0, .z = -1 });
         const y_rotation_towards_camera = [2]f32{
             std.math.sin(camera_rotation_to_z_axis),
             std.math.cos(camera_rotation_to_z_axis),
