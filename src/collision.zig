@@ -208,3 +208,72 @@ pub fn lineCollidesWithLine(
     }
     return null;
 }
+
+pub const Ray3d = struct {
+    start_position: math.Vector3d,
+    /// Must be normalized.
+    direction: math.Vector3d,
+
+    pub const ImpactPoint = struct {
+        position: math.Vector3d,
+        distance_from_start_position: f32,
+    };
+
+    /// If the given ray hits the ground, return informations about the impact point.
+    pub fn collidesWithGround(self: Ray3d) ?ImpactPoint {
+        if (std.math.signbit(self.start_position.y) == std.math.signbit(self.direction.y)) {
+            return null;
+        }
+        if (std.math.fabs(self.direction.y) < math.epsilon) {
+            return null;
+        }
+        const offset_to_ground = math.Vector3d{
+            .x = -self.start_position.y / (self.direction.y / self.direction.x),
+            .y = 0,
+            .z = -self.start_position.y / (self.direction.y / self.direction.z),
+        };
+        return ImpactPoint{
+            .position = self.start_position.add(offset_to_ground),
+            .distance_from_start_position = offset_to_ground.subtract(self.start_position).length(),
+        };
+    }
+
+    /// If the given triangle is not wired counter-clockwise, it will be ignored.
+    pub fn collidesWithTriangle(self: Ray3d, triangle: [3]math.Vector3d) ?ImpactPoint {
+        // Möller-Trumbore intersection algorithm.
+        const edges = [2]math.Vector3d{
+            triangle[1].subtract(triangle[0]),
+            triangle[2].subtract(triangle[0]),
+        };
+        const p = self.direction.crossProduct(edges[1]);
+        const determinant = edges[0].dotProduct(p);
+        if (std.math.fabs(determinant) < math.epsilon) {
+            return null;
+        }
+        const inverted_determinant = 1 / determinant;
+        const triangle0_offset = self.start_position.subtract(triangle[0]);
+        const u_parameter = inverted_determinant * triangle0_offset.dotProduct(p);
+        if (u_parameter < 0 or u_parameter > 1) {
+            return null;
+        }
+        const q_vector = triangle0_offset.crossProduct(edges[0]);
+        const v_parameter = inverted_determinant * self.direction.dotProduct(q_vector);
+        if (v_parameter < 0 or v_parameter + u_parameter > 1) {
+            return null;
+        }
+        const distance_from_start_position = inverted_determinant * edges[1].dotProduct(q_vector);
+        if (distance_from_start_position < math.epsilon) {
+            return null;
+        }
+        return ImpactPoint{
+            .position = self.start_position.add(self.direction.scale(distance_from_start_position)),
+            .distance_from_start_position = distance_from_start_position,
+        };
+    }
+
+    /// If the given quad is not wired counter-clockwise, it will be ignored.
+    pub fn collidesWithQuad(self: Ray3d, quad: [4]math.Vector3d) ?ImpactPoint {
+        return self.collidesWithTriangle(.{ quad[0], quad[1], quad[2] }) orelse
+            self.collidesWithTriangle(.{ quad[0], quad[2], quad[3] });
+    }
+};
