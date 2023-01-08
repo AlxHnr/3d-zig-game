@@ -3,6 +3,7 @@ const util = @import("util.zig");
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const std = @import("std");
 const math = @import("math.zig");
+const collision = @import("collision.zig");
 
 pub const State = struct {
     mode: Mode,
@@ -22,18 +23,22 @@ pub const State = struct {
         };
     }
 
-    pub fn handleActionAtTarget(self: *State, level_geometry: *LevelGeometry, mouse_ray: rl.Ray) !void {
+    pub fn handleActionAtTarget(
+        self: *State,
+        level_geometry: *LevelGeometry,
+        mouse_ray: collision.Ray3d,
+    ) !void {
         switch (self.mode) {
             .insert_objects => {
                 if (self.currently_edited_object != null) {
                     self.resetCurrentlyEditedObject(level_geometry);
-                } else if (level_geometry.cast3DRayToGround(mouse_ray)) |ground_position| {
+                } else if (cast3DRayToGround(mouse_ray)) |ground_position| {
                     try self.startPlacingObject(level_geometry, ground_position);
                 }
             },
             .delete_objects => {
                 self.resetCurrentlyEditedObject(level_geometry);
-                if (level_geometry.cast3DRayToObjects(mouse_ray)) |ray_collision| {
+                if (cast3DRayToObjects(mouse_ray, level_geometry.*)) |ray_collision| {
                     level_geometry.removeObject(ray_collision.object_id);
                 }
             },
@@ -43,18 +48,18 @@ pub const State = struct {
     pub fn updateCurrentActionTarget(
         self: *State,
         level_geometry: *LevelGeometry,
-        mouse_ray: rl.Ray,
+        mouse_ray: collision.Ray3d,
         camera_direction: math.FlatVector,
     ) void {
         switch (self.mode) {
             .insert_objects => {
-                if (level_geometry.cast3DRayToGround(mouse_ray)) |ground_position| {
+                if (cast3DRayToGround(mouse_ray)) |ground_position| {
                     self.updateCurrentlyInsertedObject(level_geometry, ground_position, camera_direction);
                 }
             },
             .delete_objects => {
                 self.resetCurrentlyEditedObject(level_geometry);
-                if (level_geometry.cast3DRayToObjects(mouse_ray)) |ray_collision| {
+                if (cast3DRayToObjects(mouse_ray, level_geometry.*)) |ray_collision| {
                     level_geometry.tintObject(ray_collision.object_id, rl.RED);
                     self.currently_edited_object = CurrentlyEditedObject{
                         .object_id = ray_collision.object_id,
@@ -194,3 +199,27 @@ pub const State = struct {
         }
     }
 };
+
+/// Reasonable distance to prevent placing/modifying objects too far away from the camera.
+pub const max_raycast_distance = 500;
+
+fn cast3DRayToGround(ray: collision.Ray3d) ?math.FlatVector {
+    if (ray.collidesWithGround()) |impact_point| {
+        if (impact_point.distance_from_start_position < max_raycast_distance) {
+            return impact_point.position.toFlatVector();
+        }
+    }
+    return null;
+}
+
+fn cast3DRayToObjects(
+    ray: collision.Ray3d,
+    level_geometry: LevelGeometry,
+) ?LevelGeometry.RayCollision {
+    if (level_geometry.cast3DRayToObjects(ray)) |ray_collision| {
+        if (ray_collision.impact_point.distance_from_start_position < max_raycast_distance) {
+            return ray_collision;
+        }
+    }
+    return null;
+}

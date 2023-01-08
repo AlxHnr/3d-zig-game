@@ -2,6 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const util = @import("util.zig");
 const math = @import("math.zig");
+const collision = @import("collision.zig");
 
 const camera_follow_speed = 0.15;
 const default_angle_from_ground = util.degreesToRadians(10);
@@ -87,16 +88,20 @@ pub const Camera = struct {
         self.target_angle_from_ground = default_angle_from_ground;
     }
 
-    pub fn get3DRay(self: Camera, mouse_position_on_screen: rl.Vector2) rl.Ray {
-        return rl.GetMouseRay(mouse_position_on_screen, self.camera);
+    pub fn get3DRay(self: Camera, mouse_position_on_screen: rl.Vector2) collision.Ray3d {
+        const raylib_ray = rl.GetMouseRay(mouse_position_on_screen, self.camera);
+        return .{
+            .start_position = math.Vector3d.fromVector3(raylib_ray.position),
+            .direction = math.Vector3d.fromVector3(raylib_ray.direction),
+        };
     }
 
-    pub fn get3DRayFromTargetToSelf(self: Camera) rl.Ray {
-        return rl.Ray{
-            .position = self.camera.target,
+    pub fn get3DRayFromTargetToSelf(self: Camera) collision.Ray3d {
+        return .{
+            .start_position = math.Vector3d.fromVector3(self.camera.target),
             .direction = math.Vector3d.fromVector3(self.camera.position)
                 .subtract(math.Vector3d.fromVector3(self.camera.target))
-                .normalize().toVector3(),
+                .normalize(),
         };
     }
 

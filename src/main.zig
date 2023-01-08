@@ -355,7 +355,7 @@ fn drawEverything(
     const max_distance_from_target =
         if (level_geometry
         .cast3DRayToWalls(lerped_camera.get3DRayFromTargetToSelf(), true)) |ray_collision|
-        ray_collision.distance
+        ray_collision.impact_point.distance_from_start_position
     else
         null;
     const raylib_camera = lerped_camera.getRaylibCamera(max_distance_from_target);

@@ -354,54 +354,40 @@ pub const LevelGeometry = struct {
         }
     }
 
-    /// If the given ray hits the ground within a not too large distance, return the position on the
-    /// ground.
-    pub fn cast3DRayToGround(_: LevelGeometry, ray: rl.Ray) ?math.FlatVector {
-        if (std.math.signbit(ray.position.y) == std.math.signbit(ray.direction.y)) {
-            return null;
-        }
-        if (std.math.fabs(ray.direction.y) < math.epsilon) {
-            return null;
-        }
-        const offset_from_start = math.FlatVector{
-            .x = -ray.position.y / (ray.direction.y / ray.direction.x),
-            .z = -ray.position.y / (ray.direction.y / ray.direction.z),
-        };
-        if (offset_from_start.length() > 500) {
-            return null;
-        }
-        return offset_from_start.add(.{ .x = ray.position.x, .z = ray.position.z });
-    }
-
     pub const RayCollision = struct {
         object_id: u64,
-        distance: f32,
+        impact_point: collision.Ray3d.ImpactPoint,
     };
 
     /// Find the id of the closest wall hit by the given ray, if available.
-    pub fn cast3DRayToWalls(self: LevelGeometry, ray: rl.Ray, ignore_fences: bool) ?RayCollision {
-        var mesh = std.mem.zeroes(rl.Mesh);
-        var vertices = meshes.BottomlessCube.vertices; // Copy needed for Mesh.vertices.
-        mesh.vertices = vertices[0..];
-        mesh.triangleCount = meshes.BottomlessCube.vertices.len / 9;
-
+    pub fn cast3DRayToWalls(
+        self: LevelGeometry,
+        ray: collision.Ray3d,
+        ignore_fences: bool,
+    ) ?RayCollision {
         var result: ?RayCollision = null;
         for (self.walls.items) |wall| {
             if (ignore_fences and Wall.isFence(wall.wall_type)) {
                 continue;
             }
-            const hit = rl.GetRayCollisionMesh(ray, mesh, wall.model_matrix);
-            result = getCloserRayHit(hit, wall.object_id, result);
+            const impact_point = wall.collidesWithRay(ray);
+            result = getCloserRayCollision(impact_point, wall.object_id, result);
         }
         return result;
     }
 
     /// Find the id of the closest object hit by the given ray, if available.
-    pub fn cast3DRayToObjects(self: LevelGeometry, ray: rl.Ray) ?RayCollision {
+    pub fn cast3DRayToObjects(self: LevelGeometry, ray: collision.Ray3d) ?RayCollision {
         var result = self.cast3DRayToWalls(ray, false);
         for (self.billboard_objects.items) |billboard| {
-            const hit = billboard.cast3DRay(ray);
-            result = getCloserRayHit(hit, billboard.object_id, result);
+            const raylib_collision = billboard.cast3DRay(ray);
+            if (raylib_collision.hit) {
+                const impact_point = .{
+                    .position = math.Vector3d.fromVector3(raylib_collision.point),
+                    .distance_from_start_position = raylib_collision.distance,
+                };
+                result = getCloserRayCollision(impact_point, billboard.object_id, result);
+            }
         }
 
         // Walls and billboards are covering floors and are prioritized.
@@ -409,17 +395,14 @@ pub const LevelGeometry = struct {
             return result;
         }
 
-        if (self.cast3DRayToGround(ray)) |position_on_ground| {
+        if (ray.collidesWithGround()) |impact_point| {
             for (self.floors.items) |_, index| {
                 // The last floor in this array is always drawn at the top.
                 const floor = self.floors.items[self.floors.items.len - index - 1];
-                if (floor.boundaries.collidesWithPoint(position_on_ground)) {
+                if (floor.boundaries.collidesWithPoint(impact_point.position.toFlatVector())) {
                     return RayCollision{
                         .object_id = floor.object_id,
-                        .distance = rm.Vector3Length(rm.Vector3Subtract(
-                            ray.position,
-                            position_on_ground.toVector3(),
-                        )),
+                        .impact_point = impact_point,
                     };
                 }
             }
@@ -495,19 +478,21 @@ pub const LevelGeometry = struct {
         }
     }
 
-    fn getCloserRayHit(
-        hit: rl.RayCollision,
+    fn getCloserRayCollision(
+        impact_point: ?collision.Ray3d.ImpactPoint,
         object_id: u64,
         current_collision: ?RayCollision,
     ) ?RayCollision {
-        const found_closer_object = if (!hit.hit)
-            false
-        else if (current_collision) |existing_result|
-            hit.distance < existing_result.distance
-        else
-            true;
-        if (found_closer_object) {
-            return RayCollision{ .object_id = object_id, .distance = hit.distance };
+        if (impact_point) |point| {
+            if (current_collision) |current| {
+                if (point.distance_from_start_position <
+                    current.impact_point.distance_from_start_position)
+                {
+                    return RayCollision{ .object_id = object_id, .impact_point = point };
+                }
+            } else {
+                return RayCollision{ .object_id = object_id, .impact_point = point };
+            }
         }
         return current_collision;
     }
@@ -622,14 +607,6 @@ const Floor = struct {
         };
     }
 
-    /// If the given ray hits this object, return the position on the floor.
-    fn cast3DRay(self: Floor, ray: rl.Ray) ?math.FlatVector {
-        if (self.cast3DRayToGround(ray)) |position| {
-            return self.boundaries.collidesWithPoint(position);
-        }
-        return null;
-    }
-
     fn getTextureScale(self: Floor) f32 {
         return switch (self.floor_type) {
             else => 5.0,
@@ -710,6 +687,60 @@ const Wall = struct {
         };
     }
 
+    fn collidesWithRay(
+        self: Wall,
+        ray: collision.Ray3d,
+    ) ?collision.Ray3d.ImpactPoint {
+        const bottom_corners_2d = self.boundaries.getCornersInGameCoordinates();
+        const bottom_corners = [_]math.Vector3d{
+            bottom_corners_2d[0].toVector3d(),
+            bottom_corners_2d[1].toVector3d(),
+            bottom_corners_2d[2].toVector3d(),
+            bottom_corners_2d[3].toVector3d(),
+        };
+        const vertical_offset = math.Vector3d.up.scale(getWallTypeHeight(self.wall_type));
+        var closest_impact_point: ?collision.Ray3d.ImpactPoint = null;
+
+        var side: usize = 0;
+        while (side < 4) : (side += 1) {
+            const side_bottom_corners = .{ bottom_corners[side], bottom_corners[(side + 1) % 4] };
+            const quad = .{
+                side_bottom_corners[0],
+                side_bottom_corners[1],
+                side_bottom_corners[1].add(vertical_offset),
+                side_bottom_corners[0].add(vertical_offset),
+            };
+            updateClosestImpactPoint(ray, quad, &closest_impact_point);
+        }
+        const top_side_of_wall = .{
+            bottom_corners[0].add(vertical_offset),
+            bottom_corners[1].add(vertical_offset),
+            bottom_corners[2].add(vertical_offset),
+            bottom_corners[3].add(vertical_offset),
+        };
+        updateClosestImpactPoint(ray, top_side_of_wall, &closest_impact_point);
+
+        return closest_impact_point;
+    }
+
+    fn updateClosestImpactPoint(
+        ray: collision.Ray3d,
+        quad: [4]math.Vector3d,
+        closest_impact_point: *?collision.Ray3d.ImpactPoint,
+    ) void {
+        if (ray.collidesWithQuad(quad)) |current_impact_point| {
+            if (closest_impact_point.*) |previous_impact_point| {
+                if (current_impact_point.distance_from_start_position <
+                    previous_impact_point.distance_from_start_position)
+                {
+                    closest_impact_point.* = current_impact_point;
+                }
+            } else {
+                closest_impact_point.* = current_impact_point;
+            }
+        }
+    }
+
     const WallTypeProperties = struct {
         corrected_start_position: math.FlatVector,
         corrected_end_position: math.FlatVector,
@@ -727,22 +758,19 @@ const Wall = struct {
         var properties = WallTypeProperties{
             .corrected_start_position = start_position,
             .corrected_end_position = end_position,
-            .height = 10,
+            .height = getWallTypeHeight(wall_type),
             .thickness = fence_thickness,
             .texture_scale = 1.0,
         };
         switch (wall_type) {
             .small_wall => {
-                properties.height = 5;
                 properties.texture_scale = 5.0;
             },
             .medium_wall => {
-                properties.height = 10;
                 properties.thickness = 1;
                 properties.texture_scale = 5.0;
             },
             .castle_wall => {
-                properties.height = 15;
                 properties.thickness = 2;
                 properties.texture_scale = 7.5;
             },
@@ -753,30 +781,38 @@ const Wall = struct {
                     end_position.subtract(start_position).normalize().scale(half_side_length);
                 properties.corrected_start_position = start_position.subtract(rescaled_offset);
                 properties.corrected_end_position = start_position.add(rescaled_offset);
-                properties.height = 18;
                 properties.thickness = half_side_length * 2;
                 properties.texture_scale = 9;
             },
             .metal_fence => {
-                properties.height = 3.5;
                 properties.texture_scale = 3.5;
             },
             .short_metal_fence => {
-                properties.height = 1;
                 properties.texture_scale = 1.5;
             },
             .tall_hedge => {
-                properties.height = 8;
                 properties.thickness = 3;
                 properties.texture_scale = 3.5;
             },
             .giga_wall => {
-                properties.height = 140;
                 properties.thickness = 6;
                 properties.texture_scale = 16.0;
             },
         }
         return properties;
+    }
+
+    fn getWallTypeHeight(wall_type: LevelGeometry.WallType) f32 {
+        return switch (wall_type) {
+            .small_wall => 5.0,
+            .medium_wall => 10.0,
+            .castle_wall => 15.0,
+            .castle_tower => 18.0,
+            .metal_fence => 3.5,
+            .short_metal_fence => 1.0,
+            .tall_hedge => 8.0,
+            .giga_wall => 140.0,
+        };
     }
 
     fn isFence(wall_type: LevelGeometry.WallType) bool {
@@ -822,8 +858,12 @@ const BillboardObject = struct {
         };
     }
 
-    fn cast3DRay(self: BillboardObject, ray: rl.Ray) rl.RayCollision {
-        return rl.GetRayCollisionBox(ray, rl.BoundingBox{
+    fn cast3DRay(self: BillboardObject, ray: collision.Ray3d) rl.RayCollision {
+        const raylib_ray = .{
+            .position = ray.start_position.toVector3(),
+            .direction = ray.direction.toVector3(),
+        };
+        return rl.GetRayCollisionBox(raylib_ray, rl.BoundingBox{
             .min = .{
                 .x = self.boundaries.position.x - self.boundaries.radius,
                 .y = 0,
