@@ -123,7 +123,12 @@ pub const Collection = struct {
             glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_WRAP_S, glad.GL_REPEAT);
             glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_WRAP_T, glad.GL_REPEAT);
             glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_MAG_FILTER, glad.GL_NEAREST);
-            glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_MIN_FILTER, glad.GL_NEAREST);
+            glad.glTexParameteri(
+                glad.GL_TEXTURE_2D,
+                glad.GL_TEXTURE_MIN_FILTER,
+                glad.GL_LINEAR_MIPMAP_NEAREST,
+            );
+            glad.glGenerateMipmap(glad.GL_TEXTURE_2D);
             glad.glBindTexture(glad.GL_TEXTURE_2D, 0);
             mapping.value.* = texture;
         }
