@@ -152,7 +152,11 @@ pub const Vector3d = struct {
         return self.x * self.x + self.y * self.y + self.z * self.z;
     }
 
-    pub fn cross(self: Vector3d, other: Vector3d) Vector3d {
+    pub fn dotProduct(self: Vector3d, other: Vector3d) f32 {
+        return self.x * other.x + self.y * other.y + self.z * other.z;
+    }
+
+    pub fn crossProduct(self: Vector3d, other: Vector3d) Vector3d {
         return .{
             .x = self.y * other.z - self.z * other.y,
             .y = self.z * other.x - self.x * other.z,
@@ -162,9 +166,9 @@ pub const Vector3d = struct {
 
     pub fn rotate(self: Vector3d, axis: Vector3d, angle: f32) Vector3d {
         const rescaled_axis = axis.normalize().scale(std.math.sin(angle / 2));
-        const rescaled_axis_cross = rescaled_axis.cross(self);
+        const rescaled_axis_cross = rescaled_axis.crossProduct(self);
         return self
             .add(rescaled_axis_cross.scale(std.math.cos(angle / 2) * 2))
-            .add(rescaled_axis.cross(rescaled_axis_cross).scale(2));
+            .add(rescaled_axis.crossProduct(rescaled_axis_cross).scale(2));
     }
 };
