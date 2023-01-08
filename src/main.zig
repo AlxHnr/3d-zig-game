@@ -8,6 +8,7 @@ const std = @import("std");
 const textures = @import("textures.zig");
 const util = @import("util.zig");
 const glad = @cImport(@cInclude("external/glad.h"));
+const rendering = @import("rendering.zig");
 const math = @import("math.zig");
 
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
@@ -344,10 +345,10 @@ fn drawEverything(
     players: []const Player,
     current_player: Player,
     level_geometry: *LevelGeometry,
-    gem_collection: gems.Collection,
     texture_collection: textures.Collection,
     shader: rl.Shader,
     edit_mode_state: edit_mode.State,
+    billboard_renderer: rendering.BillboardRenderer,
     interval_between_previous_and_current_tick: f32,
 ) !void {
     const lerped_camera = current_player.getCamera(interval_between_previous_and_current_tick);
@@ -369,20 +370,13 @@ fn drawEverything(
     try level_geometry.prepareRender(allocator);
     level_geometry.render(raylib_camera, shader, texture_collection);
 
-    var collision_objects: [4]gems.CollisionObject = undefined;
-    std.debug.assert(players.len <= collision_objects.len);
-    for (players) |player, index| {
-        collision_objects[index] =
-            player.getLerpedCollisionObject(interval_between_previous_and_current_tick);
-    }
+    billboard_renderer.render(
+        rm.MatrixToFloatV(util.getCurrentRaylibVpMatrix()).v,
+        lerped_camera.getDirectionToTarget(),
+        texture_collection.get(.gem).id,
+    );
 
     rl.BeginShaderMode(shader);
-    gem_collection.draw(
-        raylib_camera,
-        texture_collection.get(.gem),
-        collision_objects[0..players.len],
-        interval_between_previous_and_current_tick,
-    );
     for (players) |*player| {
         player.draw(
             raylib_camera,
@@ -486,6 +480,13 @@ pub fn main() !void {
     var view_mode = ViewMode.from_behind;
     var edit_mode_state = edit_mode.State.create();
 
+    var billboard_renderer = try rendering.BillboardRenderer.create();
+    defer billboard_renderer.destroy();
+
+    var billboard_buffer: []rendering.BillboardRenderer.BillboardData =
+        &[0]rendering.BillboardRenderer.BillboardData{};
+    defer gpa.allocator().free(billboard_buffer);
+
     var tick_timer = try util.TickTimer.start(60);
     while (!rl.WindowShouldClose()) {
         const lap_result = tick_timer.lap();
@@ -498,16 +499,34 @@ pub fn main() !void {
             }
         }
 
+        const billboards_to_render = gem_collection.getBillboardCount();
+        if (billboard_buffer.len < billboards_to_render) {
+            billboard_buffer = try gpa.allocator().realloc(billboard_buffer, billboards_to_render);
+        }
+
+        var collision_objects: [4]gems.CollisionObject = undefined;
+        std.debug.assert(players.len <= collision_objects.len);
+        for (players) |player, index| {
+            collision_objects[index] = player
+                .getLerpedCollisionObject(lap_result.next_tick_progress);
+        }
+        gem_collection.populateBillboardData(
+            billboard_buffer,
+            collision_objects[0..players.len],
+            lap_result.next_tick_progress,
+        );
+        billboard_renderer.uploadBillboards(billboard_buffer[0..billboards_to_render]);
+
         try drawEverything(
             gpa.allocator(),
             screen_height,
             players[0..],
             players[controllable_player_index],
             &level_geometry,
-            gem_collection,
             texture_collection,
             shader,
             edit_mode_state,
+            billboard_renderer,
             lap_result.next_tick_progress,
         );
 

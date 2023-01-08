@@ -1,11 +1,10 @@
 //! Contains all the code related to gem collecting.
 
 const collision = @import("collision.zig");
-const rl = @import("raylib");
-const rm = @import("raylib-math");
 const std = @import("std");
 const math = @import("math.zig");
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
+const BillboardData = @import("rendering.zig").BillboardRenderer.BillboardData;
 
 pub const CollisionObject = struct {
     /// Unique identifier, distinct from all other collision objects.
@@ -27,21 +26,6 @@ pub const Collection = struct {
         self.gems.deinit();
     }
 
-    pub fn draw(
-        self: Collection,
-        camera: rl.Camera,
-        gem_texture: rl.Texture,
-        collision_objects: []const CollisionObject,
-        interval_between_previous_and_current_tick: f32,
-    ) void {
-        for (self.gems.items) |gem| {
-            gem.state_at_previous_tick.lerp(
-                gem.state_at_next_tick,
-                interval_between_previous_and_current_tick,
-            ).draw(camera, gem_texture, collision_objects);
-        }
-    }
-
     pub fn processElapsedTick(self: *Collection) void {
         var index: usize = 0;
         var gems_total = self.gems.items.len;
@@ -56,6 +40,30 @@ pub const Collection = struct {
             } else {
                 index = index + 1;
             }
+        }
+    }
+
+    /// Return the amount of billboards to be drawn after the last call to processElapsedTick().
+    /// The returned value will be invalidated by another call to processElapsedTick().
+    pub fn getBillboardCount(self: Collection) usize {
+        return self.gems.items.len;
+    }
+
+    /// Populates the given slice with billboard data for rendering. The given slice must have
+    /// enough space to fit all billboards in this collection. Use getBillboardCount() to retrieve
+    /// the count for the current tick.
+    pub fn populateBillboardData(
+        self: Collection,
+        data: []BillboardData,
+        collision_objects: []const CollisionObject,
+        interval_between_previous_and_current_tick: f32,
+    ) void {
+        std.debug.assert(self.gems.items.len <= data.len);
+        for (self.gems.items) |gem_states, index| {
+            data[index] = gem_states.state_at_previous_tick.lerp(
+                gem_states.state_at_next_tick,
+                interval_between_previous_and_current_tick,
+            ).getBillboardData(collision_objects);
         }
     }
 
@@ -134,50 +142,56 @@ const Gem = struct {
         };
     }
 
-    fn draw(
-        self: Gem,
-        camera: rl.Camera,
-        texture: rl.Texture,
-        collision_objects: []const CollisionObject,
-    ) void {
+    const zero_f32: f32 = 0;
+    const billboard_z_rotation =
+        .{ .sine = std.math.sin(zero_f32), .cosine = std.math.cos(zero_f32) };
+
+    fn getBillboardData(self: Gem, collision_objects: []const CollisionObject) BillboardData {
+        var billboard_data = BillboardData{
+            .position = .{
+                .x = self.boundaries.position.x,
+                .y = self.side_length / 2,
+                .z = self.boundaries.position.z,
+            },
+            .size = .{ .w = self.side_length, .h = self.side_length },
+            .z_rotation = billboard_z_rotation,
+            .source_rect = .{ .x = 0, .y = 0, .w = 1, .h = 1 },
+            .tint = .{ .r = 1, .g = 1, .b = 1 },
+        };
         if (self.spawn_animation_progress < 1) {
             const jump_heigth = 1.5;
             const length = self.side_length * self.spawn_animation_progress;
             const t = (self.spawn_animation_progress - 0.5) * 2;
             const y = (1 - t * t + length / 2) * jump_heigth;
-            const position_3d = rl.Vector3{
+            billboard_data.position = .{
                 .x = self.boundaries.position.x,
                 .y = y,
                 .z = self.boundaries.position.z,
             };
-            rl.DrawBillboard(camera, texture, position_3d, length, rl.WHITE);
         } else if (self.pickup_animation_progress) |progress| {
             const lerp_destination = for (collision_objects) |object| {
                 if (object.id == self.collided_object_id) {
-                    break rl.Vector3{
+                    break math.Vector3d{
                         .x = object.boundaries.position.x,
                         .y = object.height / 2,
                         .z = object.boundaries.position.z,
                     };
                 }
-            } else self.boundaries.position.toVector3();
+            } else self.boundaries.position.toVector3d();
 
-            const lerp_start = rl.Vector3{
+            const lerp_start = math.Vector3d{
                 .x = self.boundaries.position.x,
                 .y = self.side_length / 2,
                 .z = self.boundaries.position.z,
             };
-            const position_3d = rm.Vector3Lerp(lerp_start, lerp_destination, progress);
-            const length = self.side_length * (1 - progress);
-            rl.DrawBillboard(camera, texture, position_3d, length, rl.WHITE);
-        } else {
-            const position_3d = rl.Vector3{
-                .x = self.boundaries.position.x,
-                .y = self.side_length / 2,
-                .z = self.boundaries.position.z,
-            };
-            rl.DrawBillboard(camera, texture, position_3d, self.side_length, rl.WHITE);
+            const lerped_position = lerp_start.lerp(lerp_destination, progress);
+            billboard_data.position.x = lerped_position.x;
+            billboard_data.position.y = lerped_position.y;
+            billboard_data.position.z = lerped_position.z;
+            billboard_data.size.w = self.side_length * (1 - progress);
+            billboard_data.size.h = billboard_data.size.w;
         }
+        return billboard_data;
     }
 
     fn processElapsedTick(self: *Gem) void {
