@@ -10,6 +10,7 @@ const Error = @import("error.zig").Error;
 const rendering = @import("rendering.zig");
 const meshes = @import("meshes.zig");
 const math = @import("math.zig");
+const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 
 pub const LevelGeometry = struct {
     /// Gives every object owned by this struct a unique id.
@@ -30,6 +31,8 @@ pub const LevelGeometry = struct {
     floors_have_changed: bool,
 
     billboard_objects: std.ArrayList(BillboardObject),
+    billboard_renderer: rendering.BillboardRenderer,
+    billboards_have_changed: bool,
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
@@ -39,6 +42,8 @@ pub const LevelGeometry = struct {
         errdefer wall_renderer.destroy();
         var floor_renderer = try rendering.FloorRenderer.create();
         errdefer floor_renderer.destroy();
+        var billboard_renderer = try rendering.BillboardRenderer.create();
+        errdefer billboard_renderer.destroy();
 
         return LevelGeometry{
             .object_id_counter = 0,
@@ -51,10 +56,13 @@ pub const LevelGeometry = struct {
             .floor_renderer = floor_renderer,
             .floors_have_changed = false,
             .billboard_objects = std.ArrayList(BillboardObject).init(allocator),
+            .billboard_renderer = billboard_renderer,
+            .billboards_have_changed = false,
         };
     }
 
     pub fn destroy(self: *LevelGeometry) void {
+        self.billboard_renderer.destroy();
         self.billboard_objects.deinit();
 
         self.floor_renderer.destroy();
@@ -111,12 +119,15 @@ pub const LevelGeometry = struct {
             try self.uploadFloorsToRenderer(allocator);
             self.floors_have_changed = false;
         }
+        if (self.billboards_have_changed) {
+            try self.uploadBillboardsToRenderer(allocator);
+            self.billboards_have_changed = false;
+        }
     }
 
     pub fn render(
         self: LevelGeometry,
-        camera: rl.Camera,
-        shader: rl.Shader,
+        camera: ThirdPersonCamera,
         texture_collection: textures.Collection,
     ) void {
         const vp_matrix = rm.MatrixToFloatV(util.getCurrentRaylibVpMatrix()).v;
@@ -126,23 +137,13 @@ pub const LevelGeometry = struct {
         self.floor_renderer.render(vp_matrix, self.array_texture_id, self.floor_animation_state);
         glad.glStencilFunc(glad.GL_ALWAYS, 1, 0xff);
 
+        // Fences must be rendered after the floor to allow blending transparent, mipmapped  texels.
         self.wall_renderer.render(vp_matrix, self.array_texture_id);
-
-        rl.BeginShaderMode(shader);
-        for (self.billboard_objects.items) |billboard| {
-            rl.DrawBillboard(
-                camera,
-                billboard.getTexture(texture_collection),
-                rl.Vector3{
-                    .x = billboard.boundaries.position.x,
-                    .y = billboard.boundaries.radius,
-                    .z = billboard.boundaries.position.z,
-                },
-                billboard.boundaries.radius * 2,
-                billboard.tint,
-            );
-        }
-        rl.EndShaderMode();
+        self.billboard_renderer.render(
+            vp_matrix,
+            camera.getDirectionToTarget(),
+            texture_collection.get(.small_bush).id,
+        );
     }
 
     pub fn processElapsedTick(self: *LevelGeometry) void {
@@ -303,6 +304,7 @@ pub const LevelGeometry = struct {
         const billboard = try self.billboard_objects.addOne();
         billboard.* = BillboardObject.create(self.object_id_counter, object_type, position);
         self.object_id_counter = self.object_id_counter + 1;
+        self.billboards_have_changed = true;
         return billboard.object_id;
     }
 
@@ -325,6 +327,7 @@ pub const LevelGeometry = struct {
         for (self.billboard_objects.items) |billboard, index| {
             if (billboard.object_id == object_id) {
                 _ = self.billboard_objects.orderedRemove(index);
+                self.billboards_have_changed = true;
                 return;
             }
         }
@@ -339,6 +342,7 @@ pub const LevelGeometry = struct {
             self.floors_have_changed = true;
         } else if (self.findBillboardObject(object_id)) |billboard| {
             billboard.tint = tint;
+            self.billboards_have_changed = true;
         }
     }
 
@@ -351,6 +355,7 @@ pub const LevelGeometry = struct {
             self.floors_have_changed = true;
         } else if (self.findBillboardObject(object_id)) |billboard| {
             billboard.tint = BillboardObject.getDefaultTint(billboard.object_type);
+            self.billboards_have_changed = true;
         }
     }
 
@@ -543,6 +548,35 @@ pub const LevelGeometry = struct {
             };
         }
         self.floor_renderer.uploadFloors(data);
+    }
+
+    fn uploadBillboardsToRenderer(self: *LevelGeometry, allocator: std.mem.Allocator) !void {
+        var data = try allocator.alloc(
+            rendering.BillboardRenderer.BillboardData,
+            self.billboard_objects.items.len,
+        );
+        defer allocator.free(data);
+
+        for (self.billboard_objects.items) |billboard, index| {
+            data[index] = .{
+                .position = .{
+                    .x = billboard.boundaries.position.x,
+                    .y = billboard.boundaries.radius,
+                    .z = billboard.boundaries.position.z,
+                },
+                .size = .{
+                    .w = billboard.boundaries.radius * 2,
+                    .h = billboard.boundaries.radius * 2,
+                },
+                .source_rect = .{ .x = 0, .y = 0, .w = 1, .h = 1 },
+                .tint = .{
+                    .r = @intToFloat(f32, billboard.tint.r) / 255,
+                    .g = @intToFloat(f32, billboard.tint.g) / 255,
+                    .b = @intToFloat(f32, billboard.tint.b) / 255,
+                },
+            };
+        }
+        self.billboard_renderer.uploadBillboards(data);
     }
 
     fn makeRenderingAttributes(

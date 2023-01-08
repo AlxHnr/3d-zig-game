@@ -368,7 +368,7 @@ fn drawEverything(
     glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
 
     try level_geometry.prepareRender(allocator);
-    level_geometry.render(raylib_camera, shader, texture_collection);
+    level_geometry.render(lerped_camera, texture_collection);
 
     billboard_renderer.render(
         rm.MatrixToFloatV(util.getCurrentRaylibVpMatrix()).v,
