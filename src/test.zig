@@ -6,7 +6,8 @@ const expectApproxEqRel = std.testing.expectApproxEqRel;
 
 const collision = @import("collision.zig");
 const util = @import("util.zig");
-const epsilon = @import("math.zig").epsilon;
+const math = @import("math.zig");
+const epsilon = math.epsilon;
 
 test "Create collision rectangle" {
     const rectangle = collision.Rectangle.create(
@@ -14,7 +15,7 @@ test "Create collision rectangle" {
         .{ .x = 6.16, .z = 27.945 },
         19.18,
     );
-    const expected_angle = util.degreesToRadians(10.653624);
+    const expected_angle = math.degreesToRadians(10.653624);
     try expectApproxEqRel(@floatCast(f32, 11.220045), rectangle.first_corner.x, epsilon);
     try expectApproxEqRel(@floatCast(f32, 26.3245), rectangle.first_corner.z, epsilon);
     try expectApproxEqRel(@floatCast(f32, 30.400045), rectangle.third_corner.x, epsilon);

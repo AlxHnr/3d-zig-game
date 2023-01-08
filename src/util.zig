@@ -1,22 +1,9 @@
 //! Contains various helpers that belong nowhere else.
 
 const std = @import("std");
-const math = @import("math.zig");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
 const rlgl = @cImport(@cInclude("rlgl.h"));
-
-// TODO: Use std.math.degreesToRadians() after upgrade to zig 0.10.0.
-pub fn degreesToRadians(degrees: f32) f32 {
-    return degrees * std.math.pi / 180;
-}
-pub fn radiansToDegrees(radians: f32) f32 {
-    return radians * 180 / std.math.pi;
-}
-
-pub fn isEqualFloat(a: f32, b: f32) bool {
-    return std.math.fabs(a - b) < math.epsilon;
-}
 
 /// Lap timer for measuring elapsed ticks.
 pub const TickTimer = struct {

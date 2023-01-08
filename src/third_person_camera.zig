@@ -1,11 +1,10 @@
 const std = @import("std");
 const rl = @import("raylib");
-const util = @import("util.zig");
 const math = @import("math.zig");
 const collision = @import("collision.zig");
 
 const camera_follow_speed = 0.15;
-const default_angle_from_ground = util.degreesToRadians(10);
+const default_angle_from_ground = math.degreesToRadians(10);
 
 /// Camera which smoothly follows an object and auto-rotates across the Y axis.
 pub const Camera = struct {
@@ -81,7 +80,7 @@ pub const Camera = struct {
 
     /// Angle between 0 and 1.55 (89 degrees). Will be clamped into this range.
     pub fn setAngleFromGround(self: *Camera, angle: f32) void {
-        self.target_angle_from_ground = std.math.clamp(angle, 0, util.degreesToRadians(89));
+        self.target_angle_from_ground = std.math.clamp(angle, 0, math.degreesToRadians(89));
     }
 
     pub fn resetAngleFromGround(self: *Camera) void {
@@ -146,7 +145,7 @@ pub const Camera = struct {
     }
 
     fn updateAngleFromGround(self: *Camera) void {
-        if (util.isEqualFloat(self.angle_from_ground, self.target_angle_from_ground)) {
+        if (math.isEqual(self.angle_from_ground, self.target_angle_from_ground)) {
             return;
         }
         self.angle_from_ground = math.lerp(
@@ -184,7 +183,7 @@ pub const Camera = struct {
     }
 
     fn updateCameraDistanceFromObject(self: *Camera) void {
-        if (util.isEqualFloat(self.distance_from_object, self.target_distance_from_object)) {
+        if (math.isEqual(self.distance_from_object, self.target_distance_from_object)) {
             return;
         }
         self.distance_from_object = math.lerp(

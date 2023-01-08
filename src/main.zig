@@ -98,7 +98,7 @@ const Character = struct {
             self.velocity = self.velocity.scale(0.7);
         }
 
-        const max_rotation_per_tick = util.degreesToRadians(3.5);
+        const max_rotation_per_tick = math.degreesToRadians(3.5);
         const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
         self.looking_direction = self.looking_direction.rotate(rotation_angle);
     }
@@ -537,7 +537,7 @@ pub fn main() !void {
                 .from_behind => {
                     view_mode = .top_down;
                     players[controllable_player_index].state_at_next_tick.camera
-                        .setAngleFromGround(util.degreesToRadians(90));
+                        .setAngleFromGround(math.degreesToRadians(90));
                 },
                 .top_down => {
                     view_mode = .from_behind;

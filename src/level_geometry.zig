@@ -594,7 +594,7 @@ const Floor = struct {
             .floor_type = floor_type,
             .model_matrix = rm.MatrixMultiply(
                 rm.MatrixMultiply(rm.MatrixMultiply(
-                    rm.MatrixRotateX(util.degreesToRadians(-90)),
+                    rm.MatrixRotateX(math.degreesToRadians(-90)),
                     rm.MatrixScale(side_b_length, 1, side_a_length),
                 ), rm.MatrixRotateY(-rotation)),
                 rm.MatrixTranslate(center.x, 0, center.z),
