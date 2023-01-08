@@ -65,10 +65,10 @@ pub const Rectangle = struct {
         const fourth_corner = math.FlatVector{ .x = self.first_corner.x, .z = self.third_corner.z };
         return self.collidesWithRotatedPoint(start) or
             self.collidesWithRotatedPoint(end) or
-            lineCollidesWithLine(start, end, self.first_corner, fourth_corner) or
-            lineCollidesWithLine(start, end, self.first_corner, second_corner) or
-            lineCollidesWithLine(start, end, fourth_corner, self.third_corner) or
-            lineCollidesWithLine(start, end, self.third_corner, second_corner);
+            lineCollidesWithLine(start, end, self.first_corner, fourth_corner) != null or
+            lineCollidesWithLine(start, end, self.first_corner, second_corner) != null or
+            lineCollidesWithLine(start, end, fourth_corner, self.third_corner) != null or
+            lineCollidesWithLine(start, end, self.third_corner, second_corner) != null;
     }
 
     pub fn collidesWithPoint(self: Rectangle, point: math.FlatVector) bool {
@@ -159,12 +159,13 @@ pub const Circle = struct {
     }
 };
 
+/// Returns the intersection point.
 pub fn lineCollidesWithLine(
     first_line_start: math.FlatVector,
     first_line_end: math.FlatVector,
     second_line_start: math.FlatVector,
     second_line_end: math.FlatVector,
-) bool {
+) ?math.FlatVector {
     const first_line_lengths = math.FlatVector{
         .x = first_line_end.x - first_line_start.x,
         .z = first_line_end.z - first_line_start.z,
@@ -177,19 +178,22 @@ pub fn lineCollidesWithLine(
         second_line_lengths.z * first_line_lengths.x -
         second_line_lengths.x * first_line_lengths.z;
     if (std.math.fabs(divisor) < math.epsilon) {
-        return false;
+        return null;
     }
 
     const line_start_offsets = math.FlatVector{
         .x = first_line_start.x - second_line_start.x,
         .z = first_line_start.z - second_line_start.z,
     };
-    const x =
+    const t1 =
         (second_line_lengths.x * line_start_offsets.z -
         second_line_lengths.z * line_start_offsets.x) / divisor;
-    const y =
+    const t2 =
         (first_line_lengths.x * line_start_offsets.z -
         first_line_lengths.z * line_start_offsets.x) / divisor;
 
-    return x > 0 and x < 1 and y > 0 and y < 1;
+    if (t1 > 0 and t1 < 1 and t2 > 0 and t2 < 1) {
+        return first_line_start.lerp(first_line_end, t1);
+    }
+    return null;
 }
