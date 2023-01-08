@@ -558,7 +558,7 @@ fn setupAndBindStandingQuadVbo(position_location: c_uint, texture_coords_locatio
 
 fn updateVbo(
     vbo_id: c_uint,
-    data: *const anyopaque,
+    data: ?*const anyopaque,
     size: usize,
     /// Will be updated by this function.
     current_capacity: *usize,
