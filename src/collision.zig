@@ -75,6 +75,17 @@ pub const Rectangle = struct {
         return self.collidesWithRotatedPoint(self.rotation.rotate(point));
     }
 
+    pub fn getCornersInGameCoordinates(self: Rectangle) [4]math.FlatVector {
+        const second_corner = .{ .x = self.third_corner.x, .z = self.first_corner.z };
+        const fourth_corner = .{ .x = self.first_corner.x, .z = self.third_corner.z };
+        return [_]math.FlatVector{
+            self.inverse_rotation.rotate(self.first_corner),
+            self.inverse_rotation.rotate(second_corner),
+            self.inverse_rotation.rotate(self.third_corner),
+            self.inverse_rotation.rotate(fourth_corner),
+        };
+    }
+
     fn collidesWithRotatedPoint(self: Rectangle, rotated_point: math.FlatVector) bool {
         return rotated_point.x > self.first_corner.x and
             rotated_point.x < self.third_corner.x and
