@@ -386,13 +386,17 @@ pub const BillboardRenderer = struct {
         position: extern struct { x: f32, y: f32, z: f32 },
         /// Game-world dimensions.
         size: extern struct { w: f32, h: f32 },
-        /// Precomputed angle at which the billboard should be rotated around the Z axis.
-        z_rotation: extern struct { sine: f32, cosine: f32 },
+        /// Precomputed angle at which the billboard should be rotated around the Z axis. Defaults
+        /// to no rotation.
+        z_rotation: extern struct { sine: f32, cosine: f32 } = .{
+            .sine = std.math.sin(@as(f32, 0)),
+            .cosine = std.math.cos(@as(f32, 0)),
+        },
         /// Specifies the part of the currently bound texture which should be stretched onto the
         /// billboard. Values range from 0 to 1, where (0, 0) is the top left corner of the texture.
         source_rect: extern struct { x: f32, y: f32, w: f32, h: f32 },
-        /// Color values from 0 to 1.
-        tint: extern struct { r: f32, g: f32, b: f32 },
+        /// Color values from 0 to 1. Defaults to white (no tint).
+        tint: extern struct { r: f32, g: f32, b: f32 } = .{ .r = 1, .g = 1, .b = 1 },
     };
 };
 

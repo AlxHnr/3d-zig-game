@@ -142,10 +142,6 @@ const Gem = struct {
         };
     }
 
-    const zero_f32: f32 = 0;
-    const billboard_z_rotation =
-        .{ .sine = std.math.sin(zero_f32), .cosine = std.math.cos(zero_f32) };
-
     fn getBillboardData(self: Gem, collision_objects: []const CollisionObject) BillboardData {
         var billboard_data = BillboardData{
             .position = .{
@@ -154,9 +150,7 @@ const Gem = struct {
                 .z = self.boundaries.position.z,
             },
             .size = .{ .w = self.side_length, .h = self.side_length },
-            .z_rotation = billboard_z_rotation,
             .source_rect = .{ .x = 0, .y = 0, .w = 1, .h = 1 },
-            .tint = .{ .r = 1, .g = 1, .b = 1 },
         };
         if (self.spawn_animation_progress < 1) {
             const jump_heigth = 1.5;
