@@ -333,7 +333,7 @@ const Player = struct {
                 self.character.boundaries.position,
                 self.character.looking_direction,
             );
-            self.animation_cycle.processStep(self.character.velocity.length() * 0.75);
+            self.animation_cycle.processElapsedTick(self.character.velocity.length() * 0.75);
         }
     };
 };

@@ -11,9 +11,9 @@ pub const FourStepCycle = struct {
         return .{ .cycle = 0, .step = 0 };
     }
 
-    /// Takes an interval from 0 to 1, where 1 means skipping to the next frame.
-    pub fn processStep(self: *FourStepCycle, interval: f32) void {
-        self.cycle = self.cycle + std.math.max(0, interval);
+    /// Takes a speed value >= 0 where 1 skips a full frame,
+    pub fn processElapsedTick(self: *FourStepCycle, speed: f32) void {
+        self.cycle = self.cycle + std.math.max(0, speed);
         if (self.cycle > 1) {
             self.cycle = 0;
             self.step = self.step +% 1;
@@ -24,10 +24,10 @@ pub const FourStepCycle = struct {
         return if (self.step == 3) 1 else self.step;
     }
 
-    pub fn lerp(self: FourStepCycle, other: FourStepCycle, interval: f32) FourStepCycle {
+    pub fn lerp(self: FourStepCycle, other: FourStepCycle, t: f32) FourStepCycle {
         return .{
-            .cycle = math.lerp(self.cycle, other.cycle, interval),
-            .step = if (interval < 0.5) self.step else other.step,
+            .cycle = math.lerp(self.cycle, other.cycle, t),
+            .step = if (t < 0.5) self.step else other.step,
         };
     }
 };

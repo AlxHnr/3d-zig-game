@@ -146,7 +146,7 @@ pub const LevelGeometry = struct {
     }
 
     pub fn processElapsedTick(self: *LevelGeometry) void {
-        self.floor_animation_state.processStep(0.02);
+        self.floor_animation_state.processElapsedTick(0.02);
     }
 
     pub fn toJson(self: LevelGeometry, allocator: std.mem.Allocator, outstream: anytype) !void {
