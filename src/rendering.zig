@@ -19,7 +19,10 @@ pub const WallRenderer = struct {
     vp_matrix_location: c_int,
 
     pub fn create() !WallRenderer {
-        var shader = try Shader.create(vertex_shader_source, level_geometry_fragment_shader);
+        var shader = try Shader.create(
+            @embedFile("./shader/wall.vert"),
+            @embedFile("./shader/level_geometry.frag"),
+        );
         errdefer shader.destroy();
         const loc_position = try shader.getAttributeLocation("position");
         const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
@@ -126,42 +129,6 @@ pub const WallRenderer = struct {
             z: f32,
         },
     };
-
-    const vertex_shader_source =
-        \\ #version 330
-        \\
-        \\ in vec3 position;
-        \\ in mat4 model_matrix;
-        \\ in int texcoord_scale; // See TextureCoordScale in meshes.zig.
-        \\ in float texture_layer_id; // Index in the current array texture, will be rounded.
-        \\ in vec3 texture_repeat_dimensions; // How often the texture should repeat along each axis.
-        \\ in vec3 tint;
-        \\ uniform mat4 vp_matrix;
-        \\
-        \\ out vec2 fragment_texcoords;
-        \\ out float fragment_texture_layer_id;
-        \\ out vec3 fragment_tint;
-        \\
-        \\ vec2 getFragmentRepeat() {
-        \\     switch (texcoord_scale) {
-        \\         case 0:  return vec2( 0,                           0 );
-        \\         case 1:  return vec2( texture_repeat_dimensions.x, 0 );
-        \\         case 2:  return vec2( texture_repeat_dimensions.x, texture_repeat_dimensions.y );
-        \\         case 3:  return vec2( 0,                           texture_repeat_dimensions.y );
-        \\         case 4:  return vec2( texture_repeat_dimensions.z, 0 );
-        \\         case 5:  return vec2( texture_repeat_dimensions.z, texture_repeat_dimensions.y );
-        \\         case 6:  return vec2( texture_repeat_dimensions.x, texture_repeat_dimensions.z );
-        \\         default: return vec2( 0,                           texture_repeat_dimensions.z );
-        \\     }
-        \\ }
-        \\
-        \\ void main() {
-        \\     gl_Position = vp_matrix * model_matrix * vec4(position, 1);
-        \\     fragment_texcoords = getFragmentRepeat();
-        \\     fragment_texture_layer_id = texture_layer_id;
-        \\     fragment_tint = tint;
-        \\ }
-    ;
 };
 
 pub const FloorRenderer = struct {
@@ -175,7 +142,10 @@ pub const FloorRenderer = struct {
     current_animation_frame_location: c_int,
 
     pub fn create() !FloorRenderer {
-        var shader = try Shader.create(vertex_shader_source, level_geometry_fragment_shader);
+        var shader = try Shader.create(
+            @embedFile("./shader/floor.vert"),
+            @embedFile("./shader/level_geometry.frag"),
+        );
         errdefer shader.destroy();
         const loc_position = try shader.getAttributeLocation("position");
         const loc_texture_coords = try shader.getAttributeLocation("texture_coords");
@@ -281,32 +251,6 @@ pub const FloorRenderer = struct {
             y: f32,
         },
     };
-
-    const vertex_shader_source =
-        \\ #version 330
-        \\
-        \\ in vec2 position;
-        \\ in vec2 texture_coords;
-        \\ in float texture_layer_id; // Index in the current array texture, will be rounded.
-        \\ in float affected_by_animation_cycle; // 1 when the floor should cycle trough animations.
-        \\ in mat4 model_matrix;
-        \\ in vec2 texture_repeat_dimensions; // How often the texture should repeat along each axis.
-        \\ in vec3 tint;
-        \\ uniform mat4 vp_matrix;
-        \\ uniform int current_animation_frame; // Must be 0, 1 or 2.
-        \\
-        \\ out vec2 fragment_texcoords;
-        \\ out float fragment_texture_layer_id;
-        \\ out vec3 fragment_tint;
-        \\
-        \\ void main() {
-        \\     gl_Position = vp_matrix * model_matrix * vec4(position, 0, 1);
-        \\     fragment_texcoords = texture_coords * texture_repeat_dimensions;
-        \\     fragment_texture_layer_id =
-        \\         texture_layer_id + current_animation_frame * affected_by_animation_cycle;
-        \\     fragment_tint = tint;
-        \\ }
-    ;
 };
 
 /// Basic geometry data to be uploaded as vertex attributes to the GPU.
@@ -335,7 +279,10 @@ pub const BillboardRenderer = struct {
     vp_matrix_location: c_int,
 
     pub fn create() !BillboardRenderer {
-        var shader = try Shader.create(vertex_shader_source, fragment_shader_source);
+        var shader = try Shader.create(
+            @embedFile("./shader/billboard.vert"),
+            @embedFile("./shader/billboard.frag"),
+        );
         errdefer shader.destroy();
         const loc_vertex_position = try shader.getAttributeLocation("vertex_position");
         const loc_texture_coords = try shader.getAttributeLocation("texture_coords");
@@ -447,79 +394,7 @@ pub const BillboardRenderer = struct {
         /// Color values from 0 to 1.
         tint: extern struct { r: f32, g: f32, b: f32 },
     };
-
-    const vertex_shader_source =
-        \\ #version 330
-        \\
-        \\ in vec2 vertex_position;
-        \\ in vec2 texture_coords;
-        \\ in vec3 billboard_center_position;
-        \\ in vec2 size; // Width and height of the billboard.
-        \\ in vec2 z_rotation; // (sine, cosine) for rotating the billboard around the Z axis.
-        \\ in vec4 source_rect; // Values from 0 to 1, where (0, 0) is the top left of the texture.
-        \\ in vec3 tint;
-        \\ // (sine, cosine) for rotating towards the camera around the Y axis.
-        \\ uniform vec2 y_rotation_towards_camera;
-        \\ uniform mat4 vp_matrix;
-        \\
-        \\ out vec2 fragment_texcoords;
-        \\ out vec3 fragment_tint;
-        \\
-        \\ void main() {
-        \\     vec2 scaled_position = vertex_position * size;
-        \\     vec2 z_rotated_position = vec2(
-        \\         scaled_position.x * z_rotation[1] + scaled_position.y * z_rotation[0],
-        \\         -scaled_position.x * z_rotation[0] + scaled_position.y * z_rotation[1]
-        \\     );
-        \\     vec3 y_rotated_position = vec3(
-        \\         z_rotated_position.x * y_rotation_towards_camera[1],
-        \\         z_rotated_position.y,
-        \\         z_rotated_position.x * y_rotation_towards_camera[0]
-        \\     );
-        \\
-        \\     gl_Position = vp_matrix * vec4(y_rotated_position + billboard_center_position, 1);
-        \\     fragment_texcoords = source_rect.xy + source_rect.zw * texture_coords;
-        \\     fragment_tint = tint;
-        \\ }
-    ;
-    const fragment_shader_source =
-        \\ #version 330
-        \\
-        \\ in vec2 fragment_texcoords;
-        \\ in vec3 fragment_tint;
-        \\ uniform sampler2D texture_sampler;
-        \\
-        \\ out vec4 final_color;
-        \\
-        \\ void main() {
-        \\     vec4 texel_color = texture(texture_sampler, fragment_texcoords);
-        \\     if (texel_color.a < 0.01) {
-        \\         discard;
-        \\     }
-        \\     final_color = texel_color * vec4(fragment_tint, 1);
-        \\ }
-    ;
 };
-
-const level_geometry_fragment_shader =
-    \\ #version 330
-    \\
-    \\ in vec2 fragment_texcoords;
-    \\ in float fragment_texture_layer_id;
-    \\ in vec3 fragment_tint;
-    \\ uniform sampler2DArray texture_sampler;
-    \\
-    \\ out vec4 final_color;
-    \\
-    \\ void main() {
-    \\     vec4 texel_color = texture(texture_sampler,
-    \\         vec3(fragment_texcoords, fragment_texture_layer_id));
-    \\     if (texel_color.a < 0.01) {
-    \\         discard;
-    \\     }
-    \\     final_color = texel_color * vec4(fragment_tint, 1);
-    \\ }
-;
 
 fn createAndBindVao() c_uint {
     var vao_id: c_uint = undefined;
