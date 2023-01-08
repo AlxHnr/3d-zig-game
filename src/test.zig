@@ -31,36 +31,36 @@ test "Collisions between lines" {
         .{ .x = 2.5, .z = -0.5 },
         .{ .x = 2, .z = -1.5 },
         .{ .x = 0.5, .z = 2 },
-    ));
+    ) != null);
     try expect(collision.lineCollidesWithLine(
         .{ .x = 2.5, .z = -0.5 },
         .{ .x = -1, .z = -3 },
         .{ .x = 2, .z = -1.5 },
         .{ .x = 0.5, .z = 2 },
-    ));
+    ) != null);
     try expect(collision.lineCollidesWithLine(
         .{ .x = 2.5, .z = -0.5 },
         .{ .x = -1, .z = -3 },
         .{ .x = 0.5, .z = 2 },
         .{ .x = 2, .z = -1.5 },
-    ));
+    ) != null);
     try expect(collision.lineCollidesWithLine(
         .{ .x = -1, .z = -3 },
         .{ .x = 2.5, .z = -0.5 },
         .{ .x = 0.5, .z = 2 },
         .{ .x = 2, .z = -1.5 },
-    ));
+    ) != null);
 
-    try expect(!collision.lineCollidesWithLine(
+    try expect(collision.lineCollidesWithLine(
         .{ .x = -1, .z = -3 },
         .{ .x = 2.5, .z = -0.5 },
         .{ .x = 0.5, .z = 2 },
         .{ .x = -2, .z = -1.5 },
-    ));
-    try expect(!collision.lineCollidesWithLine(
+    ) == null);
+    try expect(collision.lineCollidesWithLine(
         .{ .x = -1.5, .z = 7 },
         .{ .x = 1.5, .z = 7 },
         .{ .x = -2.5, .z = 8 },
         .{ .x = 2.5, .z = 8 },
-    ));
+    ) == null);
 }
