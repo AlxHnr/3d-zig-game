@@ -197,8 +197,9 @@ const Gem = struct {
         const collision_object_position = collision_object.boundaries.position;
         if (self.pickup_animation_progress == null and
             self.boundaries.collidesWithCircle(collision_object.boundaries) != null and
-            !level_geometry.collidesWithLine(self.boundaries.position, collision_object_position))
-        {
+            !level_geometry.isSolidWallBetweenPoints(
+            .{ self.boundaries.position, collision_object_position },
+        )) {
             self.pickup_animation_progress = 0;
             self.collided_object_id = collision_object.id;
             return true;

@@ -428,14 +428,12 @@ pub const LevelGeometry = struct {
             null;
     }
 
-    /// Check if the given line (game-world coordinates) collides with the level geometry.
-    pub fn collidesWithLine(
-        self: LevelGeometry,
-        line_start: math.FlatVector,
-        line_end: math.FlatVector,
-    ) bool {
+    /// Check if two points are separated by a solid wall. Fences are not solid.
+    pub fn isSolidWallBetweenPoints(self: LevelGeometry, points: [2]math.FlatVector) bool {
         for (self.walls.items) |wall| {
-            if (wall.boundaries.collidesWithLine(line_start, line_end)) {
+            if (!Wall.isFence(wall.wall_type) and
+                wall.boundaries.collidesWithLine(points[0], points[1]))
+            {
                 return true;
             }
         }
