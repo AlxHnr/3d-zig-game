@@ -385,14 +385,7 @@ pub const LevelGeometry = struct {
     pub fn cast3DRayToObjects(self: LevelGeometry, ray: collision.Ray3d) ?RayCollision {
         var result = self.cast3DRayToWalls(ray, false);
         for (self.billboard_objects.items) |billboard| {
-            const raylib_collision = billboard.cast3DRay(ray);
-            if (raylib_collision.hit) {
-                const impact_point = .{
-                    .position = math.Vector3d.fromVector3(raylib_collision.point),
-                    .distance_from_start_position = raylib_collision.distance,
-                };
-                result = getCloserRayCollision(impact_point, billboard.object_id, result);
-            }
+            result = getCloserRayCollision(billboard.cast3DRay(ray), billboard.object_id, result);
         }
 
         // Walls and billboards are covering floors and are prioritized.
@@ -890,22 +883,15 @@ const BillboardObject = struct {
         };
     }
 
-    fn cast3DRay(self: BillboardObject, ray: collision.Ray3d) rl.RayCollision {
-        const raylib_ray = .{
-            .position = ray.start_position.toVector3(),
-            .direction = ray.direction.toVector3(),
-        };
-        return rl.GetRayCollisionBox(raylib_ray, rl.BoundingBox{
-            .min = .{
-                .x = self.boundaries.position.x - self.boundaries.radius,
-                .y = 0,
-                .z = self.boundaries.position.z - self.boundaries.radius,
-            },
-            .max = .{
-                .x = self.boundaries.position.x + self.boundaries.radius,
-                .y = self.boundaries.radius * 2,
-                .z = self.boundaries.position.z + self.boundaries.radius,
-            },
+    fn cast3DRay(self: BillboardObject, ray: collision.Ray3d) ?collision.Ray3d.ImpactPoint {
+        const offset_to_top = math.Vector3d.up.scale(self.boundaries.radius * 2);
+        const offset_to_right = ray.direction.toFlatVector().normalize().rotateRightBy90Degrees()
+            .scale(self.boundaries.radius).toVector3d();
+        return ray.collidesWithQuad(.{
+            self.boundaries.position.toVector3d().subtract(offset_to_right),
+            self.boundaries.position.toVector3d().add(offset_to_right),
+            self.boundaries.position.toVector3d().add(offset_to_right).add(offset_to_top),
+            self.boundaries.position.toVector3d().subtract(offset_to_right).add(offset_to_top),
         });
     }
 
