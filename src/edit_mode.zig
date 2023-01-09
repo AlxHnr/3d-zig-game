@@ -158,9 +158,11 @@ pub const State = struct {
             .floor => level_geometry.addFloor(position, position, 0, object_type.floor),
             .billboard => level_geometry.addBillboardObject(object_type.billboard, position),
         };
-        level_geometry.tintObject(object_id, rl.GREEN);
-        self.currently_edited_object =
-            CurrentlyEditedObject{ .object_id = object_id, .start_position = position };
+        if (object_type.used_field != .billboard) {
+            level_geometry.tintObject(object_id, rl.GREEN);
+            self.currently_edited_object =
+                CurrentlyEditedObject{ .object_id = object_id, .start_position = position };
+        }
     }
 
     fn updateCurrentlyInsertedObject(
