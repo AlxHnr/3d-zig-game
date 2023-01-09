@@ -333,7 +333,7 @@ pub const LevelGeometry = struct {
         }
     }
 
-    pub fn tintObject(self: *LevelGeometry, object_id: u64, tint: rl.Color) void {
+    pub fn tintObject(self: *LevelGeometry, object_id: u64, tint: util.Color) void {
         if (self.findWall(object_id)) |wall| {
             wall.tint = tint;
             self.walls_have_changed = true;
@@ -562,11 +562,7 @@ pub const LevelGeometry = struct {
                     .h = billboard.boundaries.radius * 2,
                 },
                 .source_rect = .{ .x = 0, .y = 0, .w = 1, .h = 1 },
-                .tint = .{
-                    .r = @intToFloat(f32, billboard.tint.r) / 255,
-                    .g = @intToFloat(f32, billboard.tint.g) / 255,
-                    .b = @intToFloat(f32, billboard.tint.b) / 255,
-                },
+                .tint = .{ .r = billboard.tint.r, .g = billboard.tint.g, .b = billboard.tint.b },
             };
         }
         self.billboard_renderer.uploadBillboards(data);
@@ -575,16 +571,12 @@ pub const LevelGeometry = struct {
     fn makeRenderingAttributes(
         model_matrix: rl.Matrix,
         texture_name: textures.Name,
-        tint: rl.Color,
+        tint: util.Color,
     ) rendering.LevelGeometryAttributes {
         return .{
             .model_matrix = rm.MatrixToFloatV(model_matrix).v,
             .texture_layer_id = @intToFloat(f32, @enumToInt(texture_name)),
-            .tint = .{
-                .r = @intToFloat(f32, tint.r) / 255.0,
-                .g = @intToFloat(f32, tint.g) / 255.0,
-                .b = @intToFloat(f32, tint.b) / 255.0,
-            },
+            .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
         };
     }
 };
@@ -594,7 +586,7 @@ const Floor = struct {
     floor_type: LevelGeometry.FloorType,
     model_matrix: rl.Matrix,
     boundaries: collision.Rectangle,
-    tint: rl.Color,
+    tint: util.Color,
 
     /// Values used to generate this floor.
     side_a_start: math.FlatVector,
@@ -640,9 +632,9 @@ const Floor = struct {
         };
     }
 
-    fn getDefaultTint(floor_type: LevelGeometry.FloorType) rl.Color {
+    fn getDefaultTint(floor_type: LevelGeometry.FloorType) util.Color {
         return switch (floor_type) {
-            else => rl.WHITE,
+            else => util.Color.white,
         };
     }
 
@@ -664,7 +656,7 @@ const Wall = struct {
     wall_type: LevelGeometry.WallType,
     model_matrix: rl.Matrix,
     boundaries: collision.Rectangle,
-    tint: rl.Color,
+    tint: util.Color,
 
     /// Values used to generate this wall.
     start_position: math.FlatVector,
@@ -847,11 +839,11 @@ const Wall = struct {
         };
     }
 
-    fn getDefaultTint(wall_type: LevelGeometry.WallType) rl.Color {
+    fn getDefaultTint(wall_type: LevelGeometry.WallType) util.Color {
         return switch (wall_type) {
-            .castle_tower => rl.Color{ .r = 248, .g = 248, .b = 248, .a = 255 },
-            .giga_wall => rl.Color{ .r = 170, .g = 170, .b = 170, .a = 255 },
-            else => rl.WHITE,
+            .castle_tower => util.Color.fromRgb8(248, 248, 248),
+            .giga_wall => util.Color.fromRgb8(170, 170, 170),
+            else => util.Color.white,
         };
     }
 
@@ -868,7 +860,7 @@ const BillboardObject = struct {
     object_id: u64,
     object_type: LevelGeometry.BillboardObjectType,
     boundaries: collision.Circle,
-    tint: rl.Color,
+    tint: util.Color,
 
     fn create(
         object_id: u64,
@@ -895,9 +887,9 @@ const BillboardObject = struct {
         });
     }
 
-    fn getDefaultTint(object_type: LevelGeometry.BillboardObjectType) rl.Color {
+    fn getDefaultTint(object_type: LevelGeometry.BillboardObjectType) util.Color {
         return switch (object_type) {
-            else => rl.WHITE,
+            else => util.Color.white,
         };
     }
 

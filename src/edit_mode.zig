@@ -1,4 +1,3 @@
-const rl = @import("raylib");
 const util = @import("util.zig");
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const std = @import("std");
@@ -60,7 +59,7 @@ pub const State = struct {
             .delete_objects => {
                 self.resetCurrentlyEditedObject(level_geometry);
                 if (cast3DRayToObjects(mouse_ray, level_geometry.*)) |ray_collision| {
-                    level_geometry.tintObject(ray_collision.object_id, rl.RED);
+                    level_geometry.tintObject(ray_collision.object_id, .{ .r = 1, .g = 0, .b = 0 });
                     self.currently_edited_object = CurrentlyEditedObject{
                         .object_id = ray_collision.object_id,
                         .start_position = undefined,
@@ -159,7 +158,7 @@ pub const State = struct {
             .billboard => level_geometry.addBillboardObject(object_type.billboard, position),
         };
         if (object_type.used_field != .billboard) {
-            level_geometry.tintObject(object_id, rl.GREEN);
+            level_geometry.tintObject(object_id, .{ .r = 0, .g = 1, .b = 0 });
             self.currently_edited_object =
                 CurrentlyEditedObject{ .object_id = object_id, .start_position = position };
         }

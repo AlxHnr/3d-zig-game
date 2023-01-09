@@ -15,15 +15,6 @@ const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const loadGenericShader = @import("generic_shader.zig").load;
 
-fn lerpColor(a: rl.Color, b: rl.Color, interval: f32) rl.Color {
-    return rl.Color{
-        .r = @floatToInt(u8, math.lerp(@intToFloat(f32, a.r), @intToFloat(f32, b.r), interval)),
-        .g = @floatToInt(u8, math.lerp(@intToFloat(f32, a.g), @intToFloat(f32, b.g), interval)),
-        .b = @floatToInt(u8, math.lerp(@intToFloat(f32, a.b), @intToFloat(f32, b.b), interval)),
-        .a = @floatToInt(u8, math.lerp(@intToFloat(f32, a.a), @intToFloat(f32, b.a), interval)),
-    };
-}
-
 const Character = struct {
     boundaries: collision.Circle,
     looking_direction: math.FlatVector,

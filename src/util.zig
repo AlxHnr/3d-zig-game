@@ -4,6 +4,33 @@ const std = @import("std");
 const rl = @import("raylib");
 const rm = @import("raylib-math");
 const rlgl = @cImport(@cInclude("rlgl.h"));
+const math = @import("math.zig");
+
+/// Contains rgb values from 0 to 1.
+pub const Color = struct {
+    r: f32,
+    g: f32,
+    b: f32,
+
+    /// Used as a neutral tint during color multiplication.
+    pub const white = Color{ .r = 1, .g = 1, .b = 1 };
+
+    pub fn fromRgb8(r: u8, g: u8, b: u8) Color {
+        return .{
+            .r = @intToFloat(f32, r) / 255,
+            .g = @intToFloat(f32, g) / 255,
+            .b = @intToFloat(f32, b) / 255,
+        };
+    }
+
+    pub fn lerp(self: Color, other: Color, t: f32) Color {
+        return .{
+            .r = math.lerp(self.r, other.r, t),
+            .g = math.lerp(self.g, other.g, t),
+            .b = math.lerp(self.b, other.b, t),
+        };
+    }
+};
 
 /// Lap timer for measuring elapsed ticks.
 pub const TickTimer = struct {

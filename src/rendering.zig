@@ -260,11 +260,7 @@ pub const LevelGeometryAttributes = extern struct {
     /// Index of the layer in the array texture passed to render(). Will be rounded.
     texture_layer_id: f32,
     /// Color values from 0 to 1.
-    tint: extern struct {
-        r: f32,
-        g: f32,
-        b: f32,
-    },
+    tint: extern struct { r: f32, g: f32, b: f32 },
 };
 
 /// Renders sprites which rotate around the Y axis towards the camera.
