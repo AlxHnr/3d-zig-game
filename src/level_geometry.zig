@@ -569,12 +569,12 @@ pub const LevelGeometry = struct {
     }
 
     fn makeRenderingAttributes(
-        model_matrix: rl.Matrix,
+        model_matrix: math.Matrix,
         texture_name: textures.Name,
         tint: util.Color,
     ) rendering.LevelGeometryAttributes {
         return .{
-            .model_matrix = rm.MatrixToFloatV(model_matrix).v,
+            .model_matrix = model_matrix.toFloatArray(),
             .texture_layer_id = @intToFloat(f32, @enumToInt(texture_name)),
             .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
         };
@@ -584,7 +584,7 @@ pub const LevelGeometry = struct {
 const Floor = struct {
     object_id: u64,
     floor_type: LevelGeometry.FloorType,
-    model_matrix: rl.Matrix,
+    model_matrix: math.Matrix,
     boundaries: collision.Rectangle,
     tint: util.Color,
 
@@ -609,13 +609,11 @@ const Floor = struct {
         return Floor{
             .object_id = object_id,
             .floor_type = floor_type,
-            .model_matrix = rm.MatrixMultiply(
-                rm.MatrixMultiply(rm.MatrixMultiply(
-                    rm.MatrixRotateX(math.degreesToRadians(-90)),
-                    rm.MatrixScale(side_b_length, 1, side_a_length),
-                ), rm.MatrixRotateY(-rotation)),
-                rm.MatrixTranslate(center.x, 0, center.z),
-            ),
+            .model_matrix = math.Matrix.identity
+                .rotate(math.Vector3d.right, math.degreesToRadians(-90))
+                .scale(.{ .x = side_b_length, .y = 1, .z = side_a_length })
+                .rotate(math.Vector3d.up, -rotation)
+                .translate(center.toVector3d()),
             .boundaries = collision.Rectangle.create(side_a_start, side_a_end, side_b_length),
             .tint = getDefaultTint(floor_type),
             .side_a_start = side_a_start,
@@ -654,7 +652,7 @@ const Floor = struct {
 const Wall = struct {
     object_id: u64,
     wall_type: LevelGeometry.WallType,
-    model_matrix: rl.Matrix,
+    model_matrix: math.Matrix,
     boundaries: collision.Rectangle,
     tint: util.Color,
 
@@ -678,20 +676,18 @@ const Wall = struct {
         const height = wall_type_properties.height;
         const thickness = wall_type_properties.thickness;
 
-        const scale_matrix = if (isFence(wall_type))
-            rm.MatrixScale(length, height, 0) // Fences are flat, thickness is only for collision.
-        else
-            rm.MatrixScale(length, height, thickness);
+        // Fences are flat, thickness is only for collision.
+        const render_thickness = if (isFence(wall_type)) 0 else thickness;
 
         const side_a_up_offset =
             math.FlatVector.normalize(.{ .x = offset.z, .z = -offset.x }).scale(thickness / 2);
         const center = wall_type_properties.corrected_start_position.add(offset.scale(0.5));
         return Wall{
             .object_id = object_id,
-            .model_matrix = rm.MatrixMultiply(
-                rm.MatrixMultiply(scale_matrix, rm.MatrixRotateY(rotation_angle)),
-                rm.MatrixTranslate(center.x, height / 2, center.z),
-            ),
+            .model_matrix = math.Matrix.identity
+                .scale(.{ .x = length, .y = height, .z = render_thickness })
+                .rotate(math.Vector3d.up, rotation_angle)
+                .translate(center.toVector3d().add(math.Vector3d.up.scale(height / 2))),
             .tint = Wall.getDefaultTint(wall_type),
             .boundaries = collision.Rectangle.create(
                 wall_type_properties.corrected_start_position.add(side_a_up_offset),
