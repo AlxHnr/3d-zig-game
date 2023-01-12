@@ -184,3 +184,90 @@ pub const Vector3d = struct {
             .add(rescaled_axis.crossProduct(rescaled_axis_cross).scale(2));
     }
 };
+
+pub const Matrix = struct {
+    rows: [4]@Vector(4, f32),
+
+    pub const identity = Matrix{ .rows = .{
+        .{ 1, 0, 0, 0 },
+        .{ 0, 1, 0, 0 },
+        .{ 0, 0, 1, 0 },
+        .{ 0, 0, 0, 1 },
+    } };
+
+    pub fn multiply(self: Matrix, other: Matrix) Matrix {
+        var result: [4]@Vector(4, f32) = undefined;
+        for (other.transpose().rows) |column, column_index| {
+            for (self.rows) |row, row_index| {
+                result[row_index][column_index] = @reduce(.Add, row * column);
+            }
+        }
+        return .{ .rows = result };
+    }
+
+    pub fn scale(self: Matrix, dimensions: Vector3d) Matrix {
+        var scaling = identity;
+        scaling.rows[0][0] = dimensions.x;
+        scaling.rows[1][1] = dimensions.y;
+        scaling.rows[2][2] = dimensions.z;
+        return scaling.multiply(self);
+    }
+
+    pub fn rotate(self: Matrix, axis: Vector3d, angle: f32) Matrix {
+        const cosine = std.math.cos(angle);
+        const inverted_cosine = 1 - cosine;
+        const inverted_cosine_x_y = inverted_cosine * axis.x * axis.y;
+        const inverted_cosine_x_z = inverted_cosine * axis.x * axis.z;
+        const inverted_cosine_y_z = inverted_cosine * axis.y * axis.z;
+        const axis_sine = axis.scale(std.math.sin(angle));
+        const rotation = Matrix{ .rows = .{
+            .{
+                inverted_cosine * axis.x * axis.x + cosine,
+                inverted_cosine_x_y - axis_sine.z,
+                inverted_cosine_x_z + axis_sine.y,
+                0,
+            },
+            .{
+                inverted_cosine_x_y + axis_sine.z,
+                inverted_cosine * axis.y * axis.y + cosine,
+                inverted_cosine_y_z - axis_sine.x,
+                0,
+            },
+            .{
+                inverted_cosine_x_z - axis_sine.y,
+                inverted_cosine_y_z + axis_sine.x,
+                inverted_cosine * axis.z * axis.z + cosine,
+                0,
+            },
+            .{ 0, 0, 0, 1 },
+        } };
+        return rotation.multiply(self);
+    }
+
+    pub fn translate(self: Matrix, offset: Vector3d) Matrix {
+        var translation = identity;
+        translation.rows[0][3] = offset.x;
+        translation.rows[1][3] = offset.y;
+        translation.rows[2][3] = offset.z;
+        return translation.multiply(self);
+    }
+
+    pub fn transpose(self: Matrix) Matrix {
+        return .{ .rows = .{
+            .{ self.rows[0][0], self.rows[1][0], self.rows[2][0], self.rows[3][0] },
+            .{ self.rows[0][1], self.rows[1][1], self.rows[2][1], self.rows[3][1] },
+            .{ self.rows[0][2], self.rows[1][2], self.rows[2][2], self.rows[3][2] },
+            .{ self.rows[0][3], self.rows[1][3], self.rows[2][3], self.rows[3][3] },
+        } };
+    }
+
+    /// Result can be uploaded to OpenGL.
+    pub fn toFloatArray(self: Matrix) [16]f32 {
+        return .{
+            self.rows[0][0], self.rows[1][0], self.rows[2][0], self.rows[3][0],
+            self.rows[0][1], self.rows[1][1], self.rows[2][1], self.rows[3][1],
+            self.rows[0][2], self.rows[1][2], self.rows[2][2], self.rows[3][2],
+            self.rows[0][3], self.rows[1][3], self.rows[2][3], self.rows[3][3],
+        };
+    }
+};

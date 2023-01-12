@@ -65,3 +65,29 @@ test "Collisions between lines" {
         .{ .x = 2.5, .z = 8 },
     ) == null);
 }
+
+test "Matrix multiplication" {
+    const matrix = math.Matrix{ .rows = .{
+        .{ 12, 4, 7, 9 },
+        .{ 77, 0, 2, 13 },
+        .{ 23, 22, 32, 89 },
+        .{ 1, 1, 43, 3 },
+    } };
+    const result = matrix.multiply(math.Matrix.identity);
+    try expectApproxEqRel(@floatCast(f32, 12), result.rows[0][0], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 4), result.rows[0][1], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 7), result.rows[0][2], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 9), result.rows[0][3], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 77), result.rows[1][0], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 0), result.rows[1][1], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 2), result.rows[1][2], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 13), result.rows[1][3], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 23), result.rows[2][0], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 22), result.rows[2][1], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 32), result.rows[2][2], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 89), result.rows[2][3], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 1), result.rows[3][0], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 1), result.rows[3][1], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 43), result.rows[3][2], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 3), result.rows[3][3], epsilon);
+}
