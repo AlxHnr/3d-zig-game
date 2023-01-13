@@ -610,9 +610,9 @@ const Floor = struct {
             .object_id = object_id,
             .floor_type = floor_type,
             .model_matrix = math.Matrix.identity
-                .rotate(math.Vector3d.right, math.degreesToRadians(-90))
+                .rotate(math.Vector3d.x_axis, math.degreesToRadians(-90))
                 .scale(.{ .x = side_b_length, .y = 1, .z = side_a_length })
-                .rotate(math.Vector3d.up, -rotation)
+                .rotate(math.Vector3d.y_axis, -rotation)
                 .translate(center.toVector3d()),
             .boundaries = collision.Rectangle.create(side_a_start, side_a_end, side_b_length),
             .tint = getDefaultTint(floor_type),
@@ -686,8 +686,8 @@ const Wall = struct {
             .object_id = object_id,
             .model_matrix = math.Matrix.identity
                 .scale(.{ .x = length, .y = height, .z = render_thickness })
-                .rotate(math.Vector3d.up, rotation_angle)
-                .translate(center.toVector3d().add(math.Vector3d.up.scale(height / 2))),
+                .rotate(math.Vector3d.y_axis, rotation_angle)
+                .translate(center.toVector3d().add(math.Vector3d.y_axis.scale(height / 2))),
             .tint = Wall.getDefaultTint(wall_type),
             .boundaries = collision.Rectangle.create(
                 wall_type_properties.corrected_start_position.add(side_a_up_offset),
@@ -711,7 +711,7 @@ const Wall = struct {
             bottom_corners_2d[2].toVector3d(),
             bottom_corners_2d[3].toVector3d(),
         };
-        const vertical_offset = math.Vector3d.up.scale(getWallTypeHeight(self.wall_type));
+        const vertical_offset = math.Vector3d.y_axis.scale(getWallTypeHeight(self.wall_type));
         var closest_impact_point: ?collision.Ray3d.ImpactPoint = null;
 
         var side: usize = 0;
@@ -872,7 +872,7 @@ const BillboardObject = struct {
     }
 
     fn cast3DRay(self: BillboardObject, ray: collision.Ray3d) ?collision.Ray3d.ImpactPoint {
-        const offset_to_top = math.Vector3d.up.scale(self.boundaries.radius * 2);
+        const offset_to_top = math.Vector3d.y_axis.scale(self.boundaries.radius * 2);
         const offset_to_right = ray.direction.toFlatVector().normalize().rotateRightBy90Degrees()
             .scale(self.boundaries.radius).toVector3d();
         return ray.collidesWithQuad(.{

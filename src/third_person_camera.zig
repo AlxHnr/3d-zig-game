@@ -179,7 +179,7 @@ pub const Camera = struct {
         const object_back_direction = target_object_looking_direction.negate();
         const rotation_step = camera_follow_speed * camera_offset.toFlatVector()
             .computeRotationToOtherVector(object_back_direction);
-        return camera_offset.rotate(math.Vector3d.up, rotation_step);
+        return camera_offset.rotate(math.Vector3d.y_axis, rotation_step);
     }
 
     fn updateCameraDistanceFromObject(self: *Camera) void {
@@ -200,6 +200,6 @@ pub const Camera = struct {
     }
 
     fn add3dHeigth(target_object_position: math.FlatVector) math.Vector3d {
-        return target_object_position.toVector3d().add(math.Vector3d.up.scale(3));
+        return target_object_position.toVector3d().add(math.Vector3d.y_axis.scale(3));
     }
 };

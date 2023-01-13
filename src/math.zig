@@ -114,8 +114,8 @@ pub const Vector3d = struct {
     y: f32,
     z: f32,
 
-    pub const up = Vector3d{ .x = 0, .y = 1, .z = 0 };
-    pub const right = Vector3d{ .x = 1, .y = 0, .z = 0 };
+    pub const y_axis = Vector3d{ .x = 0, .y = 1, .z = 0 };
+    pub const x_axis = Vector3d{ .x = 1, .y = 0, .z = 0 };
 
     pub fn fromVector3(vector: rl.Vector3) Vector3d {
         return .{ .x = vector.x, .y = vector.y, .z = vector.z };
