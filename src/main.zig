@@ -159,14 +159,15 @@ const Player = struct {
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
         );
+        const forward_direction = state_rendered_to_screen.camera
+            .getDirectionToTarget().toFlatVector();
+        const right_direction = forward_direction.rotateRightBy90Degrees();
 
         var acceleration_direction = math.FlatVector{ .x = 0, .z = 0 };
         var turning_direction: f32 = 0;
         if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT)) {
             if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT_CONTROL)) {
-                acceleration_direction = acceleration_direction.subtract(
-                    state_rendered_to_screen.character.looking_direction.rotateRightBy90Degrees(),
-                );
+                acceleration_direction = acceleration_direction.subtract(right_direction);
             } else if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT_CONTROL)) {
                 turning_direction -= 0.05;
             } else {
@@ -175,9 +176,7 @@ const Player = struct {
         }
         if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT)) {
             if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT_CONTROL)) {
-                acceleration_direction = acceleration_direction.add(
-                    state_rendered_to_screen.character.looking_direction.rotateRightBy90Degrees(),
-                );
+                acceleration_direction = acceleration_direction.add(right_direction);
             } else if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT_CONTROL)) {
                 turning_direction += 0.05;
             } else {
@@ -185,14 +184,10 @@ const Player = struct {
             }
         }
         if (rl.IsKeyDown(rl.KeyboardKey.KEY_UP)) {
-            acceleration_direction = acceleration_direction.add(
-                state_rendered_to_screen.character.looking_direction,
-            );
+            acceleration_direction = acceleration_direction.add(forward_direction);
         }
         if (rl.IsKeyDown(rl.KeyboardKey.KEY_DOWN)) {
-            acceleration_direction = acceleration_direction.subtract(
-                state_rendered_to_screen.character.looking_direction,
-            );
+            acceleration_direction = acceleration_direction.subtract(forward_direction);
         }
         self.state_at_next_tick.character.setAcceleration(acceleration_direction);
         self.state_at_next_tick.character.setTurningDirection(turning_direction);
