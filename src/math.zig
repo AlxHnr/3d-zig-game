@@ -177,6 +177,10 @@ pub const Vector3d = struct {
         };
     }
 
+    pub fn negate(self: Vector3d) Vector3d {
+        return .{ .x = -self.x, .y = -self.y, .z = -self.z };
+    }
+
     pub fn rotate(self: Vector3d, axis: Vector3d, angle: f32) Vector3d {
         const rescaled_axis = axis.normalize().scale(std.math.sin(angle / 2));
         const rescaled_axis_cross = rescaled_axis.crossProduct(self);
