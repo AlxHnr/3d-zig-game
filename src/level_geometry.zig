@@ -127,11 +127,10 @@ pub const LevelGeometry = struct {
 
     pub fn render(
         self: LevelGeometry,
-        camera: ThirdPersonCamera,
+        vp_matrix: math.Matrix,
+        camera_direction_to_target: math.Vector3d,
         texture_collection: textures.Collection,
     ) void {
-        const vp_matrix = rm.MatrixToFloatV(util.getCurrentRaylibVpMatrix()).v;
-
         // Prevent floors from overpainting each other.
         glad.glStencilFunc(glad.GL_NOTEQUAL, 1, 0xff);
         self.floor_renderer.render(vp_matrix, self.array_texture_id, self.floor_animation_state);
@@ -141,7 +140,7 @@ pub const LevelGeometry = struct {
         self.wall_renderer.render(vp_matrix, self.array_texture_id);
         self.billboard_renderer.render(
             vp_matrix,
-            camera.getDirectionToTarget(),
+            camera_direction_to_target,
             texture_collection.get(.small_bush).id,
         );
     }

@@ -332,6 +332,7 @@ const Player = struct {
 
 fn drawEverything(
     allocator: std.mem.Allocator,
+    screen_width: u16,
     screen_height: u16,
     players: []const Player,
     current_player: Player,
@@ -342,15 +343,15 @@ fn drawEverything(
     billboard_renderer: rendering.BillboardRenderer,
     interval_between_previous_and_current_tick: f32,
 ) !void {
-    const lerped_camera = current_player.getCamera(interval_between_previous_and_current_tick);
+    const camera = current_player.getCamera(interval_between_previous_and_current_tick);
 
     const max_distance_from_target =
         if (level_geometry
-        .cast3DRayToWalls(lerped_camera.get3DRayFromTargetToSelf(), true)) |ray_collision|
+        .cast3DRayToWalls(camera.get3DRayFromTargetToSelf(), true)) |ray_collision|
         ray_collision.impact_point.distance_from_start_position
     else
         null;
-    const raylib_camera = lerped_camera.getRaylibCamera(max_distance_from_target);
+    const raylib_camera = camera.getRaylibCamera(max_distance_from_target);
 
     rl.BeginDrawing();
     rl.BeginMode3D(raylib_camera);
@@ -358,12 +359,15 @@ fn drawEverything(
     glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
     glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
 
+    var vp_matrix =
+        camera.getViewProjectionMatrix(screen_width, screen_height, max_distance_from_target);
+
     try level_geometry.prepareRender(allocator);
-    level_geometry.render(lerped_camera, texture_collection);
+    level_geometry.render(vp_matrix, camera.getDirectionToTarget(), texture_collection);
 
     billboard_renderer.render(
-        rm.MatrixToFloatV(util.getCurrentRaylibVpMatrix()).v,
-        lerped_camera.getDirectionToTarget(),
+        vp_matrix,
+        camera.getDirectionToTarget(),
         texture_collection.get(.gem).id,
     );
 
@@ -510,6 +514,7 @@ pub fn main() !void {
 
         try drawEverything(
             gpa.allocator(),
+            screen_width,
             screen_height,
             players[0..],
             players[controllable_player_index],
@@ -573,8 +578,11 @@ pub fn main() !void {
         if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
             try edit_mode_state.handleActionAtTarget(&level_geometry, ray);
         }
-        edit_mode_state
-            .updateCurrentActionTarget(&level_geometry, ray, camera.getDirectionToTarget());
+        edit_mode_state.updateCurrentActionTarget(
+            &level_geometry,
+            ray,
+            camera.getDirectionToTarget().toFlatVector(),
+        );
         if (rl.IsWindowResized()) {
             screen_width = @intCast(u16, rl.GetScreenWidth());
             screen_height = @intCast(u16, rl.GetScreenHeight());

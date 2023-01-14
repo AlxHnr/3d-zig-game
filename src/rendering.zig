@@ -101,14 +101,13 @@ pub const WallRenderer = struct {
         self.walls_uploaded_to_vbo = walls.len;
     }
 
-    /// The given matrix has the same row order as the float16 returned by raymath.MatrixToFloatV().
-    pub fn render(self: WallRenderer, vp_matrix: [16]f32, array_texture_id: c_uint) void {
+    pub fn render(self: WallRenderer, vp_matrix: math.Matrix, array_texture_id: c_uint) void {
         const vertex_count = meshes.BottomlessCube.vertices.len;
 
         self.shader.enable();
         glad.glBindVertexArray(self.vao_id);
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, array_texture_id);
-        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix);
+        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
         glad.glDrawArraysInstanced(
             glad.GL_TRIANGLES,
             0,
@@ -221,10 +220,9 @@ pub const FloorRenderer = struct {
         self.floors_uploaded_to_vbo = floors.len;
     }
 
-    /// The given matrix has the same row order as the float16 returned by raymath.MatrixToFloatV().
     pub fn render(
         self: FloorRenderer,
-        vp_matrix: [16]f32,
+        vp_matrix: math.Matrix,
         array_texture_id: c_uint,
         floor_animation_state: animation.FourStepCycle,
     ) void {
@@ -233,7 +231,7 @@ pub const FloorRenderer = struct {
         self.shader.enable();
         glad.glBindVertexArray(self.vao_id);
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, array_texture_id);
-        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix);
+        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
         glad.glUniform1iv(self.current_animation_frame_location, 1, &animation_frame);
         renderStandingQuadInstanced(self.floors_uploaded_to_vbo);
         glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, 0);
@@ -355,12 +353,12 @@ pub const BillboardRenderer = struct {
 
     pub fn render(
         self: BillboardRenderer,
-        vp_matrix: [16]f32,
-        camera_direction: math.FlatVector,
+        vp_matrix: math.Matrix,
+        camera_direction: math.Vector3d,
         texture_id: c_uint,
     ) void {
         const camera_rotation_to_z_axis =
-            camera_direction.computeRotationToOtherVector(.{ .x = 0, .z = -1 });
+            camera_direction.toFlatVector().computeRotationToOtherVector(.{ .x = 0, .z = -1 });
         const y_rotation_towards_camera = [2]f32{
             std.math.sin(camera_rotation_to_z_axis),
             std.math.cos(camera_rotation_to_z_axis),
@@ -370,7 +368,7 @@ pub const BillboardRenderer = struct {
         glad.glBindVertexArray(self.vao_id);
         glad.glBindTexture(glad.GL_TEXTURE_2D, texture_id);
         glad.glUniform2fv(self.y_rotation_location, 1, &y_rotation_towards_camera);
-        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix);
+        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
         renderStandingQuadInstanced(self.billboards_uploaded_to_vbo);
         glad.glBindTexture(glad.GL_TEXTURE_2D, 0);
         glad.glBindVertexArray(0);
