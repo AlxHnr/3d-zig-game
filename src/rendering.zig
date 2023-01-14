@@ -383,8 +383,8 @@ pub const BillboardRenderer = struct {
         /// Precomputed angle at which the billboard should be rotated around the Z axis. Defaults
         /// to no rotation.
         z_rotation: extern struct { sine: f32, cosine: f32 } = .{
-            .sine = std.math.sin(@as(f32, 0)),
-            .cosine = std.math.cos(@as(f32, 0)),
+            .sine = std.math.sin(@floatCast(f32, 0)),
+            .cosine = std.math.cos(@floatCast(f32, 0)),
         },
         /// Specifies the part of the currently bound texture which should be stretched onto the
         /// billboard. Values range from 0 to 1, where (0, 0) is the top left corner of the texture.
