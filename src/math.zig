@@ -210,6 +210,14 @@ pub const Matrix = struct {
         return .{ .rows = result };
     }
 
+    pub fn multiplyScalar(self: Matrix, scalar: f32) Matrix {
+        var result: [4]@Vector(4, f32) = undefined;
+        for (self.rows) |row, index| {
+            result[index] = row * @splat(4, scalar);
+        }
+        return .{ .rows = result };
+    }
+
     pub fn scale(self: Matrix, dimensions: Vector3d) Matrix {
         var scaling = identity;
         scaling.rows[0][0] = dimensions.x;
@@ -266,6 +274,12 @@ pub const Matrix = struct {
         } };
     }
 
+    pub fn invert(self: Matrix) Matrix {
+        const cofactor_matrix = self.getCofactorMatrix();
+        const determinant = @reduce(.Add, self.rows[0] * cofactor_matrix.rows[0]);
+        return cofactor_matrix.transpose().multiplyScalar(1 / determinant);
+    }
+
     /// Result can be uploaded to OpenGL.
     pub fn toFloatArray(self: Matrix) [16]f32 {
         return .{
@@ -274,5 +288,57 @@ pub const Matrix = struct {
             self.rows[0][2], self.rows[1][2], self.rows[2][2], self.rows[3][2],
             self.rows[0][3], self.rows[1][3], self.rows[2][3], self.rows[3][3],
         };
+    }
+
+    fn getCofactorMatrix(self: Matrix) Matrix {
+        var result: [4]@Vector(4, f32) = undefined;
+        const negation_matrix = [4]@Vector(4, f32){
+            .{ 1, -1, 1, -1 },
+            .{ -1, 1, -1, 1 },
+            .{ 1, -1, 1, -1 },
+            .{ -1, 1, -1, 1 },
+        };
+        for (self.rows) |_, index| {
+            result[index] = negation_matrix[index] * @Vector(4, f32){
+                getDeterminant3x3(self.getCofactorSubmatrix(index, 0)),
+                getDeterminant3x3(self.getCofactorSubmatrix(index, 1)),
+                getDeterminant3x3(self.getCofactorSubmatrix(index, 2)),
+                getDeterminant3x3(self.getCofactorSubmatrix(index, 3)),
+            };
+        }
+        return .{ .rows = result };
+    }
+
+    fn getCofactorSubmatrix(self: Matrix, row_to_ignore: usize, column_to_ignore: usize) [3][3]f32 {
+        var result: [3][3]f32 = undefined;
+        const column_indices = getOtherIndices(column_to_ignore);
+        for (getOtherIndices(row_to_ignore)) |row_index, index| {
+            result[index] = .{
+                self.rows[row_index][column_indices[0]],
+                self.rows[row_index][column_indices[1]],
+                self.rows[row_index][column_indices[2]],
+            };
+        }
+        return result;
+    }
+
+    /// Return 3 indices from 0 to 3 which are not the given index, sorted by value.
+    fn getOtherIndices(value: usize) [3]usize {
+        return switch (value) {
+            0 => .{ 1, 2, 3 },
+            1 => .{ 0, 2, 3 },
+            2 => .{ 0, 1, 3 },
+            else => .{ 0, 1, 2 },
+        };
+    }
+
+    fn getDeterminant3x3(matrix: [3][3]f32) f32 {
+        return // Rule of Sarrus.
+        matrix[0][0] * matrix[1][1] * matrix[2][2] //
+        + matrix[0][1] * matrix[1][2] * matrix[2][0] //
+        + matrix[0][2] * matrix[1][0] * matrix[2][1] //
+        - matrix[2][0] * matrix[1][1] * matrix[0][2] //
+        - matrix[2][1] * matrix[1][2] * matrix[0][0] //
+        - matrix[2][2] * matrix[1][0] * matrix[0][1];
     }
 };

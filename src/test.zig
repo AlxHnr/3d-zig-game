@@ -91,3 +91,29 @@ test "Matrix multiplication" {
     try expectApproxEqRel(@floatCast(f32, 43), result.rows[3][2], epsilon);
     try expectApproxEqRel(@floatCast(f32, 3), result.rows[3][3], epsilon);
 }
+
+test "Matrix inversion" {
+    const matrix = math.Matrix{ .rows = .{
+        .{ 12, 4, 7, 9 },
+        .{ 77, 0, 2, 13 },
+        .{ 23, 22, 32, 89 },
+        .{ 1, 1, 43, 3 },
+    } };
+    const result = matrix.invert();
+    try expectApproxEqRel(@floatCast(f32, 0.0199921560), result.rows[0][0], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 0.0109564653), result.rows[0][1], epsilon);
+    try expectApproxEqRel(@floatCast(f32, -0.0035851123), result.rows[0][2], epsilon);
+    try expectApproxEqRel(@floatCast(f32, -0.0010961493), result.rows[0][3], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 0.4605939090), result.rows[1][0], epsilon);
+    try expectApproxEqRel(@floatCast(f32, -0.0603703409), result.rows[1][1], epsilon);
+    try expectApproxEqRel(@floatCast(f32, -0.0362349451), result.rows[1][2], epsilon);
+    try expectApproxEqRel(@floatCast(f32, -0.0452069417), result.rows[1][3], epsilon);
+    try expectApproxEqRel(@floatCast(f32, -0.0029465300), result.rows[2][0], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 0.0003134250), result.rows[2][1], epsilon);
+    try expectApproxEqRel(@floatCast(f32, -0.0005614833), result.rows[2][2], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 0.0241387505), result.rows[2][3], epsilon);
+    try expectApproxEqRel(@floatCast(f32, -0.1179617643), result.rows[3][0], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 0.0119788675), result.rows[3][1], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 0.0213212781), result.rows[3][2], epsilon);
+    try expectApproxEqRel(@floatCast(f32, 0.0027789229), result.rows[3][3], epsilon);
+}
