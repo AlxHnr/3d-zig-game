@@ -138,15 +138,7 @@ pub const Camera = struct {
         camera.fovy = 45;
         camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
         camera.target = self.target_position.toVector3();
-        camera.position = self.position.toVector3();
-        if (max_distance_from_target) |max_distance| {
-            const offset = self.position.subtract(self.target_position);
-            if (offset.lengthSquared() > max_distance * max_distance) {
-                camera.position = self.target_position
-                    .add(offset.normalize().scale(max_distance * 0.95))
-                    .toVector3();
-            }
-        }
+        camera.position = self.getAdjustedCameraPosition(max_distance_from_target).toVector3();
         return camera;
     }
 
@@ -250,14 +242,13 @@ pub const Camera = struct {
     }
 
     fn getAdjustedCameraPosition(self: Camera, max_distance_from_target: ?f32) math.Vector3d {
-        if (max_distance_from_target) |max_distance| {
-            const offset_from_target = self.position.subtract(self.target_position);
-            if (offset_from_target.lengthSquared() > max_distance * max_distance) {
-                return self.target_position
-                    .add(offset_from_target.normalize().scale(max_distance * 0.95));
-            }
-        }
-        return self.position;
+        const offset_from_target = self.position.subtract(self.target_position);
+        const max_distance = max_distance_from_target orelse offset_from_target.length();
+        const distance = std.math.min(offset_from_target.length(), max_distance);
+        const prevent_seeing_trough_walls_factor = 0.95;
+        const updated_offset = offset_from_target.normalize()
+            .scale(distance * prevent_seeing_trough_walls_factor);
+        return self.target_position.add(updated_offset);
     }
 
     fn getProjectionMatrix(screen_width: u16, screen_height: u16) math.Matrix {
