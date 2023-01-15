@@ -309,75 +309,6 @@ const Player = struct {
     };
 };
 
-fn drawEverything(
-    allocator: std.mem.Allocator,
-    screen_width: u16,
-    screen_height: u16,
-    players: []const Player,
-    current_player: Player,
-    level_geometry: *LevelGeometry,
-    texture_collection: textures.Collection,
-    shader: rl.Shader,
-    edit_mode_state: edit_mode.State,
-    billboard_renderer: rendering.BillboardRenderer,
-    interval_between_previous_and_current_tick: f32,
-) !void {
-    const camera = current_player.getCamera(interval_between_previous_and_current_tick);
-
-    const max_distance_from_target =
-        if (level_geometry
-        .cast3DRayToWalls(camera.get3DRayFromTargetToSelf(), true)) |ray_collision|
-        ray_collision.impact_point.distance_from_start_position
-    else
-        null;
-    const raylib_camera = camera.getRaylibCamera(max_distance_from_target);
-
-    rl.BeginDrawing();
-    rl.BeginMode3D(raylib_camera);
-
-    glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
-    glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
-
-    var vp_matrix =
-        camera.getViewProjectionMatrix(screen_width, screen_height, max_distance_from_target);
-
-    try level_geometry.prepareRender(allocator);
-    level_geometry.render(vp_matrix, camera.getDirectionToTarget(), texture_collection);
-
-    billboard_renderer.render(
-        vp_matrix,
-        camera.getDirectionToTarget(),
-        texture_collection.get(.gem).id,
-    );
-
-    rl.BeginShaderMode(shader);
-    for (players) |*player| {
-        player.draw(
-            raylib_camera,
-            texture_collection.get(.player),
-            player.id == current_player.id,
-            interval_between_previous_and_current_tick,
-        );
-    }
-    rl.EndShaderMode();
-    rl.EndMode3D();
-
-    drawGemCount(
-        screen_height,
-        texture_collection.get(.gem),
-        current_player.gem_count,
-    );
-
-    var string_buffer: [128]u8 = undefined;
-    const edit_mode_descripiton = edit_mode_state.describe(string_buffer[0..]) catch "";
-    rl.DrawText(edit_mode_descripiton, 5, 5, 20, rl.BLACK);
-
-    const fps_string = std.fmt.bufPrintZ(string_buffer[0..], "FPS: {}", .{rl.GetFPS()}) catch "";
-    rl.DrawText(fps_string, 5, 25, 20, rl.BLACK);
-
-    rl.EndDrawing();
-}
-
 fn drawGemCount(
     screen_height: u16,
     gem_texture: rl.Texture,
@@ -438,11 +369,7 @@ pub fn main() !void {
     var texture_collection = try textures.Collection.loadFromDisk();
     defer texture_collection.destroy();
 
-    var players = [_]Player{
-        Player.create(0, 0, -10, texture_collection.get(.player)),
-        Player.create(1, 0, 10, texture_collection.get(.player)),
-    };
-    var controllable_player_index: usize = 0;
+    var player = Player.create(0, 0, 0, texture_collection.get(.player));
 
     var level_geometry = try LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy();
@@ -466,11 +393,9 @@ pub fn main() !void {
         const lap_result = tick_timer.lap();
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
-            for (players) |*player| {
-                level_geometry.processElapsedTick();
-                player.processElapsedTick(level_geometry, &gem_collection);
-                gem_collection.processElapsedTick();
-            }
+            level_geometry.processElapsedTick();
+            player.processElapsedTick(level_geometry, &gem_collection);
+            gem_collection.processElapsedTick();
         }
 
         const billboards_to_render = gem_collection.getBillboardCount();
@@ -478,44 +403,66 @@ pub fn main() !void {
             billboard_buffer = try gpa.allocator().realloc(billboard_buffer, billboards_to_render);
         }
 
-        var collision_objects: [4]gems.CollisionObject = undefined;
-        std.debug.assert(players.len <= collision_objects.len);
-        for (players) |player, index| {
-            collision_objects[index] = player
-                .getLerpedCollisionObject(lap_result.next_tick_progress);
-        }
         gem_collection.populateBillboardData(
             billboard_buffer,
-            collision_objects[0..players.len],
+            &[_]gems.CollisionObject{player.getLerpedCollisionObject(lap_result.next_tick_progress)},
             lap_result.next_tick_progress,
         );
         billboard_renderer.uploadBillboards(billboard_buffer[0..billboards_to_render]);
 
-        try drawEverything(
-            gpa.allocator(),
-            screen_width,
-            screen_height,
-            players[0..],
-            players[controllable_player_index],
-            &level_geometry,
-            texture_collection,
-            shader,
-            edit_mode_state,
-            billboard_renderer,
-            lap_result.next_tick_progress,
+        const camera = player.getCamera(lap_result.next_tick_progress);
+        const max_distance_from_target =
+            if (level_geometry
+            .cast3DRayToWalls(camera.get3DRayFromTargetToSelf(), true)) |ray_collision|
+            ray_collision.impact_point.distance_from_start_position
+        else
+            null;
+        const raylib_camera = camera.getRaylibCamera(max_distance_from_target);
+
+        rl.BeginDrawing();
+        rl.BeginMode3D(raylib_camera);
+
+        glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
+        glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
+
+        var vp_matrix =
+            camera.getViewProjectionMatrix(screen_width, screen_height, max_distance_from_target);
+
+        try level_geometry.prepareRender(gpa.allocator());
+        level_geometry.render(vp_matrix, camera.getDirectionToTarget(), texture_collection);
+
+        billboard_renderer.render(
+            vp_matrix,
+            camera.getDirectionToTarget(),
+            texture_collection.get(.gem).id,
         );
 
-        players[controllable_player_index].pollInputs(lap_result.next_tick_progress);
+        rl.BeginShaderMode(shader);
+        player.draw(
+            raylib_camera,
+            texture_collection.get(.player),
+            true,
+            lap_result.next_tick_progress,
+        );
+        rl.EndShaderMode();
+        rl.EndMode3D();
 
-        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_ENTER)) {
-            for (players) |*player| {
-                player.resetInputs();
-            }
-            controllable_player_index = (controllable_player_index + 1) % players.len;
-        }
+        drawGemCount(screen_height, texture_collection.get(.gem), player.gem_count);
+
+        var string_buffer: [128]u8 = undefined;
+        const edit_mode_descripiton = edit_mode_state.describe(string_buffer[0..]) catch "";
+        rl.DrawText(edit_mode_descripiton, 5, 5, 20, rl.BLACK);
+
+        const fps_string = std.fmt.bufPrintZ(string_buffer[0..], "FPS: {}", .{rl.GetFPS()}) catch "";
+        rl.DrawText(fps_string, 5, 25, 20, rl.BLACK);
+
+        rl.EndDrawing();
+
+        player.pollInputs(lap_result.next_tick_progress);
+
         if (std.math.fabs(rl.GetMouseWheelMoveV().y) > math.epsilon) {
             if (!rl.IsMouseButtonDown(rl.MouseButton.MOUSE_BUTTON_RIGHT)) {
-                players[controllable_player_index].state_at_next_tick.camera
+                player.state_at_next_tick.camera
                     .increaseDistanceToObject(-rl.GetMouseWheelMoveV().y * 2.5);
             } else if (rl.GetMouseWheelMoveV().y < 0) {
                 edit_mode_state.cycleInsertedObjectSubtypeForwards();
@@ -530,13 +477,11 @@ pub fn main() !void {
             switch (view_mode) {
                 .from_behind => {
                     view_mode = .top_down;
-                    players[controllable_player_index].state_at_next_tick.camera
-                        .setAngleFromGround(math.degreesToRadians(90));
+                    player.state_at_next_tick.camera.setAngleFromGround(math.degreesToRadians(90));
                 },
                 .top_down => {
                     view_mode = .from_behind;
-                    players[controllable_player_index].state_at_next_tick.camera
-                        .resetAngleFromGround();
+                    player.state_at_next_tick.camera.resetAngleFromGround();
                 },
             }
         }
@@ -549,7 +494,6 @@ pub fn main() !void {
             try reloadDefaultMap(gpa.allocator(), &level_geometry);
         }
 
-        const camera = players[controllable_player_index].getCamera(lap_result.next_tick_progress);
         const ray = camera.get3DRay(
             @floatToInt(u16, rl.GetMousePosition().x),
             @floatToInt(u16, rl.GetMousePosition().y),
