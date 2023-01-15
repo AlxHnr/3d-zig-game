@@ -553,7 +553,7 @@ pub fn main() !void {
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_F2)) {
             var file = try std.fs.cwd().createFile("maps/default.json", .{});
             defer file.close();
-            try level_geometry.toJson(gpa.allocator(), file.writer());
+            try level_geometry.writeAsJson(gpa.allocator(), file.writer());
         }
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_F5)) {
             try reloadDefaultMap(gpa.allocator(), &level_geometry);

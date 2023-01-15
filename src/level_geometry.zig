@@ -77,19 +77,19 @@ pub const LevelGeometry = struct {
         var geometry = try create(allocator);
         errdefer geometry.destroy();
 
+        var token_stream = std.json.TokenStream.init(json);
         const options = .{ .allocator = allocator };
-        const tree = try std.json
-            .parse(Json.SerializableData, &std.json.TokenStream.init(json), options);
+        const tree = try std.json.parse(Json.SerializableData, &token_stream, options);
         defer std.json.parseFree(Json.SerializableData, tree, options);
 
         for (tree.walls) |wall| {
-            const wall_type = std.meta.stringToEnum(WallType, wall.wall_type) orelse {
+            const wall_type = std.meta.stringToEnum(WallType, wall.t) orelse {
                 return Error.FailedToDeserializeLevelGeometry;
             };
-            _ = try geometry.addWall(wall.start_position, wall.end_position, wall_type);
+            _ = try geometry.addWall(wall.start, wall.end, wall_type);
         }
         for (tree.floors) |floor| {
-            const floor_type = std.meta.stringToEnum(FloorType, floor.floor_type) orelse {
+            const floor_type = std.meta.stringToEnum(FloorType, floor.t) orelse {
                 return Error.FailedToDeserializeLevelGeometry;
             };
             _ = try geometry.addFloor(
@@ -100,10 +100,10 @@ pub const LevelGeometry = struct {
             );
         }
         for (tree.billboard_objects) |billboard| {
-            const object_type = std.meta.stringToEnum(BillboardObjectType, billboard.object_type) orelse {
+            const object_type = std.meta.stringToEnum(BillboardObjectType, billboard.t) orelse {
                 return Error.FailedToDeserializeLevelGeometry;
             };
-            _ = try geometry.addBillboardObject(object_type, billboard.position);
+            _ = try geometry.addBillboardObject(object_type, billboard.pos);
         }
 
         return geometry;
@@ -148,14 +148,14 @@ pub const LevelGeometry = struct {
         self.floor_animation_state.processElapsedTick(0.02);
     }
 
-    pub fn toJson(self: LevelGeometry, allocator: std.mem.Allocator, outstream: anytype) !void {
+    pub fn writeAsJson(self: LevelGeometry, allocator: std.mem.Allocator, outstream: anytype) !void {
         var walls = try allocator.alloc(Json.Wall, self.walls.items.len);
         defer allocator.free(walls);
         for (self.walls.items) |wall, index| {
             walls[index] = .{
-                .wall_type = @tagName(wall.wall_type),
-                .start_position = wall.start_position,
-                .end_position = wall.end_position,
+                .t = @tagName(wall.wall_type),
+                .start = wall.start_position,
+                .end = wall.end_position,
             };
         }
 
@@ -163,7 +163,7 @@ pub const LevelGeometry = struct {
         defer allocator.free(floors);
         for (self.floors.items) |floor, index| {
             floors[index] = .{
-                .floor_type = @tagName(floor.floor_type),
+                .t = @tagName(floor.floor_type),
                 .side_a_start = floor.side_a_start,
                 .side_a_end = floor.side_a_end,
                 .side_b_length = floor.side_b_length,
@@ -174,8 +174,8 @@ pub const LevelGeometry = struct {
         defer allocator.free(billboards);
         for (self.billboard_objects.items) |billboard, index| {
             billboards[index] = .{
-                .object_type = @tagName(billboard.object_type),
-                .position = billboard.boundaries.position,
+                .t = @tagName(billboard.object_type),
+                .pos = billboard.boundaries.position,
             };
         }
 
@@ -184,7 +184,9 @@ pub const LevelGeometry = struct {
             .floors = floors,
             .billboard_objects = billboards,
         };
-        try std.json.stringify(data, .{ .whitespace = .{ .indent = .{ .Space = 2 } } }, outstream);
+        try std.json.stringify(data, .{
+            .whitespace = .{ .indent = .{ .Space = 0 }, .separator = false },
+        }, outstream);
     }
 
     pub const WallType = enum {
@@ -908,20 +910,23 @@ const Json = struct {
     };
 
     const Wall = struct {
-        wall_type: []const u8,
-        start_position: math.FlatVector,
-        end_position: math.FlatVector,
+        /// Type enum as string.
+        t: []const u8,
+        start: math.FlatVector,
+        end: math.FlatVector,
     };
 
     const Floor = struct {
-        floor_type: []const u8,
+        /// Type enum as string.
+        t: []const u8,
         side_a_start: math.FlatVector,
         side_a_end: math.FlatVector,
         side_b_length: f32,
     };
 
     const BillboardObject = struct {
-        object_type: []const u8,
-        position: math.FlatVector,
+        /// Type enum as string.
+        t: []const u8,
+        pos: math.FlatVector,
     };
 };
