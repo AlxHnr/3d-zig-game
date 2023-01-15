@@ -99,13 +99,10 @@ pub const Circle = struct {
     position: math.FlatVector,
     radius: f32,
 
-    /// Interpolate between this circles state and another circle based on the given interval from
-    /// 0 and 1. The given interval will be clamped into this range.
-    pub fn lerp(self: Circle, other: Circle, interval: f32) Circle {
-        const i = std.math.clamp(interval, 0, 1);
+    pub fn lerp(self: Circle, other: Circle, t: f32) Circle {
         return Circle{
-            .position = self.position.lerp(other.position, i),
-            .radius = math.lerp(self.radius, other.radius, i),
+            .position = self.position.lerp(other.position, t),
+            .radius = math.lerp(self.radius, other.radius, t),
         };
     }
 

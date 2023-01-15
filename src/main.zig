@@ -40,17 +40,14 @@ const Character = struct {
         };
     }
 
-    /// Interpolate between this characters state and another characters state based on the given
-    /// interval from 0 to 1.
-    fn lerp(self: Character, other: Character, interval: f32) Character {
-        const i = std.math.clamp(interval, 0, 1);
+    fn lerp(self: Character, other: Character, t: f32) Character {
         return Character{
-            .boundaries = self.boundaries.lerp(other.boundaries, i),
-            .looking_direction = self.looking_direction.lerp(other.looking_direction, i),
-            .turning_direction = math.lerp(self.turning_direction, other.turning_direction, i),
-            .acceleration_direction = self.acceleration_direction.lerp(other.acceleration_direction, i),
-            .velocity = self.velocity.lerp(other.velocity, i),
-            .height = math.lerp(self.height, other.height, i),
+            .boundaries = self.boundaries.lerp(other.boundaries, t),
+            .looking_direction = self.looking_direction.lerp(other.looking_direction, t),
+            .turning_direction = math.lerp(self.turning_direction, other.turning_direction, t),
+            .acceleration_direction = self.acceleration_direction.lerp(other.acceleration_direction, t),
+            .velocity = self.velocity.lerp(other.velocity, t),
+            .height = math.lerp(self.height, other.height, t),
         };
     }
 
@@ -301,13 +298,11 @@ const Player = struct {
         camera: ThirdPersonCamera,
         animation_cycle: animation.FourStepCycle,
 
-        /// Interpolate between this players state and another players state based on the given
-        /// interval from 0 to 1.
-        fn lerp(self: State, other: State, interval: f32) State {
+        fn lerp(self: State, other: State, t: f32) State {
             return State{
-                .character = self.character.lerp(other.character, interval),
-                .camera = self.camera.lerp(other.camera, interval),
-                .animation_cycle = self.animation_cycle.lerp(other.animation_cycle, interval),
+                .character = self.character.lerp(other.character, t),
+                .camera = self.camera.lerp(other.camera, t),
+                .animation_cycle = self.animation_cycle.lerp(other.animation_cycle, t),
             };
         }
 
