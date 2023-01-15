@@ -1,7 +1,6 @@
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const rl = @import("raylib");
-const rm = @import("raylib-math");
 const std = @import("std");
 const util = @import("util.zig");
 const textures = @import("textures.zig");

@@ -3,7 +3,6 @@ const collision = @import("collision.zig");
 const edit_mode = @import("edit_mode.zig");
 const gems = @import("gems.zig");
 const rl = @import("raylib");
-const rm = @import("raylib-math");
 const std = @import("std");
 const textures = @import("textures.zig");
 const util = @import("util.zig");

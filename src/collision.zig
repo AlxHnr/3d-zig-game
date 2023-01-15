@@ -1,7 +1,6 @@
 //! Contains helpers for representing collision boundaries and resolving collisions.
 
 const std = @import("std");
-const rm = @import("raylib-math");
 const math = @import("math.zig");
 
 pub const Rectangle = struct {

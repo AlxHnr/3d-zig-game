@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const rl = @import("raylib");
-const rm = @import("raylib-math");
 const rlgl = @cImport(@cInclude("rlgl.h"));
 const math = @import("math.zig");
 
@@ -96,12 +95,4 @@ pub fn getNextEnumWrapAround(value: anytype) @TypeOf(value) {
         @TypeOf(value),
         @mod(@intCast(usize, @enumToInt(value)) + 1, @typeInfo(@TypeOf(value)).Enum.fields.len),
     );
-}
-
-pub fn getCurrentRaylibVpMatrix() rl.Matrix {
-    // Cast is necessary because rlgl.h was included per cImport.
-    const view_matrix = @bitCast(rl.Matrix, rlgl.rlGetMatrixModelview());
-    const projection_matrix = @bitCast(rl.Matrix, rlgl.rlGetMatrixProjection());
-    const transform_matrix = @bitCast(rl.Matrix, rlgl.rlGetMatrixTransform());
-    return rm.MatrixMultiply(rm.MatrixMultiply(transform_matrix, view_matrix), projection_matrix);
 }
