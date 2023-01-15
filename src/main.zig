@@ -499,7 +499,7 @@ pub fn main() !void {
             @floatToInt(u16, rl.GetMousePosition().y),
             screen_width,
             screen_height,
-            null,
+            max_distance_from_target,
         );
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_DELETE)) {
             edit_mode_state.cycleMode(&level_geometry);
