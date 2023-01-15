@@ -16,22 +16,17 @@ const loadGenericShader = @import("generic_shader.zig").load;
 
 const Character = struct {
     boundaries: collision.Circle,
-    looking_direction: math.FlatVector,
+    orientation: f32,
     /// Values from -1 (turning left) to 1 (turning right).
     turning_direction: f32,
     acceleration_direction: math.FlatVector,
     velocity: math.FlatVector,
     height: f32,
 
-    fn create(
-        position: math.FlatVector,
-        looking_direction: math.FlatVector,
-        radius: f32,
-        height: f32,
-    ) Character {
+    fn create(position: math.FlatVector, radius: f32, height: f32) Character {
         return Character{
             .boundaries = collision.Circle{ .position = position, .radius = radius },
-            .looking_direction = looking_direction.normalize(),
+            .orientation = 0,
             .turning_direction = 0,
             .acceleration_direction = .{ .x = 0, .z = 0 },
             .velocity = .{ .x = 0, .z = 0 },
@@ -42,12 +37,16 @@ const Character = struct {
     fn lerp(self: Character, other: Character, t: f32) Character {
         return Character{
             .boundaries = self.boundaries.lerp(other.boundaries, t),
-            .looking_direction = self.looking_direction.lerp(other.looking_direction, t),
+            .orientation = math.lerp(self.orientation, other.orientation, t),
             .turning_direction = math.lerp(self.turning_direction, other.turning_direction, t),
             .acceleration_direction = self.acceleration_direction.lerp(other.acceleration_direction, t),
             .velocity = self.velocity.lerp(other.velocity, t),
             .height = math.lerp(self.height, other.height, t),
         };
+    }
+
+    fn getLookingDirection(self: Character) math.FlatVector {
+        return .{ .x = std.math.sin(self.orientation), .z = std.math.cos(self.orientation) };
     }
 
     /// Given direction values will be normalized.
@@ -88,7 +87,10 @@ const Character = struct {
 
         const max_rotation_per_tick = math.degreesToRadians(3.5);
         const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
-        self.looking_direction = self.looking_direction.rotate(rotation_angle);
+        self.orientation = @mod(
+            self.orientation + rotation_angle,
+            math.degreesToRadians(360),
+        );
     }
 };
 
@@ -113,22 +115,10 @@ const Player = struct {
         starting_position_z: f32,
         spritesheet: rl.Texture,
     ) Player {
-        const position_is_zero = std.math.fabs(starting_position_x) +
-            std.math.fabs(starting_position_z) < math.epsilon;
-        const direction_towards_center =
-            if (position_is_zero)
-            math.FlatVector{ .x = 0, .z = -1 }
-        else
-            math.FlatVector.normalize(.{
-                .x = -starting_position_x,
-                .z = -starting_position_z,
-            });
-
         const in_game_heigth = 1.8;
         const frame_ratio = getFrameHeight(spritesheet) / getFrameWidth(spritesheet);
         const character = Character.create(
             .{ .x = starting_position_x, .z = starting_position_z },
-            direction_towards_center,
             in_game_heigth / frame_ratio / 2.0,
             in_game_heigth,
         );
@@ -136,7 +126,7 @@ const Player = struct {
             .character = character,
             .camera = ThirdPersonCamera.create(
                 character.boundaries.position,
-                character.looking_direction,
+                character.getLookingDirection(),
             ),
             .animation_cycle = animation.FourStepCycle.create(),
         };
@@ -312,7 +302,7 @@ const Player = struct {
             self.character.processElapsedTick();
             self.camera.processElapsedTick(
                 self.character.boundaries.position,
-                self.character.looking_direction,
+                self.character.getLookingDirection(),
             );
             self.animation_cycle.processElapsedTick(self.character.velocity.length() * 0.75);
         }
