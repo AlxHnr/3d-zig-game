@@ -566,7 +566,13 @@ pub fn main() !void {
         }
 
         const camera = players[controllable_player_index].getCamera(lap_result.next_tick_progress);
-        const ray = camera.get3DRay(rl.GetMousePosition());
+        const ray = camera.get3DRay(
+            @floatToInt(u16, rl.GetMousePosition().x),
+            @floatToInt(u16, rl.GetMousePosition().y),
+            screen_width,
+            screen_height,
+            null,
+        );
         if (rl.IsKeyPressed(rl.KeyboardKey.KEY_DELETE)) {
             edit_mode_state.cycleMode(&level_geometry);
         }

@@ -218,6 +218,16 @@ pub const Matrix = struct {
         return .{ .rows = result };
     }
 
+    /// M * V, where V contains (x, y, z, w). To achieve V * M use .transpose().
+    pub fn multiplyVector4d(self: Matrix, vector: @Vector(4, f32)) @Vector(4, f32) {
+        return .{
+            @reduce(.Add, self.rows[0] * vector),
+            @reduce(.Add, self.rows[1] * vector),
+            @reduce(.Add, self.rows[2] * vector),
+            @reduce(.Add, self.rows[3] * vector),
+        };
+    }
+
     pub fn scale(self: Matrix, dimensions: Vector3d) Matrix {
         var scaling = identity;
         scaling.rows[0][0] = dimensions.x;

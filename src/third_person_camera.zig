@@ -95,17 +95,31 @@ pub const Camera = struct {
         self.target_angle_from_ground = default_angle_from_ground;
     }
 
-    pub fn get3DRay(self: Camera, mouse_position_on_screen: rl.Vector2) collision.Ray3d {
-        var camera = std.mem.zeroes(rl.Camera);
-        camera.up = .{ .x = 0, .y = 1, .z = 0 };
-        camera.fovy = 45;
-        camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
-        camera.target = self.target_position.toVector3();
-        camera.position = self.position.toVector3();
-        const raylib_ray = rl.GetMouseRay(mouse_position_on_screen, camera);
+    pub fn get3DRay(
+        self: Camera,
+        mouse_x: u16,
+        mouse_y: u16,
+        screen_width: u16,
+        screen_height: u16,
+        /// Optional value to account for walls covering the camera.
+        max_distance_from_target: ?f32,
+    ) collision.Ray3d {
+        const clip_ray = math.Vector3d{
+            .x = @intToFloat(f32, mouse_x) / @intToFloat(f32, screen_width) * 2 - 1,
+            .y = 1 - @intToFloat(f32, mouse_y) / @intToFloat(f32, screen_height) * 2,
+            .z = 0,
+        };
+        const view_ray = getProjectionMatrix(screen_width, screen_height)
+            .invert().multiplyVector4d(.{ clip_ray.x, clip_ray.y, -1, 0 });
+        const unnormalized_direction = self.getViewMatrix(max_distance_from_target)
+            .invert().multiplyVector4d(.{ view_ray[0], view_ray[1], -1, 0 });
         return .{
-            .start_position = math.Vector3d.fromVector3(raylib_ray.position),
-            .direction = math.Vector3d.fromVector3(raylib_ray.direction),
+            .start_position = self.getAdjustedCameraPosition(max_distance_from_target),
+            .direction = math.Vector3d.normalize(.{
+                .x = unnormalized_direction[0],
+                .y = unnormalized_direction[1],
+                .z = unnormalized_direction[2],
+            }),
         };
     }
 
