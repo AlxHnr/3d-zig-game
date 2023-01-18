@@ -1,6 +1,5 @@
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
-const rl = @import("raylib");
 const std = @import("std");
 const util = @import("util.zig");
 const textures = @import("textures.zig");
@@ -892,12 +891,6 @@ const BillboardObject = struct {
     fn getDefaultSize(object_type: LevelGeometry.BillboardObjectType) f32 {
         return switch (object_type) {
             else => 1.0,
-        };
-    }
-
-    fn getTexture(self: BillboardObject, texture_collection: textures.Collection) rl.Texture {
-        return switch (self.object_type) {
-            .small_bush => texture_collection.get(.small_bush),
         };
     }
 };

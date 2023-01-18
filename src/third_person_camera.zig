@@ -1,5 +1,4 @@
 const std = @import("std");
-const rl = @import("raylib");
 const math = @import("math.zig");
 const collision = @import("collision.zig");
 
@@ -128,18 +127,6 @@ pub const Camera = struct {
             .start_position = self.target_position,
             .direction = self.position.subtract(self.target_position).normalize(),
         };
-    }
-
-    /// Return a camera for rendering with raylib. Takes an optional distance limit to prevent walls
-    /// from covering the cameras target object.
-    pub fn getRaylibCamera(self: Camera, max_distance_from_target: ?f32) rl.Camera {
-        var camera = std.mem.zeroes(rl.Camera);
-        camera.up = .{ .x = 0, .y = 1, .z = 0 };
-        camera.fovy = 45;
-        camera.projection = rl.CameraProjection.CAMERA_PERSPECTIVE;
-        camera.target = self.target_position.toVector3();
-        camera.position = self.getAdjustedCameraPosition(max_distance_from_target).toVector3();
-        return camera;
     }
 
     pub fn processElapsedTick(

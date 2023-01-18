@@ -1,7 +1,6 @@
 //! Contains extra math functions which are not in std.math.
 
 const std = @import("std");
-const rl = @import("raylib");
 
 /// Smallest viable number for game-world calculations.
 pub const epsilon = 0.00001;
@@ -29,14 +28,6 @@ pub fn isEqual(a: f32, b: f32) bool {
 pub const FlatVector = struct {
     x: f32,
     z: f32,
-
-    pub fn toVector3(self: FlatVector) rl.Vector3 {
-        return rl.Vector3{ .x = self.x, .y = 0, .z = self.z };
-    }
-
-    pub fn fromVector3(vector: rl.Vector3) FlatVector {
-        return .{ .x = vector.x, .z = vector.z };
-    }
 
     pub fn toVector3d(self: FlatVector) Vector3d {
         return .{ .x = self.x, .y = 0, .z = self.z };
@@ -116,14 +107,6 @@ pub const Vector3d = struct {
 
     pub const y_axis = Vector3d{ .x = 0, .y = 1, .z = 0 };
     pub const x_axis = Vector3d{ .x = 1, .y = 0, .z = 0 };
-
-    pub fn fromVector3(vector: rl.Vector3) Vector3d {
-        return .{ .x = vector.x, .y = vector.y, .z = vector.z };
-    }
-
-    pub fn toVector3(self: Vector3d) rl.Vector3 {
-        return .{ .x = self.x, .y = self.y, .z = self.z };
-    }
 
     /// Will cut off the height component.
     pub fn toFlatVector(self: Vector3d) FlatVector {

@@ -12,7 +12,6 @@ const math = @import("math.zig");
 
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
-const loadGenericShader = @import("generic_shader.zig").load;
 
 const Character = struct {
     boundaries: collision.Circle,
@@ -92,14 +91,6 @@ const Character = struct {
             math.degreesToRadians(360),
         );
     }
-};
-
-const InputConfiguration = struct {
-    left: rl.KeyboardKey,
-    right: rl.KeyboardKey,
-    move_forward: rl.KeyboardKey,
-    move_backwards: rl.KeyboardKey,
-    strafe: rl.KeyboardKey,
 };
 
 const Player = struct {
@@ -362,9 +353,6 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var shader = try loadGenericShader();
-    defer rl.UnloadShader(shader);
-
     var texture_collection = try textures.Collection.loadFromDisk();
     defer texture_collection.destroy();
 
@@ -422,13 +410,12 @@ pub fn main() !void {
             ray_collision.impact_point.distance_from_start_position
         else
             null;
-        const raylib_camera = camera.getRaylibCamera(max_distance_from_target);
 
         rl.BeginDrawing();
-        rl.BeginMode3D(raylib_camera);
 
         glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
         glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
+        glad.glEnable(glad.GL_DEPTH_TEST);
 
         var vp_matrix =
             camera.getViewProjectionMatrix(screen_width, screen_height, max_distance_from_target);
@@ -451,7 +438,7 @@ pub fn main() !void {
             camera.getDirectionToTarget(),
             texture_collection.get(.player).id,
         );
-        rl.EndMode3D();
+        glad.glDisable(glad.GL_DEPTH_TEST);
 
         drawGemCount(screen_height, texture_collection.get(.gem), player.gem_count);
 

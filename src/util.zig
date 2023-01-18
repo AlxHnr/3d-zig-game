@@ -1,7 +1,6 @@
 //! Contains various helpers that belong nowhere else.
 
 const std = @import("std");
-const rl = @import("raylib");
 const rlgl = @cImport(@cInclude("rlgl.h"));
 const math = @import("math.zig");
 
