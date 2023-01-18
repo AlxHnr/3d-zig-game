@@ -113,10 +113,11 @@ const Player = struct {
         id: u64,
         starting_position_x: f32,
         starting_position_z: f32,
-        spritesheet: rl.Texture,
+        spritesheet_width: u16,
+        spritesheet_height: u16,
     ) Player {
         const in_game_heigth = 1.8;
-        const frame_ratio = getFrameHeight(spritesheet) / getFrameWidth(spritesheet);
+        const frame_ratio = getFrameRatio(spritesheet_width, spritesheet_height);
         const character = Character.create(
             .{ .x = starting_position_x, .z = starting_position_z },
             in_game_heigth / frame_ratio / 2.0,
@@ -199,38 +200,32 @@ const Player = struct {
         }, level_geometry);
     }
 
-    fn draw(
+    fn getBillboardData(
         self: Player,
-        camera: rl.Camera,
-        spritesheet: rl.Texture,
-        is_main_character: bool,
         interval_between_previous_and_current_tick: f32,
-    ) void {
+    ) rendering.BillboardRenderer.BillboardData {
         const state_to_render = self.state_at_previous_tick.lerp(
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
         );
-        const direction = if (is_main_character)
-            Direction.back
-        else
-            Direction.front;
-
-        const render_position_3d = rl.Vector3{
-            .x = state_to_render.character.boundaries.position.x,
-            .y = state_to_render.character.height / 2,
-            .z = state_to_render.character.boundaries.position.z,
-        };
-        rl.DrawBillboardRec(
-            camera,
-            spritesheet,
-            getSpritesheetSource(state_to_render, spritesheet, direction),
-            render_position_3d,
-            rl.Vector2{
-                .x = state_to_render.character.height, // Render width is derived from source width.
-                .y = state_to_render.character.height,
+        const source_rect = getSpritesheetSource(state_to_render, .back);
+        return .{
+            .position = .{
+                .x = state_to_render.character.boundaries.position.x,
+                .y = state_to_render.character.height / 2,
+                .z = state_to_render.character.boundaries.position.z,
             },
-            rl.WHITE,
-        );
+            .size = .{
+                .w = state_to_render.character.boundaries.radius * 2,
+                .h = state_to_render.character.height,
+            },
+            .source_rect = .{
+                .x = source_rect[0],
+                .y = source_rect[1],
+                .w = source_rect[2],
+                .h = source_rect[3],
+            },
+        };
     }
 
     fn getCamera(self: Player, interval_between_previous_and_current_tick: f32) ThirdPersonCamera {
@@ -257,9 +252,9 @@ const Player = struct {
 
     const Direction = enum { front, back };
 
-    fn getSpritesheetSource(state_to_render: State, spritesheet: rl.Texture, side: Direction) rl.Rectangle {
-        const w = getFrameWidth(spritesheet);
-        const h = getFrameHeight(spritesheet);
+    fn getSpritesheetSource(state_to_render: State, side: Direction) [4]f32 {
+        const w = getFrameWidth();
+        const h = getFrameHeight();
         const min_velocity_for_animation = 0.02;
 
         const animation_frame =
@@ -270,16 +265,20 @@ const Player = struct {
 
         const x = w * @intToFloat(f32, animation_frame);
         return switch (side) {
-            .front => rl.Rectangle{ .x = x, .y = h, .width = w, .height = h },
-            .back => rl.Rectangle{ .x = x, .y = 0, .width = w, .height = h },
+            .front => .{ x, h, w, h },
+            .back => .{ x, 0, w, h },
         };
     }
 
-    fn getFrameWidth(spritesheet: rl.Texture) f32 {
-        return @intToFloat(f32, @divTrunc(spritesheet.width, 3));
+    fn getFrameWidth() f32 {
+        return 1.0 / 3.0;
     }
-    fn getFrameHeight(spritesheet: rl.Texture) f32 {
-        return @intToFloat(f32, @divTrunc(spritesheet.height, 2));
+    fn getFrameHeight() f32 {
+        return 1.0 / 2.0;
+    }
+    fn getFrameRatio(spritesheet_width: u16, spritesheet_height: u16) f32 {
+        return getFrameHeight() * @intToFloat(f32, spritesheet_height) /
+            (getFrameWidth() * @intToFloat(f32, spritesheet_width));
     }
 
     const State = struct {
@@ -369,7 +368,13 @@ pub fn main() !void {
     var texture_collection = try textures.Collection.loadFromDisk();
     defer texture_collection.destroy();
 
-    var player = Player.create(0, 0, 0, texture_collection.get(.player));
+    var player = Player.create(
+        0,
+        0,
+        0,
+        @intCast(u16, texture_collection.get(.player).width),
+        @intCast(u16, texture_collection.get(.player).height),
+    );
 
     var level_geometry = try LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy();
@@ -437,14 +442,15 @@ pub fn main() !void {
             texture_collection.get(.gem).id,
         );
 
-        rl.BeginShaderMode(shader);
-        player.draw(
-            raylib_camera,
-            texture_collection.get(.player),
-            true,
-            lap_result.next_tick_progress,
+        const player_billboard_data = [_]rendering.BillboardRenderer.BillboardData{
+            player.getBillboardData(lap_result.next_tick_progress),
+        };
+        billboard_renderer.uploadBillboards(player_billboard_data[0..]);
+        billboard_renderer.render(
+            vp_matrix,
+            camera.getDirectionToTarget(),
+            texture_collection.get(.player).id,
         );
-        rl.EndShaderMode();
         rl.EndMode3D();
 
         drawGemCount(screen_height, texture_collection.get(.gem), player.gem_count);
