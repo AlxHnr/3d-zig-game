@@ -1,6 +1,7 @@
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const edit_mode = @import("edit_mode.zig");
+const Error = @import("error.zig").Error;
 const gems = @import("gems.zig");
 const rl = @import("raylib");
 const std = @import("std");
@@ -9,6 +10,7 @@ const util = @import("util.zig");
 const glad = @cImport(@cInclude("external/glad.h"));
 const rendering = @import("rendering.zig");
 const math = @import("math.zig");
+const sdl = @cImport(@cInclude("SDL.h"));
 
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
@@ -143,28 +145,29 @@ const Player = struct {
 
         var acceleration_direction = math.FlatVector{ .x = 0, .z = 0 };
         var turning_direction: f32 = 0;
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT)) {
-            if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT_CONTROL)) {
+        const sdl_buttons = sdl.SDL_GetKeyboardState(null);
+        if (sdl_buttons[sdl.SDL_SCANCODE_LEFT] == 1) {
+            if (sdl_buttons[sdl.SDL_SCANCODE_LCTRL] == 1) {
                 acceleration_direction = acceleration_direction.subtract(right_direction);
-            } else if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT_CONTROL)) {
+            } else if (sdl_buttons[sdl.SDL_SCANCODE_RCTRL] == 1) {
                 turning_direction -= 0.05;
             } else {
                 turning_direction -= 1;
             }
         }
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT)) {
-            if (rl.IsKeyDown(rl.KeyboardKey.KEY_LEFT_CONTROL)) {
+        if (sdl_buttons[sdl.SDL_SCANCODE_RIGHT] == 1) {
+            if (sdl_buttons[sdl.SDL_SCANCODE_LCTRL] == 1) {
                 acceleration_direction = acceleration_direction.add(right_direction);
-            } else if (rl.IsKeyDown(rl.KeyboardKey.KEY_RIGHT_CONTROL)) {
+            } else if (sdl_buttons[sdl.SDL_SCANCODE_RCTRL] == 1) {
                 turning_direction += 0.05;
             } else {
                 turning_direction += 1;
             }
         }
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_UP)) {
+        if (sdl_buttons[sdl.SDL_SCANCODE_UP] == 1) {
             acceleration_direction = acceleration_direction.add(forward_direction);
         }
-        if (rl.IsKeyDown(rl.KeyboardKey.KEY_DOWN)) {
+        if (sdl_buttons[sdl.SDL_SCANCODE_DOWN] == 1) {
             acceleration_direction = acceleration_direction.subtract(forward_direction);
         }
         self.state_at_next_tick.character.setAcceleration(acceleration_direction);
@@ -318,9 +321,51 @@ fn reloadDefaultMap(allocator: std.mem.Allocator, level_geometry: *LevelGeometry
 pub fn main() !void {
     var screen_width: u16 = 1600;
     var screen_height: u16 = 900;
-    rl.InitWindow(screen_width, screen_height, "3D Zig Game");
+
+    rl.InitWindow(320, 240, "3D Zig Game");
     defer rl.CloseWindow();
 
+    if (sdl.SDL_Init(sdl.SDL_INIT_VIDEO) != 0) {
+        std.log.err("failed to initialize SDL2: {s}\n", .{sdl.SDL_GetError()});
+        return Error.FailedToInitializeSDL2Window;
+    }
+    defer sdl.SDL_Quit();
+
+    if (sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_MAJOR_VERSION, 3) != 0 or
+        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_MINOR_VERSION, 3) != 0 or
+        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_CONTEXT_PROFILE_MASK, sdl.SDL_GL_CONTEXT_PROFILE_CORE) != 0 or
+        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_RED_SIZE, 8) != 0 or
+        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_GREEN_SIZE, 8) != 0 or
+        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_BLUE_SIZE, 8) != 0 or
+        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_ALPHA_SIZE, 8) != 0 or
+        sdl.SDL_GL_SetAttribute(sdl.SDL_GL_STENCIL_SIZE, 8) != 0)
+    {
+        std.log.err("failed to set OpenGL attributes: {s}\n", .{sdl.SDL_GetError()});
+        return Error.FailedToInitializeSDL2Window;
+    }
+    const window = sdl.SDL_CreateWindow(
+        "3D Zig Game",
+        sdl.SDL_WINDOWPOS_UNDEFINED,
+        sdl.SDL_WINDOWPOS_UNDEFINED,
+        screen_width,
+        screen_height,
+        sdl.SDL_WINDOW_OPENGL,
+    );
+    if (window == null) {
+        std.log.err("failed to create SDL2 window: {s}\n", .{sdl.SDL_GetError()});
+        return Error.FailedToInitializeSDL2Window;
+    }
+    defer sdl.SDL_DestroyWindow(window);
+
+    const gl_context = sdl.SDL_GL_CreateContext(window);
+    if (gl_context == null) {
+        std.log.err("failed to create OpenGL 3.3 context: {s}\n", .{sdl.SDL_GetError()});
+        return Error.FailedToInitializeSDL2Window;
+    }
+    defer sdl.SDL_GL_DeleteContext(gl_context);
+
+    glad.glEnable(glad.GL_BLEND);
+    glad.glEnable(glad.GL_CULL_FACE);
     glad.glEnable(glad.GL_STENCIL_TEST);
     glad.glStencilOp(glad.GL_KEEP, glad.GL_KEEP, glad.GL_REPLACE);
 
@@ -356,7 +401,8 @@ pub fn main() !void {
     defer gpa.allocator().free(billboard_buffer);
 
     var tick_timer = try util.TickTimer.start(60);
-    while (!rl.WindowShouldClose()) {
+    var keep_running = true;
+    while (keep_running) {
         const lap_result = tick_timer.lap();
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
@@ -385,8 +431,6 @@ pub fn main() !void {
         else
             null;
 
-        rl.BeginDrawing();
-
         glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
         glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
         glad.glEnable(glad.GL_DEPTH_TEST);
@@ -414,65 +458,70 @@ pub fn main() !void {
         );
         glad.glDisable(glad.GL_DEPTH_TEST);
 
-        rl.EndDrawing();
-
+        sdl.SDL_GL_SwapWindow(window);
         player.pollInputs(lap_result.next_tick_progress);
 
-        if (std.math.fabs(rl.GetMouseWheelMoveV().y) > math.epsilon) {
-            if (!rl.IsMouseButtonDown(rl.MouseButton.MOUSE_BUTTON_RIGHT)) {
-                player.state_at_next_tick.camera
-                    .increaseDistanceToObject(-rl.GetMouseWheelMoveV().y * 2.5);
-            } else if (rl.GetMouseWheelMoveV().y < 0) {
-                edit_mode_state.cycleInsertedObjectSubtypeForwards();
-            } else {
-                edit_mode_state.cycleInsertedObjectSubtypeBackwards();
-            }
-        }
-        if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_MIDDLE)) {
-            edit_mode_state.cycleInsertedObjectType(&level_geometry);
-        }
-        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_T)) {
-            switch (view_mode) {
-                .from_behind => {
-                    view_mode = .top_down;
-                    player.state_at_next_tick.camera.setAngleFromGround(math.degreesToRadians(90));
-                },
-                .top_down => {
-                    view_mode = .from_behind;
-                    player.state_at_next_tick.camera.resetAngleFromGround();
-                },
-            }
-        }
-        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_F2)) {
-            var file = try std.fs.cwd().createFile("maps/default.json", .{});
-            defer file.close();
-            try level_geometry.writeAsJson(gpa.allocator(), file.writer());
-        }
-        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_F5)) {
-            try reloadDefaultMap(gpa.allocator(), &level_geometry);
-        }
+        var mouse_x: c_int = undefined;
+        var mouse_y: c_int = undefined;
+        _ = sdl.SDL_GetMouseState(&mouse_x, &mouse_y);
+        mouse_x = std.math.clamp(mouse_x, 0, screen_width);
+        mouse_y = std.math.clamp(mouse_y, 0, screen_height);
 
         const ray = camera.get3DRay(
-            @floatToInt(u16, rl.GetMousePosition().x),
-            @floatToInt(u16, rl.GetMousePosition().y),
+            @intCast(u16, mouse_x),
+            @intCast(u16, mouse_y),
             screen_width,
             screen_height,
             max_distance_from_target,
         );
-        if (rl.IsKeyPressed(rl.KeyboardKey.KEY_DELETE)) {
-            edit_mode_state.cycleMode(&level_geometry);
+
+        var event: sdl.SDL_Event = undefined;
+        while (sdl.SDL_PollEvent(&event) == 1) {
+            if (event.type == sdl.SDL_QUIT) {
+                keep_running = false;
+            } else if (event.type == sdl.SDL_MOUSEBUTTONDOWN) {
+                if (event.button.button == sdl.SDL_BUTTON_LEFT) {
+                    try edit_mode_state.handleActionAtTarget(&level_geometry, ray);
+                } else if (event.button.button == sdl.SDL_BUTTON_MIDDLE) {
+                    edit_mode_state.cycleInsertedObjectType(&level_geometry);
+                }
+            } else if (event.type == sdl.SDL_MOUSEWHEEL) {
+                if (sdl.SDL_GetMouseState(null, null) & sdl.SDL_BUTTON_RMASK == 0) {
+                    player.state_at_next_tick.camera
+                        .increaseDistanceToObject(event.wheel.preciseY * -2.5);
+                } else if (event.wheel.preciseY < 0) {
+                    edit_mode_state.cycleInsertedObjectSubtypeForwards();
+                } else {
+                    edit_mode_state.cycleInsertedObjectSubtypeBackwards();
+                }
+            } else if (event.type == sdl.SDL_KEYDOWN) {
+                if (event.key.keysym.sym == sdl.SDLK_t) {
+                    switch (view_mode) {
+                        .from_behind => {
+                            view_mode = .top_down;
+                            player.state_at_next_tick.camera.setAngleFromGround(math.degreesToRadians(90));
+                        },
+                        .top_down => {
+                            view_mode = .from_behind;
+                            player.state_at_next_tick.camera.resetAngleFromGround();
+                        },
+                    }
+                } else if (event.key.keysym.sym == sdl.SDLK_F2) {
+                    var file = try std.fs.cwd().createFile("maps/default.json", .{});
+                    defer file.close();
+                    try level_geometry.writeAsJson(gpa.allocator(), file.writer());
+                } else if (event.key.keysym.sym == sdl.SDLK_F5) {
+                    try reloadDefaultMap(gpa.allocator(), &level_geometry);
+                } else if (event.key.keysym.sym == sdl.SDLK_DELETE) {
+                    edit_mode_state.cycleMode(&level_geometry);
+                }
+            }
         }
-        if (rl.IsMouseButtonPressed(rl.MouseButton.MOUSE_BUTTON_LEFT)) {
-            try edit_mode_state.handleActionAtTarget(&level_geometry, ray);
-        }
+
         edit_mode_state.updateCurrentActionTarget(
             &level_geometry,
             ray,
             camera.getDirectionToTarget().toFlatVector(),
         );
-        if (rl.IsWindowResized()) {
-            screen_width = @intCast(u16, rl.GetScreenWidth());
-            screen_height = @intCast(u16, rl.GetScreenHeight());
-        }
     }
 }

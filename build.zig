@@ -10,6 +10,7 @@ pub fn build(b: *std.build.Builder) void {
     exe.addPackagePath("gl", "third_party/gl.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
+    exe.linkSystemLibrary("SDL2");
     exe.install();
 
     const run_cmd = exe.run();

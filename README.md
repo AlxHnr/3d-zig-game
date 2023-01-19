@@ -4,6 +4,7 @@ Install the required dependencies, example for Fedora:
 
 ```sh
 sudo dnf install libXcursor-devel libXi-devel libXinerama-devel libXrandr-devel
+sudo dnf install SDL2-devel
 ```
 
 Install zig 0.11.0 and run `zig build run` inside the projects directory.
