@@ -299,32 +299,6 @@ const Player = struct {
     };
 };
 
-fn drawGemCount(
-    screen_height: u16,
-    gem_texture: rl.Texture,
-    gem_count: u64,
-) void {
-    const scale = 3;
-    const on_screen_width = gem_texture.width * scale;
-    const on_screen_height = gem_texture.height * scale;
-    const margin_from_borders = 8;
-    const gem_on_screen_position = rl.Vector2{
-        .x = margin_from_borders,
-        .y = @intToFloat(f32, screen_height - margin_from_borders - on_screen_height),
-    };
-    var string_buffer: [16]u8 = undefined;
-    const count_string = std.fmt.bufPrintZ(string_buffer[0..], "x{}", .{gem_count}) catch "";
-
-    rl.DrawTextureEx(gem_texture, gem_on_screen_position, 0, scale, rl.WHITE);
-    rl.DrawText(
-        count_string,
-        @floatToInt(c_int, gem_on_screen_position.x) + on_screen_width + margin_from_borders,
-        @floatToInt(c_int, gem_on_screen_position.y),
-        @floatToInt(c_int, 17.5 * @intToFloat(f32, scale)),
-        rl.BLACK,
-    );
-}
-
 const ViewMode = enum { from_behind, top_down };
 
 const CurrentlyEditedObject = struct {
@@ -439,15 +413,6 @@ pub fn main() !void {
             texture_collection.get(.player).id,
         );
         glad.glDisable(glad.GL_DEPTH_TEST);
-
-        drawGemCount(screen_height, texture_collection.get(.gem), player.gem_count);
-
-        var string_buffer: [128]u8 = undefined;
-        const edit_mode_descripiton = edit_mode_state.describe(string_buffer[0..]) catch "";
-        rl.DrawText(edit_mode_descripiton, 5, 5, 20, rl.BLACK);
-
-        const fps_string = std.fmt.bufPrintZ(string_buffer[0..], "FPS: {}", .{rl.GetFPS()}) catch "";
-        rl.DrawText(fps_string, 5, 25, 20, rl.BLACK);
 
         rl.EndDrawing();
 
