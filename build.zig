@@ -7,6 +7,7 @@ pub fn build(b: *std.build.Builder) void {
 
     const exe = b.addExecutable("3d-zig-game", "src/main.zig");
     exe.addIncludePath("third-party/raylib-zig/raylib/src");
+    exe.addPackagePath("gl", "third_party/gl.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
