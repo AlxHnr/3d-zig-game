@@ -7,6 +7,7 @@ const rl = @import("raylib");
 const std = @import("std");
 const textures = @import("textures.zig");
 const util = @import("util.zig");
+const gl = @import("gl");
 const glad = @cImport(@cInclude("external/glad.h"));
 const rendering = @import("rendering.zig");
 const math = @import("math.zig");
@@ -318,6 +319,12 @@ fn reloadDefaultMap(allocator: std.mem.Allocator, level_geometry: *LevelGeometry
     level_geometry.* = geometry;
 }
 
+fn getProcAddress(_: sdl.SDL_GLContext, extension_name: [:0]const u8) ?gl.FunctionPointer {
+    // Usually a check with SDL_GL_ExtensionSupported() is required, but gl.zig only provides the
+    // function name instead of the full extension string.
+    return sdl.SDL_GL_GetProcAddress(extension_name);
+}
+
 pub fn main() !void {
     var screen_width: u16 = 1600;
     var screen_height: u16 = 900;
@@ -363,6 +370,14 @@ pub fn main() !void {
         return Error.FailedToInitializeSDL2Window;
     }
     defer sdl.SDL_GL_DeleteContext(gl_context);
+
+    if (sdl.SDL_GL_MakeCurrent(window, gl_context) != 0) {
+        std.log.err("failed to set current OpenGL context: {s}\n", .{
+            sdl.SDL_GetError(),
+        });
+        return Error.FailedToInitializeSDL2Window;
+    }
+    try gl.load(gl_context, getProcAddress);
 
     glad.glEnable(glad.GL_BLEND);
     glad.glEnable(glad.GL_CULL_FACE);
