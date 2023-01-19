@@ -8,7 +8,6 @@ const std = @import("std");
 const textures = @import("textures.zig");
 const util = @import("util.zig");
 const gl = @import("gl");
-const glad = @cImport(@cInclude("external/glad.h"));
 const rendering = @import("rendering.zig");
 const math = @import("math.zig");
 const sdl = @cImport(@cInclude("SDL.h"));
@@ -379,10 +378,10 @@ pub fn main() !void {
     }
     try gl.load(gl_context, getProcAddress);
 
-    glad.glEnable(glad.GL_BLEND);
-    glad.glEnable(glad.GL_CULL_FACE);
-    glad.glEnable(glad.GL_STENCIL_TEST);
-    glad.glStencilOp(glad.GL_KEEP, glad.GL_KEEP, glad.GL_REPLACE);
+    gl.enable(gl.BLEND);
+    gl.enable(gl.CULL_FACE);
+    gl.enable(gl.STENCIL_TEST);
+    gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -446,9 +445,9 @@ pub fn main() !void {
         else
             null;
 
-        glad.glClearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
-        glad.glClear(glad.GL_COLOR_BUFFER_BIT | glad.GL_DEPTH_BUFFER_BIT | glad.GL_STENCIL_BUFFER_BIT);
-        glad.glEnable(glad.GL_DEPTH_TEST);
+        gl.clearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+        gl.enable(gl.DEPTH_TEST);
 
         var vp_matrix =
             camera.getViewProjectionMatrix(screen_width, screen_height, max_distance_from_target);
@@ -471,7 +470,7 @@ pub fn main() !void {
             camera.getDirectionToTarget(),
             texture_collection.get(.player).id,
         );
-        glad.glDisable(glad.GL_DEPTH_TEST);
+        gl.disable(gl.DEPTH_TEST);
 
         sdl.SDL_GL_SwapWindow(window);
         player.pollInputs(lap_result.next_tick_progress);

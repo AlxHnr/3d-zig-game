@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const rl = @import("raylib");
-const glad = @cImport(@cInclude("external/glad.h"));
+const gl = @import("gl");
 const Error = @import("error.zig").Error;
 
 /// The ordinal values are passed to shaders to index array textures.
@@ -24,34 +24,28 @@ pub const Name = enum(u8) {
 /// returned id binds to GL_TEXTURE_2D_ARRAY and has to be destroyed via glDeleteTextures(1, &id).
 pub fn loadTextureArray() !c_uint {
     var id: c_uint = undefined;
-    glad.glGenTextures(1, &id);
+    gl.genTextures(1, &id);
     if (id == 0) {
         return Error.FailedToLoadTextureFile;
     }
-    errdefer glad.glDeleteTextures(1, &id);
+    errdefer gl.deleteTextures(1, &id);
 
-    glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, id);
-    defer glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, 0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, id);
+    defer gl.bindTexture(gl.TEXTURE_2D_ARRAY, 0);
 
     const texture_width = 64; // Smaller and larger images get scaled to this.
     const texture_height = texture_width;
-    const mipmap_levels = std.math.log2(texture_width);
-    glad.glTexStorage3D(
-        glad.GL_TEXTURE_2D_ARRAY,
-        mipmap_levels,
-        glad.GL_RGBA8,
-        texture_width,
-        texture_height,
-        @typeInfo(Name).Enum.fields.len,
-    );
-    glad.glTexParameteri(glad.GL_TEXTURE_2D_ARRAY, glad.GL_TEXTURE_WRAP_S, glad.GL_REPEAT);
-    glad.glTexParameteri(glad.GL_TEXTURE_2D_ARRAY, glad.GL_TEXTURE_WRAP_T, glad.GL_REPEAT);
-    glad.glTexParameteri(glad.GL_TEXTURE_2D_ARRAY, glad.GL_TEXTURE_MAG_FILTER, glad.GL_NEAREST);
-    glad.glTexParameteri(
-        glad.GL_TEXTURE_2D_ARRAY,
-        glad.GL_TEXTURE_MIN_FILTER,
-        glad.GL_LINEAR_MIPMAP_NEAREST,
-    );
+    setupMipMapLevel(0, texture_width, texture_height);
+    setupMipMapLevel(1, 32, 32);
+    setupMipMapLevel(2, 16, 16);
+    setupMipMapLevel(3, 8, 8);
+    setupMipMapLevel(4, 4, 4);
+    setupMipMapLevel(5, 2, 2);
+    setupMipMapLevel(6, 1, 1);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
 
     for (std.enums.values(Name)) |value, index| {
         var path_buffer: [64]u8 = undefined;
@@ -74,8 +68,8 @@ pub fn loadTextureArray() !c_uint {
             rl.ImageResizeNN(&image, texture_width, texture_height);
         }
 
-        glad.glTexSubImage3D(
-            glad.GL_TEXTURE_2D_ARRAY,
+        gl.texSubImage3D(
+            gl.TEXTURE_2D_ARRAY,
             0,
             0,
             0,
@@ -83,13 +77,13 @@ pub fn loadTextureArray() !c_uint {
             texture_width,
             texture_height,
             1,
-            glad.GL_RGBA,
-            glad.GL_UNSIGNED_BYTE,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
             image.data,
         );
     }
 
-    glad.glGenerateMipmap(glad.GL_TEXTURE_2D_ARRAY);
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
     return id;
 }
 
@@ -119,17 +113,13 @@ pub const Collection = struct {
                 return Error.FailedToLoadTextureFile;
             }
 
-            glad.glBindTexture(glad.GL_TEXTURE_2D, texture.id);
-            glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_WRAP_S, glad.GL_REPEAT);
-            glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_WRAP_T, glad.GL_REPEAT);
-            glad.glTexParameteri(glad.GL_TEXTURE_2D, glad.GL_TEXTURE_MAG_FILTER, glad.GL_NEAREST);
-            glad.glTexParameteri(
-                glad.GL_TEXTURE_2D,
-                glad.GL_TEXTURE_MIN_FILTER,
-                glad.GL_LINEAR_MIPMAP_NEAREST,
-            );
-            glad.glGenerateMipmap(glad.GL_TEXTURE_2D);
-            glad.glBindTexture(glad.GL_TEXTURE_2D, 0);
+            gl.bindTexture(gl.TEXTURE_2D, texture.id);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+            gl.generateMipmap(gl.TEXTURE_2D);
+            gl.bindTexture(gl.TEXTURE_2D, 0);
             mapping.value.* = texture;
         }
 
@@ -148,3 +138,18 @@ pub const Collection = struct {
         return self.textures.get(name);
     }
 };
+
+fn setupMipMapLevel(level: c_int, width: c_int, height: c_int) void {
+    gl.texImage3D(
+        gl.TEXTURE_2D_ARRAY,
+        level,
+        gl.RGBA8,
+        width,
+        height,
+        @typeInfo(Name).Enum.fields.len,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        null,
+    );
+}

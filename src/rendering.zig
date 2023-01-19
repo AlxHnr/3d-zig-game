@@ -1,7 +1,7 @@
 const animation = @import("animation.zig");
 const std = @import("std");
 const assert = std.debug.assert;
-const glad = @cImport(@cInclude("external/glad.h"));
+const gl = @import("gl");
 const math = @import("math.zig");
 const meshes = @import("meshes.zig");
 const Shader = @import("shader.zig").Shader;
@@ -37,16 +37,16 @@ pub const WallRenderer = struct {
 
         const vertices = meshes.BottomlessCube.vertices;
         const vertex_vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
-        glad.glVertexAttribPointer(loc_position, 3, glad.GL_FLOAT, 0, 0, null);
-        glad.glEnableVertexAttribArray(loc_position);
+        gl.vertexAttribPointer(loc_position, 3, gl.FLOAT, 0, 0, null);
+        gl.enableVertexAttribArray(loc_position);
 
         const texture_coord_scale = meshes.BottomlessCube.texture_coord_scale_values;
         const texture_coord_scales_vbo_id = createAndBindVbo(
             &texture_coord_scale,
             @sizeOf(@TypeOf(texture_coord_scale)),
         );
-        glad.glVertexAttribIPointer(loc_texcoord_scale, 1, glad.GL_UNSIGNED_BYTE, 0, null);
-        glad.glEnableVertexAttribArray(loc_texcoord_scale);
+        gl.vertexAttribIPointer(loc_texcoord_scale, 1, gl.UNSIGNED_BYTE, 0, null);
+        gl.enableVertexAttribArray(loc_texcoord_scale);
 
         const wall_data_vbo_id = createAndBindEmptyVbo();
         setupLevelGeometryPropertyAttributes(
@@ -65,8 +65,8 @@ pub const WallRenderer = struct {
             assert(@sizeOf(WallData) == 92);
         }
 
-        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
-        glad.glBindVertexArray(0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, 0);
+        gl.bindVertexArray(0);
         setTextureSamplerId(shader, loc_texture_sampler);
 
         return WallRenderer{
@@ -82,10 +82,10 @@ pub const WallRenderer = struct {
     }
 
     pub fn destroy(self: *WallRenderer) void {
-        glad.glDeleteBuffers(1, &self.wall_data_vbo_id);
-        glad.glDeleteBuffers(1, &self.texture_coord_scales_vbo_id);
-        glad.glDeleteBuffers(1, &self.vertex_vbo_id);
-        glad.glDeleteVertexArrays(1, &self.vao_id);
+        gl.deleteBuffers(1, &self.wall_data_vbo_id);
+        gl.deleteBuffers(1, &self.texture_coord_scales_vbo_id);
+        gl.deleteBuffers(1, &self.vertex_vbo_id);
+        gl.deleteVertexArrays(1, &self.vao_id);
         self.shader.destroy();
     }
 
@@ -96,7 +96,7 @@ pub const WallRenderer = struct {
             walls.ptr,
             walls.len * @sizeOf(WallData),
             &self.wall_capacity_in_vbo,
-            glad.GL_STATIC_DRAW,
+            gl.STATIC_DRAW,
         );
         self.walls_uploaded_to_vbo = walls.len;
     }
@@ -105,18 +105,18 @@ pub const WallRenderer = struct {
         const vertex_count = meshes.BottomlessCube.vertices.len;
 
         self.shader.enable();
-        glad.glBindVertexArray(self.vao_id);
-        glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, array_texture_id);
-        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
-        glad.glDrawArraysInstanced(
-            glad.GL_TRIANGLES,
+        gl.bindVertexArray(self.vao_id);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, array_texture_id);
+        gl.uniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
+        gl.drawArraysInstanced(
+            gl.TRIANGLES,
             0,
             vertex_count,
             @intCast(c_int, self.walls_uploaded_to_vbo),
         );
-        glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, 0);
-        glad.glBindVertexArray(0);
-        glad.glUseProgram(0);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, 0);
+        gl.bindVertexArray(0);
+        gl.useProgram(0);
     }
 
     pub const WallData = extern struct {
@@ -185,8 +185,8 @@ pub const FloorRenderer = struct {
             assert(@sizeOf(FloorData) == 92);
         }
 
-        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
-        glad.glBindVertexArray(0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, 0);
+        gl.bindVertexArray(0);
         setTextureSamplerId(shader, loc_texture_sampler);
 
         return FloorRenderer{
@@ -203,9 +203,9 @@ pub const FloorRenderer = struct {
 
     pub fn destroy(self: *FloorRenderer) void {
         self.shader.destroy();
-        glad.glDeleteBuffers(1, &self.floor_data_vbo_id);
-        glad.glDeleteBuffers(1, &self.vertex_vbo_id);
-        glad.glDeleteVertexArrays(1, &self.vao_id);
+        gl.deleteBuffers(1, &self.floor_data_vbo_id);
+        gl.deleteBuffers(1, &self.vertex_vbo_id);
+        gl.deleteVertexArrays(1, &self.vao_id);
     }
 
     /// The given floors will be rendered in the same order as in the given slice.
@@ -215,7 +215,7 @@ pub const FloorRenderer = struct {
             floors.ptr,
             floors.len * @sizeOf(FloorData),
             &self.floor_capacity_in_vbo,
-            glad.GL_STATIC_DRAW,
+            gl.STATIC_DRAW,
         );
         self.floors_uploaded_to_vbo = floors.len;
     }
@@ -229,14 +229,14 @@ pub const FloorRenderer = struct {
         const animation_frame: c_int = floor_animation_state.getFrame();
 
         self.shader.enable();
-        glad.glBindVertexArray(self.vao_id);
-        glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, array_texture_id);
-        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
-        glad.glUniform1iv(self.current_animation_frame_location, 1, &animation_frame);
+        gl.bindVertexArray(self.vao_id);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, array_texture_id);
+        gl.uniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
+        gl.uniform1iv(self.current_animation_frame_location, 1, &animation_frame);
         renderStandingQuadInstanced(self.floors_uploaded_to_vbo);
-        glad.glBindTexture(glad.GL_TEXTURE_2D_ARRAY, 0);
-        glad.glBindVertexArray(0);
-        glad.glUseProgram(0);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, 0);
+        gl.bindVertexArray(0);
+        gl.useProgram(0);
     }
 
     pub const FloorData = extern struct {
@@ -316,8 +316,8 @@ pub const BillboardRenderer = struct {
             assert(@sizeOf(BillboardData) == 56);
         }
 
-        glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
-        glad.glBindVertexArray(0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, 0);
+        gl.bindVertexArray(0);
         setTextureSamplerId(shader, loc_texture_sampler);
 
         return BillboardRenderer{
@@ -334,9 +334,9 @@ pub const BillboardRenderer = struct {
 
     pub fn destroy(self: *BillboardRenderer) void {
         self.shader.destroy();
-        glad.glDeleteBuffers(1, &self.billboard_data_vbo_id);
-        glad.glDeleteBuffers(1, &self.vertex_vbo_id);
-        glad.glDeleteVertexArrays(1, &self.vao_id);
+        gl.deleteBuffers(1, &self.billboard_data_vbo_id);
+        gl.deleteBuffers(1, &self.vertex_vbo_id);
+        gl.deleteVertexArrays(1, &self.vao_id);
     }
 
     /// Billboards are rendered in the same order as specified.
@@ -346,7 +346,7 @@ pub const BillboardRenderer = struct {
             billboards.ptr,
             billboards.len * @sizeOf(BillboardData),
             &self.billboard_capacity_in_vbo,
-            glad.GL_STREAM_DRAW,
+            gl.STREAM_DRAW,
         );
         self.billboards_uploaded_to_vbo = billboards.len;
     }
@@ -365,14 +365,14 @@ pub const BillboardRenderer = struct {
         };
 
         self.shader.enable();
-        glad.glBindVertexArray(self.vao_id);
-        glad.glBindTexture(glad.GL_TEXTURE_2D, texture_id);
-        glad.glUniform2fv(self.y_rotation_location, 1, &y_rotation_towards_camera);
-        glad.glUniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
+        gl.bindVertexArray(self.vao_id);
+        gl.bindTexture(gl.TEXTURE_2D, texture_id);
+        gl.uniform2fv(self.y_rotation_location, 1, &y_rotation_towards_camera);
+        gl.uniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
         renderStandingQuadInstanced(self.billboards_uploaded_to_vbo);
-        glad.glBindTexture(glad.GL_TEXTURE_2D, 0);
-        glad.glBindVertexArray(0);
-        glad.glUseProgram(0);
+        gl.bindTexture(gl.TEXTURE_2D, 0);
+        gl.bindVertexArray(0);
+        gl.useProgram(0);
     }
 
     pub const BillboardData = extern struct {
@@ -396,21 +396,21 @@ pub const BillboardRenderer = struct {
 
 fn createAndBindVao() c_uint {
     var vao_id: c_uint = undefined;
-    glad.glGenVertexArrays(1, &vao_id);
-    glad.glBindVertexArray(vao_id);
+    gl.genVertexArrays(1, &vao_id);
+    gl.bindVertexArray(vao_id);
     return vao_id;
 }
 
 fn createAndBindEmptyVbo() c_uint {
     var id: c_uint = undefined;
-    glad.glGenBuffers(1, &id);
-    glad.glBindBuffer(glad.GL_ARRAY_BUFFER, id);
+    gl.genBuffers(1, &id);
+    gl.bindBuffer(gl.ARRAY_BUFFER, id);
     return id;
 }
 
 fn createAndBindVbo(data: *const anyopaque, size: isize) c_uint {
     const id = createAndBindEmptyVbo();
-    glad.glBufferData(glad.GL_ARRAY_BUFFER, size, data, glad.GL_STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, size, data, gl.STATIC_DRAW);
     return id;
 }
 
@@ -419,13 +419,13 @@ fn setupAndBindStandingQuadVbo(position_location: c_uint, texture_coords_locatio
     const vertices = meshes.StandingQuad.vertex_data;
     const vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
     const stride = @sizeOf([4]f32); // x, y, u, v.
-    glad.glVertexAttribPointer(position_location, 2, glad.GL_FLOAT, 0, stride, null); // x, y
-    glad.glEnableVertexAttribArray(position_location);
-    glad.glVertexAttribPointer(texture_coords_location, 2, glad.GL_FLOAT, 0, stride, @intToPtr(
+    gl.vertexAttribPointer(position_location, 2, gl.FLOAT, 0, stride, null); // x, y
+    gl.enableVertexAttribArray(position_location);
+    gl.vertexAttribPointer(texture_coords_location, 2, gl.FLOAT, 0, stride, @intToPtr(
         ?*u8,
         @sizeOf([2]f32), // u, v
     ));
-    glad.glEnableVertexAttribArray(texture_coords_location);
+    gl.enableVertexAttribArray(texture_coords_location);
     return vbo_id;
 }
 
@@ -435,18 +435,18 @@ fn updateVbo(
     size: usize,
     /// Will be updated by this function.
     current_capacity: *usize,
-    usage: glad.GLenum,
+    usage: gl.GLenum,
 ) void {
     const signed_size = @intCast(isize, size);
 
-    glad.glBindBuffer(glad.GL_ARRAY_BUFFER, vbo_id);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo_id);
     if (size <= current_capacity.*) {
-        glad.glBufferSubData(glad.GL_ARRAY_BUFFER, 0, signed_size, data);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, signed_size, data);
     } else {
-        glad.glBufferData(glad.GL_ARRAY_BUFFER, signed_size, data, usage);
+        gl.bufferData(gl.ARRAY_BUFFER, signed_size, data, usage);
         current_capacity.* = size;
     }
-    glad.glBindBuffer(glad.GL_ARRAY_BUFFER, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, 0);
 }
 
 fn setupVertexAttribute(
@@ -455,16 +455,16 @@ fn setupVertexAttribute(
     offset_to_first_component: usize,
     all_components_size: c_int,
 ) void {
-    glad.glEnableVertexAttribArray(attribute_location);
-    glad.glVertexAttribPointer(
+    gl.enableVertexAttribArray(attribute_location);
+    gl.vertexAttribPointer(
         attribute_location,
         component_count,
-        glad.GL_FLOAT,
+        gl.FLOAT,
         0,
         all_components_size,
         @intToPtr(?*u8, offset_to_first_component),
     );
-    glad.glVertexAttribDivisor(attribute_location, 1);
+    gl.vertexAttribDivisor(attribute_location, 1);
 }
 
 /// Configures LevelGeometryAttributes as vertex attributes at offset 0.
@@ -495,11 +495,11 @@ fn setupLevelGeometryPropertyAttributes(
 fn setTextureSamplerId(shader: Shader, loc_texture_sampler: c_int) void {
     shader.enable();
     var texture_sampler_id: c_int = 0;
-    glad.glUniform1iv(loc_texture_sampler, 1, &texture_sampler_id);
-    glad.glUseProgram(0);
+    gl.uniform1iv(loc_texture_sampler, 1, &texture_sampler_id);
+    gl.useProgram(0);
 }
 
 fn renderStandingQuadInstanced(instance_count: usize) void {
     const vertex_count = meshes.StandingQuad.vertex_data.len / 2;
-    glad.glDrawArraysInstanced(glad.GL_TRIANGLES, 0, vertex_count, @intCast(c_int, instance_count));
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, vertex_count, @intCast(c_int, instance_count));
 }
