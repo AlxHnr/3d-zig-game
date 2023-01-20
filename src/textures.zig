@@ -196,7 +196,7 @@ fn scale(
     if (image.w == new_width and image.h == new_height) {
         return image;
     }
-    std.log.info("image size is not {}/{}, trying to rescale: \"{s}\"", .{
+    std.log.info("image size is not {}x{}, trying to rescale: \"{s}\"", .{
         new_width, new_height, image_path,
     });
 
@@ -208,7 +208,7 @@ fn scale(
         image.*.format.*.format,
     );
     if (scaled_surface == null) {
-        std.log.err("failed to scale image to {}/{}: {s}: \"{s}\"", .{
+        std.log.err("failed to scale image to {}x{}: {s}: \"{s}\"", .{
             new_width, new_height, sdl.SDL_GetError(), image_path,
         });
         return Error.FailedToLoadTextureFile;
@@ -216,7 +216,7 @@ fn scale(
     errdefer sdl.SDL_FreeSurface(scaled_surface);
 
     if (sdl.SDL_BlitScaled(image, null, scaled_surface, null) != 0) {
-        std.log.err("failed to scale image to {}/{}: {s}: \"{s}\"", .{
+        std.log.err("failed to scale image to {}x{}: {s}: \"{s}\"", .{
             new_width, new_height, sdl.SDL_GetError(), image_path,
         });
         return Error.FailedToLoadTextureFile;
