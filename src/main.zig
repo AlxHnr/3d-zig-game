@@ -378,8 +378,9 @@ pub fn main() !void {
     }
     try gl.load(gl_context, getProcAddress);
 
-    gl.enable(gl.BLEND);
     gl.enable(gl.CULL_FACE);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.enable(gl.STENCIL_TEST);
     gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
