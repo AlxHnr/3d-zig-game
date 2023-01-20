@@ -10,7 +10,7 @@ const util = @import("util.zig");
 const gl = @import("gl");
 const rendering = @import("rendering.zig");
 const math = @import("math.zig");
-const sdl = @cImport(@cInclude("SDL.h"));
+const sdl = @import("sdl.zig");
 
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
