@@ -3,7 +3,6 @@ const collision = @import("collision.zig");
 const edit_mode = @import("edit_mode.zig");
 const Error = @import("error.zig").Error;
 const gems = @import("gems.zig");
-const rl = @import("raylib");
 const std = @import("std");
 const textures = @import("textures.zig");
 const util = @import("util.zig");
@@ -327,9 +326,6 @@ fn getProcAddress(_: sdl.SDL_GLContext, extension_name: [:0]const u8) ?gl.Functi
 pub fn main() !void {
     var screen_width: u16 = 1600;
     var screen_height: u16 = 900;
-
-    rl.InitWindow(320, 240, "3D Zig Game");
-    defer rl.CloseWindow();
 
     if (sdl.SDL_Init(sdl.SDL_INIT_VIDEO) != 0) {
         std.log.err("failed to initialize SDL2: {s}", .{sdl.SDL_GetError()});
