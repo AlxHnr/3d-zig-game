@@ -3,7 +3,7 @@ const collision = @import("collision.zig");
 const std = @import("std");
 const util = @import("util.zig");
 const textures = @import("textures.zig");
-const glad = @cImport(@cInclude("external/glad.h"));
+const gl = @import("gl");
 const Error = @import("error.zig").Error;
 const rendering = @import("rendering.zig");
 const meshes = @import("meshes.zig");
@@ -35,7 +35,7 @@ pub const LevelGeometry = struct {
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
         const array_texture_id = try textures.loadTextureArray();
-        errdefer glad.glDeleteTextures(1, &array_texture_id);
+        errdefer gl.deleteTextures(1, &array_texture_id);
         var wall_renderer = try rendering.WallRenderer.create();
         errdefer wall_renderer.destroy();
         var floor_renderer = try rendering.FloorRenderer.create();
@@ -68,7 +68,7 @@ pub const LevelGeometry = struct {
 
         self.wall_renderer.destroy();
         self.walls.deinit();
-        glad.glDeleteTextures(1, &self.array_texture_id);
+        gl.deleteTextures(1, &self.array_texture_id);
     }
 
     /// Stores the given allocator internally for its entire lifetime.
@@ -130,9 +130,9 @@ pub const LevelGeometry = struct {
         texture_collection: textures.Collection,
     ) void {
         // Prevent floors from overpainting each other.
-        glad.glStencilFunc(glad.GL_NOTEQUAL, 1, 0xff);
+        gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
         self.floor_renderer.render(vp_matrix, self.array_texture_id, self.floor_animation_state);
-        glad.glStencilFunc(glad.GL_ALWAYS, 1, 0xff);
+        gl.stencilFunc(gl.ALWAYS, 1, 0xff);
 
         // Fences must be rendered after the floor to allow blending transparent, mipmapped  texels.
         self.wall_renderer.render(vp_matrix, self.array_texture_id);
