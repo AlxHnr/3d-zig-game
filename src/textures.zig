@@ -1,9 +1,9 @@
 //! Helpers for loading all known textures.
 
 const std = @import("std");
-const rl = @import("raylib");
 const gl = @import("gl");
 const Error = @import("error.zig").Error;
+const sdl = @import("sdl.zig");
 
 /// The ordinal values are passed to shaders to index array textures.
 pub const Name = enum(u8) {
@@ -42,10 +42,7 @@ pub fn loadTextureArray() !c_uint {
     setupMipMapLevel(4, 4, 4);
     setupMipMapLevel(5, 2, 2);
     setupMipMapLevel(6, 1, 1);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+    configureCurrentTexture(gl.TEXTURE_2D_ARRAY);
 
     for (std.enums.values(Name)) |value, index| {
         var path_buffer: [64]u8 = undefined;
@@ -53,20 +50,10 @@ pub fn loadTextureArray() !c_uint {
             @tagName(value),
         });
 
-        var image = rl.LoadImage(texture_path);
-        if (image.data == null) {
-            return Error.FailedToLoadTextureFile;
-        }
-        defer rl.UnloadImage(image);
+        var image = try loadImageRGBA8(texture_path);
+        defer sdl.SDL_FreeSurface(image);
 
-        rl.ImageFormat(&image, @enumToInt(rl.PIXELFORMAT_UNCOMPRESSED_R8G8B8A8));
-        if (image.format != rl.PIXELFORMAT_UNCOMPRESSED_R8G8B8A8) {
-            std.log.err("Image has wrong format, expected 8-bit RGBA: \"{s}\"\n", .{texture_path});
-            return Error.FailedToLoadTextureFile;
-        }
-        if (image.width != texture_width or image.height != texture_height) {
-            rl.ImageResizeNN(&image, texture_width, texture_height);
-        }
+        image = try scale(image, texture_path, texture_width, texture_height);
 
         gl.texSubImage3D(
             gl.TEXTURE_2D_ARRAY,
@@ -79,7 +66,7 @@ pub fn loadTextureArray() !c_uint {
             1,
             gl.RGBA,
             gl.UNSIGNED_BYTE,
-            image.data,
+            image.*.pixels,
         );
     }
 
@@ -88,12 +75,22 @@ pub fn loadTextureArray() !c_uint {
 }
 
 pub const Collection = struct {
-    textures: std.EnumArray(Name, rl.Texture),
+    textures: std.EnumArray(Name, c_uint),
 
     pub fn loadFromDisk() !Collection {
-        var textures = std.EnumArray(Name, rl.Texture).initUndefined();
+        var textures = std.EnumArray(Name, c_uint).initUndefined();
         var iterator = textures.iterator();
         while (iterator.next()) |mapping| {
+            errdefer {
+                var cleanup_iterator = textures.iterator();
+                while (cleanup_iterator.next()) |mapping_to_destroy| {
+                    if (mapping_to_destroy.key == mapping.key) {
+                        break;
+                    }
+                    gl.deleteTextures(1, mapping_to_destroy.value);
+                }
+            }
+
             var texture_path_buffer: [64]u8 = undefined;
             const texture_path = try std.fmt.bufPrintZ(
                 texture_path_buffer[0..],
@@ -101,26 +98,33 @@ pub const Collection = struct {
                 .{@tagName(mapping.key)},
             );
 
-            const texture = rl.LoadTexture(texture_path);
-            if (texture.id == 0) {
-                var cleanup_iterator = textures.iterator();
-                while (cleanup_iterator.next()) |mapping_to_destroy| {
-                    if (mapping_to_destroy.key == mapping.key) {
-                        break;
-                    }
-                    rl.UnloadTexture(mapping_to_destroy.value.*);
-                }
+            const image = try loadImageRGBA8(texture_path);
+            defer sdl.SDL_FreeSurface(image);
+
+            var id: c_uint = undefined;
+            gl.genTextures(1, &id);
+            if (id == 0) {
                 return Error.FailedToLoadTextureFile;
             }
+            errdefer gl.deleteTextures(1, &id);
 
-            gl.bindTexture(gl.TEXTURE_2D, texture.id);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+            gl.bindTexture(gl.TEXTURE_2D, id);
+            gl.texImage2D(
+                gl.TEXTURE_2D,
+                0,
+                gl.RGBA,
+                image.w,
+                image.h,
+                0,
+                gl.RGBA,
+                gl.UNSIGNED_BYTE,
+                image.*.pixels,
+            );
+            configureCurrentTexture(gl.TEXTURE_2D);
             gl.generateMipmap(gl.TEXTURE_2D);
             gl.bindTexture(gl.TEXTURE_2D, 0);
-            mapping.value.* = texture;
+
+            mapping.value.* = id;
         }
 
         return Collection{ .textures = textures };
@@ -129,12 +133,12 @@ pub const Collection = struct {
     pub fn destroy(self: *Collection) void {
         var iterator = self.textures.iterator();
         while (iterator.next()) |mapping| {
-            rl.UnloadTexture(mapping.value.*);
+            gl.deleteTextures(1, mapping.value);
         }
     }
 
     /// The returned texture should not be unloaded by the caller.
-    pub fn get(self: Collection, name: Name) rl.Texture {
+    pub fn get(self: Collection, name: Name) c_uint {
         return self.textures.get(name);
     }
 };
@@ -152,4 +156,71 @@ fn setupMipMapLevel(level: c_int, width: c_int, height: c_int) void {
         gl.UNSIGNED_BYTE,
         null,
     );
+}
+
+fn configureCurrentTexture(texture_type: c_uint) void {
+    gl.texParameteri(texture_type, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(texture_type, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texParameteri(texture_type, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(texture_type, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+}
+
+fn loadImageRGBA8(image_path: [*:0]const u8) !*sdl.SDL_Surface {
+    var image = sdl.IMG_Load(image_path);
+    if (image == null) {
+        std.log.err("failed to load image file: {s}: \"{s}\"", .{
+            sdl.SDL_GetError(), image_path,
+        });
+        return Error.FailedToLoadTextureFile;
+    }
+    defer sdl.SDL_FreeSurface(image);
+
+    const formatted_image = sdl.SDL_ConvertSurfaceFormat(image, sdl.SDL_PIXELFORMAT_RGBA32, 0);
+    if (formatted_image == null) {
+        std.log.err("failed to convert image to RGBA8: {s}: \"{s}\"", .{
+            sdl.SDL_GetError(), image_path,
+        });
+        return Error.FailedToLoadTextureFile;
+    }
+
+    return formatted_image;
+}
+
+/// Will consume the given surface on success.
+fn scale(
+    image: *sdl.SDL_Surface,
+    image_path: [*:0]const u8,
+    new_width: u16,
+    new_height: u16,
+) !*sdl.SDL_Surface {
+    if (image.w == new_width and image.h == new_height) {
+        return image;
+    }
+    std.log.info("image size is not {}/{}, trying to rescale: \"{s}\"", .{
+        new_width, new_height, image_path,
+    });
+
+    const scaled_surface = sdl.SDL_CreateRGBSurfaceWithFormat(
+        0,
+        new_width,
+        new_height,
+        image.format.*.BitsPerPixel,
+        image.*.format.*.format,
+    );
+    if (scaled_surface == null) {
+        std.log.err("failed to scale image to {}/{}: {s}: \"{s}\"", .{
+            new_width, new_height, sdl.SDL_GetError(), image_path,
+        });
+        return Error.FailedToLoadTextureFile;
+    }
+    errdefer sdl.SDL_FreeSurface(scaled_surface);
+
+    if (sdl.SDL_BlitScaled(image, null, scaled_surface, null) != 0) {
+        std.log.err("failed to scale image to {}/{}: {s}: \"{s}\"", .{
+            new_width, new_height, sdl.SDL_GetError(), image_path,
+        });
+        return Error.FailedToLoadTextureFile;
+    }
+    sdl.SDL_FreeSurface(image);
+    return scaled_surface;
 }

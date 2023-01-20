@@ -139,7 +139,7 @@ pub const LevelGeometry = struct {
         self.billboard_renderer.render(
             vp_matrix,
             camera_direction_to_target,
-            texture_collection.get(.small_bush).id,
+            texture_collection.get(.small_bush),
         );
     }
 

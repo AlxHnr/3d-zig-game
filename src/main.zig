@@ -389,13 +389,7 @@ pub fn main() !void {
     var texture_collection = try textures.Collection.loadFromDisk();
     defer texture_collection.destroy();
 
-    var player = Player.create(
-        0,
-        0,
-        0,
-        @intCast(u16, texture_collection.get(.player).width),
-        @intCast(u16, texture_collection.get(.player).height),
-    );
+    var player = Player.create(0, 0, 0, 48, 60);
 
     var level_geometry = try LevelGeometry.create(gpa.allocator());
     defer level_geometry.destroy();
@@ -458,7 +452,7 @@ pub fn main() !void {
         billboard_renderer.render(
             vp_matrix,
             camera.getDirectionToTarget(),
-            texture_collection.get(.gem).id,
+            texture_collection.get(.gem),
         );
 
         const player_billboard_data = [_]rendering.BillboardRenderer.BillboardData{
@@ -468,7 +462,7 @@ pub fn main() !void {
         billboard_renderer.render(
             vp_matrix,
             camera.getDirectionToTarget(),
-            texture_collection.get(.player).id,
+            texture_collection.get(.player),
         );
         gl.disable(gl.DEPTH_TEST);
 
