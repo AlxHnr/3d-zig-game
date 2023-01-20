@@ -332,7 +332,7 @@ pub fn main() !void {
     defer rl.CloseWindow();
 
     if (sdl.SDL_Init(sdl.SDL_INIT_VIDEO) != 0) {
-        std.log.err("failed to initialize SDL2: {s}\n", .{sdl.SDL_GetError()});
+        std.log.err("failed to initialize SDL2: {s}", .{sdl.SDL_GetError()});
         return Error.FailedToInitializeSDL2Window;
     }
     defer sdl.SDL_Quit();
@@ -346,7 +346,7 @@ pub fn main() !void {
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_ALPHA_SIZE, 8) != 0 or
         sdl.SDL_GL_SetAttribute(sdl.SDL_GL_STENCIL_SIZE, 8) != 0)
     {
-        std.log.err("failed to set OpenGL attributes: {s}\n", .{sdl.SDL_GetError()});
+        std.log.err("failed to set OpenGL attributes: {s}", .{sdl.SDL_GetError()});
         return Error.FailedToInitializeSDL2Window;
     }
     const window = sdl.SDL_CreateWindow(
@@ -358,20 +358,20 @@ pub fn main() !void {
         sdl.SDL_WINDOW_OPENGL,
     );
     if (window == null) {
-        std.log.err("failed to create SDL2 window: {s}\n", .{sdl.SDL_GetError()});
+        std.log.err("failed to create SDL2 window: {s}", .{sdl.SDL_GetError()});
         return Error.FailedToInitializeSDL2Window;
     }
     defer sdl.SDL_DestroyWindow(window);
 
     const gl_context = sdl.SDL_GL_CreateContext(window);
     if (gl_context == null) {
-        std.log.err("failed to create OpenGL 3.3 context: {s}\n", .{sdl.SDL_GetError()});
+        std.log.err("failed to create OpenGL 3.3 context: {s}", .{sdl.SDL_GetError()});
         return Error.FailedToInitializeSDL2Window;
     }
     defer sdl.SDL_GL_DeleteContext(gl_context);
 
     if (sdl.SDL_GL_MakeCurrent(window, gl_context) != 0) {
-        std.log.err("failed to set current OpenGL context: {s}\n", .{
+        std.log.err("failed to set current OpenGL context: {s}", .{
             sdl.SDL_GetError(),
         });
         return Error.FailedToInitializeSDL2Window;
