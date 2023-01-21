@@ -162,7 +162,7 @@ fn configureCurrentTexture(texture_type: c_uint) void {
     gl.texParameteri(texture_type, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(texture_type, gl.TEXTURE_WRAP_T, gl.REPEAT);
     gl.texParameteri(texture_type, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(texture_type, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+    gl.texParameteri(texture_type, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
 }
 
 fn loadImageRGBA8(image_path: [*:0]const u8) !*sdl.SDL_Surface {
