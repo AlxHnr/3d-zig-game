@@ -375,10 +375,39 @@ pub const BillboardRenderer = struct {
         gl.useProgram(0);
     }
 
+    /// Render all uploaded billboards without perspective projection. All billboards are assumed to
+    /// contain screen coordinates (x, y), where (0, 0) represents the top left corner of the
+    /// screen. Z will be ignored.
+    pub fn render2d(
+        self: BillboardRenderer,
+        screen_width: u16,
+        screen_height: u16,
+        texture_id: c_uint,
+    ) void {
+        // Flip V texture coordinate to preserve orientation when inverting Y.
+        var vertex_data = meshes.StandingQuad.vertex_data;
+        var index: usize = 3;
+        while (index < vertex_data.len) : (index += 4) {
+            vertex_data[index] = 1 - vertex_data[index];
+        }
+        var size: usize = @sizeOf(@TypeOf(vertex_data));
+        updateVbo(self.vertex_vbo_id, &vertex_data, size, &size, gl.STATIC_DRAW);
+
+        const screen_to_ndc_matrix = math.Matrix{ .rows = .{
+            .{ 2 / @intToFloat(f32, screen_width), 0, 0, -1 },
+            .{ 0, -2 / @intToFloat(f32, screen_height), 0, 1 },
+            .{ 0, 0, 0, 0 },
+            .{ 0, 0, 0, 1 },
+        } };
+        self.render(screen_to_ndc_matrix, .{ .x = 0, .y = 0, .z = 1 }, texture_id);
+
+        updateVbo(self.vertex_vbo_id, &meshes.StandingQuad.vertex_data, size, &size, gl.STATIC_DRAW);
+    }
+
     pub const BillboardData = extern struct {
-        /// Center of the object in game-world coordinates.
+        /// Center of the object. Must either contain game-world coordinates when calling render()
+        /// or screen coordinates when calling render2d().
         position: extern struct { x: f32, y: f32, z: f32 },
-        /// Game-world dimensions.
         size: extern struct { w: f32, h: f32 },
         /// Precomputed angle at which the billboard should be rotated around the Z axis. Defaults
         /// to no rotation.
