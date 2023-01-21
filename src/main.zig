@@ -484,6 +484,12 @@ pub fn main() !void {
         while (sdl.SDL_PollEvent(&event) == 1) {
             if (event.type == sdl.SDL_QUIT) {
                 keep_running = false;
+            } else if (event.type == sdl.SDL_WINDOWEVENT and
+                event.window.event == sdl.SDL_WINDOWEVENT_RESIZED)
+            {
+                screen_width = @intCast(u16, event.window.data1);
+                screen_height = @intCast(u16, event.window.data2);
+                gl.viewport(0, 0, event.window.data1, event.window.data2);
             } else if (event.type == sdl.SDL_MOUSEBUTTONDOWN) {
                 if (event.button.button == sdl.SDL_BUTTON_LEFT) {
                     try edit_mode_state.handleActionAtTarget(&level_geometry, ray);
