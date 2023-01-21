@@ -252,7 +252,7 @@ const Player = struct {
         var acceleration_direction = math.FlatVector{ .x = 0, .z = 0 };
         var turning_direction: f32 = 0;
         if (sdl_keyboard_state[sdl.SDL_SCANCODE_LEFT] == 1) {
-            if (sdl_keyboard_state[sdl.SDL_SCANCODE_LCTRL] == 1) {
+            if (sdl_keyboard_state[sdl.SDL_SCANCODE_SPACE] == 1) {
                 acceleration_direction = acceleration_direction.subtract(right_direction);
             } else if (sdl_keyboard_state[sdl.SDL_SCANCODE_RCTRL] == 1) {
                 turning_direction -= 0.05;
@@ -261,7 +261,7 @@ const Player = struct {
             }
         }
         if (sdl_keyboard_state[sdl.SDL_SCANCODE_RIGHT] == 1) {
-            if (sdl_keyboard_state[sdl.SDL_SCANCODE_LCTRL] == 1) {
+            if (sdl_keyboard_state[sdl.SDL_SCANCODE_SPACE] == 1) {
                 acceleration_direction = acceleration_direction.add(right_direction);
             } else if (sdl_keyboard_state[sdl.SDL_SCANCODE_RCTRL] == 1) {
                 turning_direction += 0.05;
