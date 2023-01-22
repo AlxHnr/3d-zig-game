@@ -21,6 +21,7 @@ pub const Context = struct {
     map_file_path: []const u8,
     level_geometry: LevelGeometry,
     gem_collection: gems.Collection,
+    tileable_textures: textures.TileableArrayTexture,
     texture_collection: textures.Collection,
 
     billboard_renderer: rendering.BillboardRenderer,
@@ -35,6 +36,9 @@ pub const Context = struct {
 
         var gem_collection = gems.Collection.create(allocator);
         errdefer gem_collection.destroy();
+
+        var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
+        errdefer tileable_textures.destroy();
 
         var texture_collection = try textures.Collection.loadFromDisk();
         errdefer texture_collection.destroy();
@@ -51,6 +55,7 @@ pub const Context = struct {
             .map_file_path = map_file_path_buffer,
             .level_geometry = level_geometry,
             .gem_collection = gem_collection,
+            .tileable_textures = tileable_textures,
             .texture_collection = texture_collection,
 
             .billboard_renderer = billboard_renderer,
@@ -62,6 +67,7 @@ pub const Context = struct {
         allocator.free(self.billboard_buffer);
         self.billboard_renderer.destroy();
         self.texture_collection.destroy();
+        self.tileable_textures.destroy();
         self.gem_collection.destroy();
         self.level_geometry.destroy();
         allocator.free(self.map_file_path);
@@ -126,6 +132,7 @@ pub const Context = struct {
         self.level_geometry.render(
             vp_matrix,
             camera.getDirectionToTarget(),
+            self.tileable_textures,
             self.texture_collection,
         );
         self.billboard_renderer.render(

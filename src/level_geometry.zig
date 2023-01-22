@@ -14,9 +14,6 @@ pub const LevelGeometry = struct {
     /// Gives every object owned by this struct a unique id.
     object_id_counter: u64,
 
-    /// Contains all textures needed to render the environment.
-    array_texture_id: c_uint,
-
     walls: std.ArrayList(Wall),
     wall_renderer: rendering.WallRenderer,
     walls_have_changed: bool,
@@ -34,8 +31,6 @@ pub const LevelGeometry = struct {
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !LevelGeometry {
-        const array_texture_id = try textures.loadTextureArray();
-        errdefer gl.deleteTextures(1, &array_texture_id);
         var wall_renderer = try rendering.WallRenderer.create();
         errdefer wall_renderer.destroy();
         var floor_renderer = try rendering.FloorRenderer.create();
@@ -45,7 +40,6 @@ pub const LevelGeometry = struct {
 
         return LevelGeometry{
             .object_id_counter = 0,
-            .array_texture_id = array_texture_id,
             .walls = std.ArrayList(Wall).init(allocator),
             .wall_renderer = wall_renderer,
             .walls_have_changed = false,
@@ -68,7 +62,6 @@ pub const LevelGeometry = struct {
 
         self.wall_renderer.destroy();
         self.walls.deinit();
-        gl.deleteTextures(1, &self.array_texture_id);
     }
 
     /// Stores the given allocator internally for its entire lifetime.
@@ -127,15 +120,16 @@ pub const LevelGeometry = struct {
         self: LevelGeometry,
         vp_matrix: math.Matrix,
         camera_direction_to_target: math.Vector3d,
+        tileable_textures: textures.TileableArrayTexture,
         texture_collection: textures.Collection,
     ) void {
         // Prevent floors from overpainting each other.
         gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
-        self.floor_renderer.render(vp_matrix, self.array_texture_id, self.floor_animation_state);
+        self.floor_renderer.render(vp_matrix, tileable_textures.id, self.floor_animation_state);
         gl.stencilFunc(gl.ALWAYS, 1, 0xff);
 
-        // Fences must be rendered after the floor to allow blending transparent, mipmapped  texels.
-        self.wall_renderer.render(vp_matrix, self.array_texture_id);
+        // Fences must be rendered after the floor to allow blending transparent, mipmapped texels.
+        self.wall_renderer.render(vp_matrix, tileable_textures.id);
         self.billboard_renderer.render(
             vp_matrix,
             camera_direction_to_target,
@@ -504,7 +498,7 @@ pub const LevelGeometry = struct {
             data[index] = .{
                 .properties = makeRenderingAttributes(
                     wall.model_matrix,
-                    wall.getTextureName(),
+                    wall.getTextureLayerId(),
                     wall.tint,
                 ),
                 .texture_repeat_dimensions = .{
@@ -529,7 +523,7 @@ pub const LevelGeometry = struct {
             data[index] = .{
                 .properties = makeRenderingAttributes(
                     floor.model_matrix,
-                    floor.getTextureName(),
+                    floor.getTextureLayerId(),
                     floor.tint,
                 ),
                 .affected_by_animation_cycle = if (floor.isAffectedByAnimationCycle()) 1 else 0,
@@ -569,12 +563,12 @@ pub const LevelGeometry = struct {
 
     fn makeRenderingAttributes(
         model_matrix: math.Matrix,
-        texture_name: textures.Name,
+        layer_id: textures.TileableArrayTexture.LayerId,
         tint: util.Color,
     ) rendering.LevelGeometryAttributes {
         return .{
             .model_matrix = model_matrix.toFloatArray(),
-            .texture_layer_id = @intToFloat(f32, @enumToInt(texture_name)),
+            .texture_layer_id = @intToFloat(f32, @enumToInt(layer_id)),
             .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
         };
     }
@@ -635,11 +629,11 @@ const Floor = struct {
         };
     }
 
-    fn getTextureName(self: Floor) textures.Name {
+    fn getTextureLayerId(self: Floor) textures.TileableArrayTexture.LayerId {
         return switch (self.floor_type) {
             .grass => .grass,
             .stone => .stone_floor,
-            .water => textures.Name.water_frame_0, // Animation offsets are applied by the renderer.
+            .water => .water_frame_0, // Animation offsets are applied by the renderer.
         };
     }
 
@@ -842,7 +836,7 @@ const Wall = struct {
         };
     }
 
-    fn getTextureName(self: Wall) textures.Name {
+    fn getTextureLayerId(self: Wall) textures.TileableArrayTexture.LayerId {
         return switch (self.wall_type) {
             .metal_fence, .short_metal_fence => .metal_fence,
             .tall_hedge => .hedge,

@@ -5,74 +5,103 @@ const gl = @import("gl");
 const Error = @import("error.zig").Error;
 const sdl = @import("sdl.zig");
 
-/// The ordinal values are passed to shaders to index array textures.
-pub const Name = enum(u8) {
-    gem,
-    grass,
-    hedge,
-    metal_fence,
-    player,
-    small_bush,
-    stone_floor,
-    wall,
-    water_frame_0,
-    water_frame_1,
-    water_frame_2,
-};
+/// Array of tileable/wrapping textures.
+pub const TileableArrayTexture = struct {
+    /// GL_TEXTURE_2D_ARRAY.
+    id: c_uint,
 
-/// Returns the id of an OpenGL array texture containing all the textures in the `Name` enum. The
-/// returned id binds to GL_TEXTURE_2D_ARRAY and has to be destroyed via glDeleteTextures(1, &id).
-pub fn loadTextureArray() !c_uint {
-    var id: c_uint = undefined;
-    gl.genTextures(1, &id);
-    if (id == 0) {
-        return Error.FailedToLoadTextureFile;
+    /// The ordinal values of these enums can be passed to shaders to index array texture layers.
+    pub const LayerId = enum(u8) {
+        grass,
+        hedge,
+        metal_fence,
+        stone_floor,
+        wall,
+        water_frame_0,
+        water_frame_1,
+        water_frame_2,
+    };
+
+    pub fn loadFromDisk() !TileableArrayTexture {
+        var id: c_uint = undefined;
+        gl.genTextures(1, &id);
+        if (id == 0) {
+            return Error.FailedToLoadTextureFile;
+        }
+        errdefer gl.deleteTextures(1, &id);
+
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, id);
+        defer gl.bindTexture(gl.TEXTURE_2D_ARRAY, 0);
+
+        const texture_width = 64; // Smaller and larger images get scaled to this.
+        const texture_height = texture_width;
+        setupMipMapLevel(0, texture_width, texture_height);
+        setupMipMapLevel(1, 32, 32);
+        setupMipMapLevel(2, 16, 16);
+        setupMipMapLevel(3, 8, 8);
+        setupMipMapLevel(4, 4, 4);
+        setupMipMapLevel(5, 2, 2);
+        setupMipMapLevel(6, 1, 1);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+
+        for (std.enums.values(LayerId)) |value, index| {
+            var path_buffer: [64]u8 = undefined;
+            const texture_path = try std.fmt.bufPrintZ(path_buffer[0..], "assets/{s}.png", .{
+                @tagName(value),
+            });
+
+            var image = try loadImageRGBA8(texture_path);
+            defer sdl.SDL_FreeSurface(image);
+
+            image = try scale(image, texture_path, texture_width, texture_height);
+
+            gl.texSubImage3D(
+                gl.TEXTURE_2D_ARRAY,
+                0,
+                0,
+                0,
+                @intCast(c_int, index),
+                texture_width,
+                texture_height,
+                1,
+                gl.RGBA,
+                gl.UNSIGNED_BYTE,
+                image.*.pixels,
+            );
+        }
+
+        gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+        return .{ .id = id };
     }
-    errdefer gl.deleteTextures(1, &id);
 
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, id);
-    defer gl.bindTexture(gl.TEXTURE_2D_ARRAY, 0);
+    pub fn destroy(self: *TileableArrayTexture) void {
+        gl.deleteTextures(1, &self.id);
+    }
 
-    const texture_width = 64; // Smaller and larger images get scaled to this.
-    const texture_height = texture_width;
-    setupMipMapLevel(0, texture_width, texture_height);
-    setupMipMapLevel(1, 32, 32);
-    setupMipMapLevel(2, 16, 16);
-    setupMipMapLevel(3, 8, 8);
-    setupMipMapLevel(4, 4, 4);
-    setupMipMapLevel(5, 2, 2);
-    setupMipMapLevel(6, 1, 1);
-    configureCurrentTexture(gl.TEXTURE_2D_ARRAY);
-
-    for (std.enums.values(Name)) |value, index| {
-        var path_buffer: [64]u8 = undefined;
-        const texture_path = try std.fmt.bufPrintZ(path_buffer[0..], "assets/{s}.png", .{
-            @tagName(value),
-        });
-
-        var image = try loadImageRGBA8(texture_path);
-        defer sdl.SDL_FreeSurface(image);
-
-        image = try scale(image, texture_path, texture_width, texture_height);
-
-        gl.texSubImage3D(
+    fn setupMipMapLevel(level: c_int, width: c_int, height: c_int) void {
+        gl.texImage3D(
             gl.TEXTURE_2D_ARRAY,
+            level,
+            gl.RGBA8,
+            width,
+            height,
+            @typeInfo(LayerId).Enum.fields.len,
             0,
-            0,
-            0,
-            @intCast(c_int, index),
-            texture_width,
-            texture_height,
-            1,
             gl.RGBA,
             gl.UNSIGNED_BYTE,
-            image.*.pixels,
+            null,
         );
     }
+};
 
-    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
-    return id;
-}
+pub const Name = enum(u8) {
+    gem,
+    player,
+    small_bush,
+};
 
 pub const Collection = struct {
     textures: std.EnumArray(Name, c_uint),
@@ -142,21 +171,6 @@ pub const Collection = struct {
         return self.textures.get(name);
     }
 };
-
-fn setupMipMapLevel(level: c_int, width: c_int, height: c_int) void {
-    gl.texImage3D(
-        gl.TEXTURE_2D_ARRAY,
-        level,
-        gl.RGBA8,
-        width,
-        height,
-        @typeInfo(Name).Enum.fields.len,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        null,
-    );
-}
 
 fn configureCurrentTexture(texture_type: c_uint) void {
     gl.texParameteri(texture_type, gl.TEXTURE_WRAP_S, gl.REPEAT);
