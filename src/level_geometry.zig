@@ -101,7 +101,11 @@ pub const LevelGeometry = struct {
         return geometry;
     }
 
-    pub fn prepareRender(self: *LevelGeometry, allocator: std.mem.Allocator) !void {
+    pub fn prepareRender(
+        self: *LevelGeometry,
+        allocator: std.mem.Allocator,
+        sprite_sheet_texture: textures.SpriteSheetTexture,
+    ) !void {
         if (self.walls_have_changed) {
             try self.uploadWallsToRenderer(allocator);
             self.walls_have_changed = false;
@@ -111,7 +115,7 @@ pub const LevelGeometry = struct {
             self.floors_have_changed = false;
         }
         if (self.billboards_have_changed) {
-            try self.uploadBillboardsToRenderer(allocator);
+            try self.uploadBillboardsToRenderer(allocator, sprite_sheet_texture);
             self.billboards_have_changed = false;
         }
     }
@@ -121,7 +125,7 @@ pub const LevelGeometry = struct {
         vp_matrix: math.Matrix,
         camera_direction_to_target: math.Vector3d,
         tileable_textures: textures.TileableArrayTexture,
-        texture_collection: textures.Collection,
+        sprite_sheet_texture: textures.SpriteSheetTexture,
     ) void {
         // Prevent floors from overpainting each other.
         gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
@@ -133,7 +137,7 @@ pub const LevelGeometry = struct {
         self.billboard_renderer.render(
             vp_matrix,
             camera_direction_to_target,
-            texture_collection.get(.small_bush),
+            sprite_sheet_texture.id,
         );
     }
 
@@ -536,7 +540,11 @@ pub const LevelGeometry = struct {
         self.floor_renderer.uploadFloors(data);
     }
 
-    fn uploadBillboardsToRenderer(self: *LevelGeometry, allocator: std.mem.Allocator) !void {
+    fn uploadBillboardsToRenderer(
+        self: *LevelGeometry,
+        allocator: std.mem.Allocator,
+        sprite_sheet_texture: textures.SpriteSheetTexture,
+    ) !void {
         var data = try allocator.alloc(
             rendering.BillboardRenderer.BillboardData,
             self.billboard_objects.items.len,
@@ -544,19 +552,7 @@ pub const LevelGeometry = struct {
         defer allocator.free(data);
 
         for (self.billboard_objects.items) |billboard, index| {
-            data[index] = .{
-                .position = .{
-                    .x = billboard.boundaries.position.x,
-                    .y = billboard.boundaries.radius,
-                    .z = billboard.boundaries.position.z,
-                },
-                .size = .{
-                    .w = billboard.boundaries.radius * 2,
-                    .h = billboard.boundaries.radius * 2,
-                },
-                .source_rect = .{ .x = 0, .y = 0, .w = 1, .h = 1 },
-                .tint = .{ .r = billboard.tint.r, .g = billboard.tint.g, .b = billboard.tint.b },
-            };
+            data[index] = billboard.getBillboardData(sprite_sheet_texture);
         }
         self.billboard_renderer.uploadBillboards(data);
     }
@@ -856,10 +852,13 @@ const BillboardObject = struct {
         object_type: LevelGeometry.BillboardObjectType,
         position: math.FlatVector,
     ) BillboardObject {
+        const width: f32 = switch (object_type) {
+            else => 1.0,
+        };
         return .{
             .object_id = object_id,
             .object_type = object_type,
-            .boundaries = .{ .position = position, .radius = getDefaultSize(object_type) / 2 },
+            .boundaries = .{ .position = position, .radius = width / 2 },
             .tint = getDefaultTint(object_type),
         };
     }
@@ -876,15 +875,33 @@ const BillboardObject = struct {
         });
     }
 
-    fn getDefaultTint(object_type: LevelGeometry.BillboardObjectType) util.Color {
-        return switch (object_type) {
-            else => util.Color.white,
+    fn getBillboardData(
+        self: BillboardObject,
+        sprite_sheet_texture: textures.SpriteSheetTexture,
+    ) rendering.BillboardRenderer.BillboardData {
+        const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (self.object_type) {
+            .small_bush => .small_bush,
+        };
+        const source = sprite_sheet_texture.texcoords.get(sprite_id);
+        const half_height = self.boundaries.radius * sprite_sheet_texture.aspect_ratios.get(sprite_id);
+        return .{
+            .position = .{
+                .x = self.boundaries.position.x,
+                .y = half_height,
+                .z = self.boundaries.position.z,
+            },
+            .size = .{
+                .w = self.boundaries.radius * 2,
+                .h = half_height * 2,
+            },
+            .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
+            .tint = .{ .r = self.tint.r, .g = self.tint.g, .b = self.tint.b },
         };
     }
 
-    fn getDefaultSize(object_type: LevelGeometry.BillboardObjectType) f32 {
+    fn getDefaultTint(object_type: LevelGeometry.BillboardObjectType) util.Color {
         return switch (object_type) {
-            else => 1.0,
+            else => util.Color.white,
         };
     }
 };

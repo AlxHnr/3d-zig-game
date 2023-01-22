@@ -22,7 +22,7 @@ pub const Context = struct {
     level_geometry: LevelGeometry,
     gem_collection: gems.Collection,
     tileable_textures: textures.TileableArrayTexture,
-    texture_collection: textures.Collection,
+    sprite_sheet_texture: textures.SpriteSheetTexture,
 
     billboard_renderer: rendering.BillboardRenderer,
     billboard_buffer: []rendering.BillboardRenderer.BillboardData,
@@ -40,8 +40,8 @@ pub const Context = struct {
         var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
         errdefer tileable_textures.destroy();
 
-        var texture_collection = try textures.Collection.loadFromDisk();
-        errdefer texture_collection.destroy();
+        var sprite_sheet_texture = try textures.SpriteSheetTexture.loadFromDisk();
+        errdefer sprite_sheet_texture.destroy();
 
         var billboard_renderer = try rendering.BillboardRenderer.create();
         errdefer billboard_renderer.destroy();
@@ -49,14 +49,19 @@ pub const Context = struct {
         return .{
             .tick_timer = try TickTimer.start(60),
             .interval_between_previous_and_current_tick = 1,
-            .main_character = Player.create(0, 0, 0, 48, 60),
+            .main_character = Player.create(
+                0,
+                0,
+                0,
+                sprite_sheet_texture.aspect_ratios.get(.player_back_frame_1),
+            ),
             .max_camera_distance = null,
 
             .map_file_path = map_file_path_buffer,
             .level_geometry = level_geometry,
             .gem_collection = gem_collection,
             .tileable_textures = tileable_textures,
-            .texture_collection = texture_collection,
+            .sprite_sheet_texture = sprite_sheet_texture,
 
             .billboard_renderer = billboard_renderer,
             .billboard_buffer = &.{},
@@ -66,7 +71,7 @@ pub const Context = struct {
     pub fn destroy(self: *Context, allocator: std.mem.Allocator) void {
         allocator.free(self.billboard_buffer);
         self.billboard_renderer.destroy();
-        self.texture_collection.destroy();
+        self.sprite_sheet_texture.destroy();
         self.tileable_textures.destroy();
         self.gem_collection.destroy();
         self.level_geometry.destroy();
@@ -107,7 +112,7 @@ pub const Context = struct {
         screen_width: u16,
         screen_height: u16,
     ) !void {
-        try self.level_geometry.prepareRender(allocator);
+        try self.level_geometry.prepareRender(allocator, self.sprite_sheet_texture);
 
         const billboards_to_render = self.gem_collection.getBillboardCount();
         if (self.billboard_buffer.len < billboards_to_render) {
@@ -133,22 +138,25 @@ pub const Context = struct {
             vp_matrix,
             camera.getDirectionToTarget(),
             self.tileable_textures,
-            self.texture_collection,
+            self.sprite_sheet_texture,
         );
         self.billboard_renderer.render(
             vp_matrix,
             camera.getDirectionToTarget(),
-            self.texture_collection.get(.gem),
+            self.sprite_sheet_texture.id,
         );
 
         const player_billboard_data = [_]rendering.BillboardRenderer.BillboardData{
-            self.main_character.getBillboardData(self.interval_between_previous_and_current_tick),
+            self.main_character.getBillboardData(
+                self.sprite_sheet_texture,
+                self.interval_between_previous_and_current_tick,
+            ),
         };
         self.billboard_renderer.uploadBillboards(player_billboard_data[0..]);
         self.billboard_renderer.render(
             vp_matrix,
             camera.getDirectionToTarget(),
-            self.texture_collection.get(.player),
+            self.sprite_sheet_texture.id,
         );
     }
 
@@ -216,14 +224,12 @@ const Player = struct {
         id: u64,
         starting_position_x: f32,
         starting_position_z: f32,
-        spritesheet_width: u16,
-        spritesheet_height: u16,
+        spritesheet_frame_ratio: f32,
     ) Player {
         const in_game_heigth = 1.8;
-        const frame_ratio = getFrameRatio(spritesheet_width, spritesheet_height);
         const character = Character.create(
             .{ .x = starting_position_x, .z = starting_position_z },
-            in_game_heigth / frame_ratio / 2.0,
+            in_game_heigth / spritesheet_frame_ratio / 2.0,
             in_game_heigth,
         );
         const state = State{
@@ -308,13 +314,27 @@ const Player = struct {
 
     fn getBillboardData(
         self: Player,
+        sprite_sheet_texture: textures.SpriteSheetTexture,
         interval_between_previous_and_current_tick: f32,
     ) rendering.BillboardRenderer.BillboardData {
         const state_to_render = self.state_at_previous_tick.lerp(
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
         );
-        const source_rect = getSpritesheetSource(state_to_render, .back);
+
+        const min_velocity_for_animation = 0.02;
+        const animation_frame =
+            if (state_to_render.character.velocity.length() < min_velocity_for_animation)
+            1
+        else
+            state_to_render.animation_cycle.getFrame();
+
+        const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (animation_frame) {
+            else => .player_back_frame_1,
+            0 => .player_back_frame_0,
+            2 => .player_back_frame_2,
+        };
+        const source = sprite_sheet_texture.texcoords.get(sprite_id);
         return .{
             .position = .{
                 .x = state_to_render.character.boundaries.position.x,
@@ -325,12 +345,7 @@ const Player = struct {
                 .w = state_to_render.character.boundaries.radius * 2,
                 .h = state_to_render.character.height,
             },
-            .source_rect = .{
-                .x = source_rect[0],
-                .y = source_rect[1],
-                .w = source_rect[2],
-                .h = source_rect[3],
-            },
+            .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
         };
     }
 
@@ -354,37 +369,6 @@ const Player = struct {
             .boundaries = character.boundaries,
             .height = character.height,
         };
-    }
-
-    const Direction = enum { front, back };
-
-    fn getSpritesheetSource(state_to_render: State, side: Direction) [4]f32 {
-        const w = getFrameWidth();
-        const h = getFrameHeight();
-        const min_velocity_for_animation = 0.02;
-
-        const animation_frame =
-            if (state_to_render.character.velocity.length() < min_velocity_for_animation)
-            1
-        else
-            state_to_render.animation_cycle.getFrame();
-
-        const x = w * @intToFloat(f32, animation_frame);
-        return switch (side) {
-            .front => .{ x, h, w, h },
-            .back => .{ x, 0, w, h },
-        };
-    }
-
-    fn getFrameWidth() f32 {
-        return 1.0 / 3.0;
-    }
-    fn getFrameHeight() f32 {
-        return 1.0 / 2.0;
-    }
-    fn getFrameRatio(spritesheet_width: u16, spritesheet_height: u16) f32 {
-        return getFrameHeight() * @intToFloat(f32, spritesheet_height) /
-            (getFrameWidth() * @intToFloat(f32, spritesheet_width));
     }
 
     const State = struct {
