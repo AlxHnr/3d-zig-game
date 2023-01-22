@@ -27,3 +27,7 @@
 ### [Water animation frames](https://opengameart.org/content/dungeon-crawl-32x32-tiles)
 * **Author**: Chris Hamons
 * **License**: CC0
+
+### [Torus Sans (modified)](https://opengameart.org/content/the-collection-of-8-bit-fonts-for-grafx2-r2)
+* **Author**: devurandom
+* **License**: CC0

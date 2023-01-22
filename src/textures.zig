@@ -100,29 +100,18 @@ pub const TileableArrayTexture = struct {
 pub const SpriteSheetTexture = struct {
     /// GL_TEXTURE_2D.
     id: c_uint,
-    /// Maps sprite ids to OpenGL texture coordinates with values from 0 to 1, where (0, 0) is the
-    /// top left of the sprite sheet.
-    texcoords: std.EnumArray(SpriteId, TextureCoordinates),
-    /// Maps sprite ids to (height / width).
-    aspect_ratios: std.EnumArray(SpriteId, f32),
-
-    pub const SpriteId = enum(u8) {
-        gem,
-        player_back_frame_0,
-        player_back_frame_1,
-        player_back_frame_2,
-        player_front_frame_0,
-        player_front_frame_1,
-        player_front_frame_2,
-        small_bush,
-    };
-
-    /// Values range from 0 to 1, where (0, 0) is the top left of the sprite sheet.
-    const TextureCoordinates = struct { x: f32, y: f32, w: f32, h: f32 };
 
     pub fn loadFromDisk() !SpriteSheetTexture {
-        const image = try loadImageRGBA8("assets/8x8_padded_sprite_sheet.png");
+        const file_path = "assets/8x8_padded_sprite_sheet.png";
+        const image = try loadImageRGBA8(file_path);
         defer sdl.SDL_FreeSurface(image);
+
+        if (image.w != texture_width or image.h != texture_height) {
+            std.log.err("spritesheet dimensions are not {}x{}: \"{s}\"\n", .{
+                texture_width, texture_height, file_path,
+            });
+            return Error.FailedToLoadTextureFile;
+        }
 
         var id: c_uint = undefined;
         gl.genTextures(1, &id);
@@ -148,55 +137,121 @@ pub const SpriteSheetTexture = struct {
         gl.generateMipmap(gl.TEXTURE_2D);
         gl.bindTexture(gl.TEXTURE_2D, 0);
 
-        return .{
-            .id = id,
-            .texcoords = computeTexcoords(@intToFloat(f32, image.w), @intToFloat(f32, image.h)),
-            .aspect_ratios = computeAspectRatios(),
-        };
+        return .{ .id = id };
     }
 
     pub fn destroy(self: *SpriteSheetTexture) void {
         gl.deleteTextures(1, &self.id);
     }
 
-    const source_pixel_map = std.enums.directEnumArray(
+    pub const SpriteId = enum(u8) {
+        gem,
+        player_back_frame_0,
+        player_back_frame_1,
+        player_back_frame_2,
+        player_front_frame_0,
+        player_front_frame_1,
+        player_front_frame_2,
+        small_bush,
+    };
+
+    /// Values range from 0 to 1, where (0, 0) is the top left of the sprite sheet.
+    pub const TextureCoordinates = struct { x: f32, y: f32, w: f32, h: f32 };
+
+    pub fn getSpriteTexcoords(_: SpriteSheetTexture, sprite_id: SpriteId) TextureCoordinates {
+        return sprite_texcoord_map.get(sprite_id);
+    }
+
+    /// Returns the aspect ratio (height / width) of the specified sprite.
+    pub fn getSpriteAspectRatio(_: SpriteSheetTexture, sprite_id: SpriteId) f32 {
+        return sprite_aspect_ratio_map.get(sprite_id);
+    }
+
+    /// Returns a question mark if the given codepoint is not supported or does not represent a
+    /// printable character. All font characters have an aspect ratio of 1.
+    pub fn getFontCharacterTexcoords(self: SpriteSheetTexture, codepoint: u21) TextureCoordinates {
+        if (codepoint < '!' or codepoint > '~') {
+            return self.getFontCharacterTexcoords('?');
+        }
+        return font_texcoord_map[codepoint - '!'];
+    }
+
+    const texture_width = 512;
+    const texture_height = 512;
+    const font_character_count = 94;
+
+    /// Source pixel coordinates with (0, 0) at the top left corner.
+    const TextureSourceRectangle = struct { x: u16, y: u16, w: u16, h: u16 };
+
+    const sprite_source_pixel_map = std.enums.directEnumArray(
         SpriteId,
-        struct { x: u16, y: u16, w: u16, h: u16 },
+        TextureSourceRectangle,
         @typeInfo(SpriteId).Enum.fields.len,
         .{
-            .gem = .{ .x = 72, .y = 32, .w = 14, .h = 14 },
-            .player_back_frame_0 = .{ .x = 0, .y = 0, .w = 16, .h = 32 },
-            .player_back_frame_1 = .{ .x = 24, .y = 0, .w = 16, .h = 32 },
-            .player_back_frame_2 = .{ .x = 48, .y = 0, .w = 16, .h = 32 },
-            .player_front_frame_0 = .{ .x = 0, .y = 40, .w = 16, .h = 32 },
-            .player_front_frame_1 = .{ .x = 24, .y = 40, .w = 16, .h = 32 },
-            .player_front_frame_2 = .{ .x = 48, .y = 40, .w = 16, .h = 32 },
-            .small_bush = .{ .x = 72, .y = 0, .w = 24, .h = 26 },
+            .gem = .{ .x = 72, .y = 88, .w = 14, .h = 14 },
+            .player_back_frame_0 = .{ .x = 0, .y = 48, .w = 16, .h = 32 },
+            .player_back_frame_1 = .{ .x = 24, .y = 48, .w = 16, .h = 32 },
+            .player_back_frame_2 = .{ .x = 48, .y = 48, .w = 16, .h = 32 },
+            .player_front_frame_0 = .{ .x = 0, .y = 88, .w = 16, .h = 32 },
+            .player_front_frame_1 = .{ .x = 24, .y = 88, .w = 16, .h = 32 },
+            .player_front_frame_2 = .{ .x = 48, .y = 88, .w = 16, .h = 32 },
+            .small_bush = .{ .x = 72, .y = 48, .w = 24, .h = 26 },
         },
     );
+    const font_source_pixel_map = computeFontSourcePixelMap();
 
-    fn computeTexcoords(
-        texture_width: f32,
-        texture_height: f32,
-    ) std.EnumArray(SpriteId, TextureCoordinates) {
-        var result: std.EnumArray(SpriteId, TextureCoordinates) = undefined;
-        for (std.enums.values(SpriteId)) |key, index| {
-            result.set(key, .{
-                .x = @intToFloat(f32, source_pixel_map[index].x) / texture_width,
-                .y = @intToFloat(f32, source_pixel_map[index].y) / texture_height,
-                .w = @intToFloat(f32, source_pixel_map[index].w) / texture_width,
-                .h = @intToFloat(f32, source_pixel_map[index].h) / texture_height,
-            });
+    /// Maps sprite ids to OpenGL texture coordinates ranging from 0 to 1, where (0, 0) is the top
+    /// left of the sprite sheet.
+    const sprite_texcoord_map = computeSpriteTexcoordMap();
+    const font_texcoord_map = computeFontTexcoordMap();
+
+    /// Maps sprite ids to (height / width).
+    const sprite_aspect_ratio_map = computeSpriteAspectRatioMap();
+
+    fn computeFontSourcePixelMap() [font_character_count]TextureSourceRectangle {
+        var result: [font_character_count]TextureSourceRectangle = undefined;
+        for (result) |_, index| {
+            result[index] = .{
+                .x = @intCast(u16, @mod(index, 32) * 16),
+                .y = @intCast(u16, @divFloor(index, 32) * 16),
+                .w = 8,
+                .h = 8,
+            };
         }
         return result;
     }
 
-    fn computeAspectRatios() std.EnumArray(SpriteId, f32) {
+    fn computeSpriteTexcoordMap() std.EnumArray(SpriteId, TextureCoordinates) {
+        var result: std.EnumArray(SpriteId, TextureCoordinates) = undefined;
+        for (std.enums.values(SpriteId)) |key, index| {
+            result.set(key, toTexcoords(sprite_source_pixel_map[index]));
+        }
+        return result;
+    }
+
+    fn computeFontTexcoordMap() [font_character_count]TextureCoordinates {
+        var result: [font_character_count]TextureCoordinates = undefined;
+        for (result) |_, index| {
+            result[index] = toTexcoords(font_source_pixel_map[index]);
+        }
+        return result;
+    }
+
+    fn toTexcoords(source: TextureSourceRectangle) TextureCoordinates {
+        return .{
+            .x = @intToFloat(f32, source.x) / texture_width,
+            .y = @intToFloat(f32, source.y) / texture_height,
+            .w = @intToFloat(f32, source.w) / texture_width,
+            .h = @intToFloat(f32, source.h) / texture_height,
+        };
+    }
+
+    fn computeSpriteAspectRatioMap() std.EnumArray(SpriteId, f32) {
         var result: std.EnumArray(SpriteId, f32) = undefined;
         for (std.enums.values(SpriteId)) |key, index| {
             const ratio =
-                @intToFloat(f32, source_pixel_map[index].h) /
-                @intToFloat(f32, source_pixel_map[index].w);
+                @intToFloat(f32, sprite_source_pixel_map[index].h) /
+                @intToFloat(f32, sprite_source_pixel_map[index].w);
             result.set(key, ratio);
         }
         return result;

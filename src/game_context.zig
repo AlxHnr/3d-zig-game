@@ -53,7 +53,7 @@ pub const Context = struct {
                 0,
                 0,
                 0,
-                sprite_sheet_texture.aspect_ratios.get(.player_back_frame_1),
+                sprite_sheet_texture.getSpriteAspectRatio(.player_back_frame_1),
             ),
             .max_camera_distance = null,
 
@@ -334,7 +334,7 @@ const Player = struct {
             0 => .player_back_frame_0,
             2 => .player_back_frame_2,
         };
-        const source = sprite_sheet_texture.texcoords.get(sprite_id);
+        const source = sprite_sheet_texture.getSpriteTexcoords(sprite_id);
         return .{
             .position = .{
                 .x = state_to_render.character.boundaries.position.x,

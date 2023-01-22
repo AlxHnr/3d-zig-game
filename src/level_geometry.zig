@@ -882,8 +882,9 @@ const BillboardObject = struct {
         const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (self.object_type) {
             .small_bush => .small_bush,
         };
-        const source = sprite_sheet_texture.texcoords.get(sprite_id);
-        const half_height = self.boundaries.radius * sprite_sheet_texture.aspect_ratios.get(sprite_id);
+        const source = sprite_sheet_texture.getSpriteTexcoords(sprite_id);
+        const half_height = self.boundaries.radius *
+            sprite_sheet_texture.getSpriteAspectRatio(sprite_id);
         return .{
             .position = .{
                 .x = self.boundaries.position.x,
