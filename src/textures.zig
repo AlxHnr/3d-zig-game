@@ -97,6 +97,112 @@ pub const TileableArrayTexture = struct {
     }
 };
 
+pub const SpriteSheetTexture = struct {
+    /// GL_TEXTURE_2D.
+    id: c_uint,
+    /// Maps sprite ids to OpenGL texture coordinates with values from 0 to 1, where (0, 0) is the
+    /// top left of the sprite sheet.
+    texcoords: std.EnumArray(SpriteId, TextureCoordinates),
+    /// Maps sprite ids to (height / width).
+    aspect_ratios: std.EnumArray(SpriteId, f32),
+
+    pub const SpriteId = enum(u8) {
+        gem,
+        player_back_frame_0,
+        player_back_frame_1,
+        player_back_frame_2,
+        player_front_frame_0,
+        player_front_frame_1,
+        player_front_frame_2,
+        small_bush,
+    };
+
+    /// Values range from 0 to 1, where (0, 0) is the top left of the sprite sheet.
+    const TextureCoordinates = struct { x: f32, y: f32, w: f32, h: f32 };
+
+    pub fn loadFromDisk() !SpriteSheetTexture {
+        const image = try loadImageRGBA8("assets/8x8_padded_sprite_sheet.png");
+        defer sdl.SDL_FreeSurface(image);
+
+        var id: c_uint = undefined;
+        gl.genTextures(1, &id);
+        if (id == 0) {
+            return Error.FailedToLoadTextureFile;
+        }
+        gl.bindTexture(gl.TEXTURE_2D, id);
+        gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA,
+            image.w,
+            image.h,
+            0,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            image.*.pixels,
+        );
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.bindTexture(gl.TEXTURE_2D, 0);
+
+        return .{
+            .id = id,
+            .texcoords = computeTexcoords(@intToFloat(f32, image.w), @intToFloat(f32, image.h)),
+            .aspect_ratios = computeAspectRatios(),
+        };
+    }
+
+    pub fn destroy(self: *SpriteSheetTexture) void {
+        gl.deleteTextures(1, &self.id);
+    }
+
+    const source_pixel_map = std.enums.directEnumArray(
+        SpriteId,
+        struct { x: u16, y: u16, w: u16, h: u16 },
+        @typeInfo(SpriteId).Enum.fields.len,
+        .{
+            .gem = .{ .x = 72, .y = 32, .w = 14, .h = 14 },
+            .player_back_frame_0 = .{ .x = 0, .y = 0, .w = 16, .h = 32 },
+            .player_back_frame_1 = .{ .x = 24, .y = 0, .w = 16, .h = 32 },
+            .player_back_frame_2 = .{ .x = 48, .y = 0, .w = 16, .h = 32 },
+            .player_front_frame_0 = .{ .x = 0, .y = 40, .w = 16, .h = 32 },
+            .player_front_frame_1 = .{ .x = 24, .y = 40, .w = 16, .h = 32 },
+            .player_front_frame_2 = .{ .x = 48, .y = 40, .w = 16, .h = 32 },
+            .small_bush = .{ .x = 72, .y = 0, .w = 24, .h = 26 },
+        },
+    );
+
+    fn computeTexcoords(
+        texture_width: f32,
+        texture_height: f32,
+    ) std.EnumArray(SpriteId, TextureCoordinates) {
+        var result: std.EnumArray(SpriteId, TextureCoordinates) = undefined;
+        for (std.enums.values(SpriteId)) |key, index| {
+            result.set(key, .{
+                .x = @intToFloat(f32, source_pixel_map[index].x) / texture_width,
+                .y = @intToFloat(f32, source_pixel_map[index].y) / texture_height,
+                .w = @intToFloat(f32, source_pixel_map[index].w) / texture_width,
+                .h = @intToFloat(f32, source_pixel_map[index].h) / texture_height,
+            });
+        }
+        return result;
+    }
+
+    fn computeAspectRatios() std.EnumArray(SpriteId, f32) {
+        var result: std.EnumArray(SpriteId, f32) = undefined;
+        for (std.enums.values(SpriteId)) |key, index| {
+            const ratio =
+                @intToFloat(f32, source_pixel_map[index].h) /
+                @intToFloat(f32, source_pixel_map[index].w);
+            result.set(key, ratio);
+        }
+        return result;
+    }
+};
+
 pub const Name = enum(u8) {
     gem,
     player,
