@@ -405,7 +405,13 @@ pub const BillboardRenderer = struct {
             .{ 0, 0, 0, 0 },
             .{ 0, 0, 0, 1 },
         } };
-        self.render(screen_to_ndc_matrix, .{ .x = 0, .y = 0, .z = 1 }, texture_id);
+
+        const culling_is_enabled = gl.isEnabled(gl.CULL_FACE);
+        gl.disable(gl.CULL_FACE);
+        self.render(screen_to_ndc_matrix, .{ .x = 0, .y = 0, .z = -1 }, texture_id);
+        if (culling_is_enabled == 1) {
+            gl.enable(gl.CULL_FACE);
+        }
 
         updateVbo(self.vertex_vbo_id, &meshes.StandingQuad.vertex_data, size, &size, gl.STATIC_DRAW);
     }
