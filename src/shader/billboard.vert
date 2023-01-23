@@ -6,6 +6,7 @@ in vec2 vertex_position;
 in vec2 texture_coords;
 in vec3 billboard_center_position;
 in vec2 size; // Width and height of the billboard.
+in float x_offset_from_origin;
 in vec2 z_rotation; // (sine, cosine) for rotating the billboard around the Z axis.
 in vec4 source_rect; // Values from 0 to 1, where (0, 0) is the top left of the texture.
 in vec3 tint;
@@ -17,7 +18,7 @@ out vec2 fragment_texcoords;
 out vec3 fragment_tint;
 
 void main() {
-    vec2 scaled_position = vertex_position * size;
+    vec2 scaled_position = vertex_position * size + vec2(x_offset_from_origin, 0);
     vec2 z_rotated_position = vec2(
         scaled_position.x * z_rotation[1] + scaled_position.y * z_rotation[0],
         -scaled_position.x * z_rotation[0] + scaled_position.y * z_rotation[1]
