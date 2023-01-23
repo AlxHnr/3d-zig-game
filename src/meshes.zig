@@ -19,12 +19,12 @@ pub const BottomlessCube = struct {
         .none_thickness, .length_thickness, .length_none,
 
         // Back side.
-        .length_none,    .none_none,        .length_height,
-        .length_height,  .none_none,        .none_height,
+        .none_none,      .length_none,      .none_height,
+        .none_height,    .length_none,      .length_height,
 
         // Right side.
-        .none_none,      .none_height,      .thickness_none,
-        .thickness_none, .none_height,      .thickness_height,
+        .thickness_none, .thickness_height, .none_none,
+        .none_none,      .thickness_height, .none_height,
     };
 
     pub const TextureCoordScale = enum(u8) {
