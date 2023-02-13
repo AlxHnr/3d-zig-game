@@ -469,11 +469,11 @@ const Character = struct {
             self.velocity = self.velocity.scale(0.7);
         }
 
-        const max_rotation_per_tick = math.degreesToRadians(3.5);
+        const max_rotation_per_tick = std.math.degreesToRadians(f32, 3.5);
         const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
         self.orientation = @mod(
             self.orientation + rotation_angle,
-            math.degreesToRadians(360),
+            std.math.degreesToRadians(f32, 360),
         );
     }
 };

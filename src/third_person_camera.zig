@@ -15,7 +15,7 @@ pub const Camera = struct {
     target_angle_from_ground: f32,
 
     const target_follow_speed = 0.15;
-    const default_angle_from_ground = math.degreesToRadians(10);
+    const default_angle_from_ground = std.math.degreesToRadians(f32, 10);
     const default_distance_from_object = 10;
 
     /// Initialize the camera to look down at the given object from behind.
@@ -87,7 +87,11 @@ pub const Camera = struct {
 
     /// Angle between 0 and 1.55 (89 degrees). Will be clamped into this range.
     pub fn setAngleFromGround(self: *Camera, angle: f32) void {
-        self.target_angle_from_ground = std.math.clamp(angle, 0, math.degreesToRadians(89));
+        self.target_angle_from_ground = std.math.clamp(
+            angle,
+            0,
+            std.math.degreesToRadians(f32, 89),
+        );
     }
 
     pub fn resetAngleFromGround(self: *Camera) void {
@@ -239,7 +243,7 @@ pub const Camera = struct {
     }
 
     fn getProjectionMatrix(screen_width: u16, screen_height: u16) math.Matrix {
-        const field_of_view = math.degreesToRadians(45);
+        const field_of_view = std.math.degreesToRadians(f32, 45);
         const ratio = @intToFloat(f32, screen_width) / @intToFloat(f32, screen_height);
         const near = 0.01;
         const far = 1000.0;
