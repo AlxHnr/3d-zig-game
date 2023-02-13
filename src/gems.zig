@@ -5,6 +5,7 @@ const std = @import("std");
 const math = @import("math.zig");
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const BillboardData = @import("rendering.zig").BillboardRenderer.BillboardData;
+const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 
 pub const CollisionObject = struct {
     /// Unique identifier, distinct from all other collision objects.
@@ -55,6 +56,7 @@ pub const Collection = struct {
     pub fn populateBillboardData(
         self: Collection,
         data: []BillboardData,
+        sprite_sheet_texture: SpriteSheetTexture,
         collision_objects: []const CollisionObject,
         interval_between_previous_and_current_tick: f32,
     ) void {
@@ -63,7 +65,7 @@ pub const Collection = struct {
             data[index] = gem_states.state_at_previous_tick.lerp(
                 gem_states.state_at_next_tick,
                 interval_between_previous_and_current_tick,
-            ).getBillboardData(collision_objects);
+            ).getBillboardData(collision_objects, sprite_sheet_texture);
         }
     }
 
@@ -142,7 +144,12 @@ const Gem = struct {
         };
     }
 
-    fn getBillboardData(self: Gem, collision_objects: []const CollisionObject) BillboardData {
+    fn getBillboardData(
+        self: Gem,
+        collision_objects: []const CollisionObject,
+        sprite_sheet_texture: SpriteSheetTexture,
+    ) BillboardData {
+        const source = sprite_sheet_texture.getSpriteTexcoords(.gem);
         var billboard_data = BillboardData{
             .position = .{
                 .x = self.boundaries.position.x,
@@ -150,7 +157,7 @@ const Gem = struct {
                 .z = self.boundaries.position.z,
             },
             .size = .{ .w = self.side_length, .h = self.side_length },
-            .source_rect = .{ .x = 0, .y = 0, .w = 1, .h = 1 },
+            .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
         };
         if (self.spawn_animation_progress < 1) {
             const jump_heigth = 1.5;

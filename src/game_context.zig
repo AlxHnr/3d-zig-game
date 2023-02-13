@@ -121,6 +121,7 @@ pub const Context = struct {
         }
         self.gem_collection.populateBillboardData(
             self.billboard_buffer,
+            self.sprite_sheet_texture,
             &[_]gems.CollisionObject{self.main_character
                 .getLerpedCollisionObject(self.interval_between_previous_and_current_tick)},
             self.interval_between_previous_and_current_tick,
