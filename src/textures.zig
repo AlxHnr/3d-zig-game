@@ -289,9 +289,6 @@ fn scale(
     if (image.w == new_width and image.h == new_height) {
         return image;
     }
-    std.log.info("image size is not {}x{}, trying to rescale: \"{s}\"", .{
-        new_width, new_height, image_path,
-    });
 
     const scaled_surface = sdl.SDL_CreateRGBSurfaceWithFormat(
         0,
