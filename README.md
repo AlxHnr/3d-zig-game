@@ -1,3 +1,5 @@
+https://user-images.githubusercontent.com/8235638/219977701-62c37deb-5bbb-4a4a-b7ca-da1491b748f6.mp4
+
 # Building and running the game
 
 Install the required dependencies, example for Fedora:
