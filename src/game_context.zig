@@ -37,6 +37,15 @@ pub const Context = struct {
         var gem_collection = gems.Collection.create(allocator);
         errdefer gem_collection.destroy();
 
+        var rng = std.rand.DefaultPrng.init(0);
+        var counter: usize = 0;
+        while (counter < 3000) : (counter += 1) {
+            try gem_collection.addGem(.{
+                .x = rng.random().float(f32) * 100 + 100,
+                .z = rng.random().float(f32) * 180 - 280,
+            });
+        }
+
         var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
         errdefer tileable_textures.destroy();
 
