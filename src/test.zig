@@ -15,7 +15,7 @@ test "Create collision rectangle" {
         .{ .x = 6.16, .z = 27.945 },
         19.18,
     );
-    const expected_angle = std.math.degreesToRadians(10.653624);
+    const expected_angle = std.math.degreesToRadians(f32, 10.653624);
     try expectApproxEqRel(@floatCast(f32, 11.220045), rectangle.first_corner.x, epsilon);
     try expectApproxEqRel(@floatCast(f32, 26.3245), rectangle.first_corner.z, epsilon);
     try expectApproxEqRel(@floatCast(f32, 30.400045), rectangle.third_corner.x, epsilon);
