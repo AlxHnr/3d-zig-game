@@ -141,14 +141,17 @@ const ProgramContext = struct {
                     self.edit_mode_state.cycleInsertedObjectType(
                         self.game_context.getMutableLevelGeometry(),
                     );
+                    self.logEditModeState();
                 }
             } else if (event.type == sdl.SDL_MOUSEWHEEL) {
                 if (sdl.SDL_GetMouseState(null, null) & sdl.SDL_BUTTON_RMASK == 0) {
                     self.game_context.increaseCameraDistance(event.wheel.preciseY * -2.5);
                 } else if (event.wheel.preciseY < 0) {
                     self.edit_mode_state.cycleInsertedObjectSubtypeForwards();
+                    self.logEditModeState();
                 } else {
                     self.edit_mode_state.cycleInsertedObjectSubtypeBackwards();
+                    self.logEditModeState();
                 }
             } else if (event.type == sdl.SDL_KEYDOWN) {
                 if (event.key.keysym.sym == sdl.SDLK_t) {
@@ -170,6 +173,7 @@ const ProgramContext = struct {
                     try self.game_context.reloadMapFromDisk(self.allocator);
                 } else if (event.key.keysym.sym == sdl.SDLK_DELETE) {
                     self.edit_mode_state.cycleMode(self.game_context.getMutableLevelGeometry());
+                    self.logEditModeState();
                 }
             }
         }
@@ -200,6 +204,13 @@ const ProgramContext = struct {
             .x = @intCast(u16, std.math.clamp(mouse_x, 0, self.screen_width)),
             .y = @intCast(u16, std.math.clamp(mouse_y, 0, self.screen_height)),
         };
+    }
+
+    fn logEditModeState(self: ProgramContext) void {
+        var buffer: [64]u8 = undefined;
+        std.log.info("changed edit mode: {s}", .{
+            self.edit_mode_state.describe(&buffer) catch "STRING BUFFER TOO SMALL",
+        });
     }
 
     fn getProcAddress(_: sdl.SDL_GLContext, extension_name: [:0]const u8) ?gl.FunctionPointer {
