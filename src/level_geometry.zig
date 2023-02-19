@@ -14,7 +14,15 @@ pub const LevelGeometry = struct {
     /// Gives every object owned by this struct a unique id.
     object_id_counter: u64,
 
-    walls: std.ArrayList(Wall),
+    walls: struct {
+        /// Solid walls have no transparency and are able to block the camera.
+        solid: std.ArrayList(Wall),
+
+        /// Translucent walls can be partially transparency and get rendered last. This is needed
+        /// for implementing fences. Translucent walls don't obstruct the camera and allow gems to
+        /// be collected trough them.
+        translucent: std.ArrayList(Wall),
+    },
     wall_renderer: rendering.WallRenderer,
     walls_have_changed: bool,
 
@@ -40,7 +48,10 @@ pub const LevelGeometry = struct {
 
         return LevelGeometry{
             .object_id_counter = 0,
-            .walls = std.ArrayList(Wall).init(allocator),
+            .walls = .{
+                .solid = std.ArrayList(Wall).init(allocator),
+                .translucent = std.ArrayList(Wall).init(allocator),
+            },
             .wall_renderer = wall_renderer,
             .walls_have_changed = false,
             .floors = std.ArrayList(Floor).init(allocator),
@@ -61,7 +72,8 @@ pub const LevelGeometry = struct {
         self.floors.deinit();
 
         self.wall_renderer.destroy();
-        self.walls.deinit();
+        self.walls.translucent.deinit();
+        self.walls.solid.deinit();
     }
 
     /// Stores the given allocator internally for its entire lifetime.
@@ -146,10 +158,20 @@ pub const LevelGeometry = struct {
     }
 
     pub fn writeAsJson(self: LevelGeometry, allocator: std.mem.Allocator, outstream: anytype) !void {
-        var walls = try allocator.alloc(Json.Wall, self.walls.items.len);
+        var walls = try allocator.alloc(
+            Json.Wall,
+            self.walls.solid.items.len + self.walls.translucent.items.len,
+        );
         defer allocator.free(walls);
-        for (self.walls.items) |wall, index| {
+        for (self.walls.solid.items) |wall, index| {
             walls[index] = .{
+                .t = @tagName(wall.wall_type),
+                .start = wall.start_position,
+                .end = wall.end_position,
+            };
+        }
+        for (self.walls.translucent.items) |wall, index| {
+            walls[self.walls.solid.items.len + index] = .{
                 .t = @tagName(wall.wall_type),
                 .start = wall.start_position,
                 .end = wall.end_position,
@@ -204,7 +226,10 @@ pub const LevelGeometry = struct {
         end_position: math.FlatVector,
         wall_type: WallType,
     ) !u64 {
-        const wall = try self.walls.addOne();
+        const wall = try if (Wall.isFence(wall_type))
+            self.walls.translucent.addOne()
+        else
+            self.walls.solid.addOne();
         wall.* = Wall.create(
             self.object_id_counter,
             wall_type,
@@ -307,9 +332,16 @@ pub const LevelGeometry = struct {
 
     /// If the given object id does not exist, this function will do nothing.
     pub fn removeObject(self: *LevelGeometry, object_id: u64) void {
-        for (self.walls.items) |*wall, index| {
+        for (self.walls.solid.items) |*wall, index| {
             if (wall.object_id == object_id) {
-                _ = self.walls.orderedRemove(index);
+                _ = self.walls.solid.orderedRemove(index);
+                self.walls_have_changed = true;
+                return;
+            }
+        }
+        for (self.walls.translucent.items) |*wall, index| {
+            if (wall.object_id == object_id) {
+                _ = self.walls.translucent.orderedRemove(index);
                 self.walls_have_changed = true;
                 return;
             }
@@ -368,12 +400,13 @@ pub const LevelGeometry = struct {
         ignore_fences: bool,
     ) ?RayCollision {
         var result: ?RayCollision = null;
-        for (self.walls.items) |wall| {
-            if (ignore_fences and Wall.isFence(wall.wall_type)) {
-                continue;
+        for (self.walls.solid.items) |wall| {
+            result = getCloserRayCollision(wall.collidesWithRay(ray), wall.object_id, result);
+        }
+        if (!ignore_fences) {
+            for (self.walls.translucent.items) |wall| {
+                result = getCloserRayCollision(wall.collidesWithRay(ray), wall.object_id, result);
             }
-            const impact_point = wall.collidesWithRay(ray);
-            result = getCloserRayCollision(impact_point, wall.object_id, result);
         }
         return result;
     }
@@ -413,7 +446,10 @@ pub const LevelGeometry = struct {
         var displaced_circle = circle;
 
         // Move displaced_circle out of all walls.
-        for (self.walls.items) |wall| {
+        for (self.walls.solid.items) |wall| {
+            updateDisplacedCircle(wall, &displaced_circle, &found_collision);
+        }
+        for (self.walls.translucent.items) |wall| {
             updateDisplacedCircle(wall, &displaced_circle, &found_collision);
         }
 
@@ -425,10 +461,8 @@ pub const LevelGeometry = struct {
 
     /// Check if two points are separated by a solid wall. Fences are not solid.
     pub fn isSolidWallBetweenPoints(self: LevelGeometry, points: [2]math.FlatVector) bool {
-        for (self.walls.items) |wall| {
-            if (!Wall.isFence(wall.wall_type) and
-                wall.boundaries.collidesWithLine(points[0], points[1]))
-            {
+        for (self.walls.solid.items) |wall| {
+            if (wall.boundaries.collidesWithLine(points[0], points[1])) {
                 return true;
             }
         }
@@ -436,7 +470,12 @@ pub const LevelGeometry = struct {
     }
 
     fn findWall(self: *LevelGeometry, object_id: u64) ?*Wall {
-        for (self.walls.items) |*wall| {
+        for (self.walls.solid.items) |*wall| {
+            if (wall.object_id == object_id) {
+                return wall;
+            }
+        }
+        for (self.walls.translucent.items) |*wall| {
             if (wall.object_id == object_id) {
                 return wall;
             }
@@ -491,26 +530,17 @@ pub const LevelGeometry = struct {
     }
 
     fn uploadWallsToRenderer(self: *LevelGeometry, allocator: std.mem.Allocator) !void {
-        var data = try allocator.alloc(rendering.WallRenderer.WallData, self.walls.items.len);
+        var data = try allocator.alloc(
+            rendering.WallRenderer.WallData,
+            self.walls.solid.items.len + self.walls.translucent.items.len,
+        );
         defer allocator.free(data);
 
-        for (self.walls.items) |wall, index| {
-            const wall_properties =
-                Wall.getWallTypeProperties(wall.start_position, wall.end_position, wall.wall_type);
-            const length = wall_properties.corrected_end_position
-                .subtract(wall_properties.corrected_start_position).length();
-            data[index] = .{
-                .properties = makeRenderingAttributes(
-                    wall.model_matrix,
-                    wall.getTextureLayerId(),
-                    wall.tint,
-                ),
-                .texture_repeat_dimensions = .{
-                    .x = length / wall_properties.texture_scale,
-                    .y = wall_properties.height / wall_properties.texture_scale,
-                    .z = wall_properties.thickness / wall_properties.texture_scale,
-                },
-            };
+        for (self.walls.solid.items) |wall, index| {
+            data[index] = wall.getWallData();
+        }
+        for (self.walls.translucent.items) |wall, index| {
+            data[self.walls.solid.items.len + index] = wall.getWallData();
         }
         self.wall_renderer.uploadWalls(data);
     }
@@ -555,18 +585,6 @@ pub const LevelGeometry = struct {
             data[index] = billboard.getBillboardData(sprite_sheet_texture);
         }
         self.billboard_renderer.uploadBillboards(data);
-    }
-
-    fn makeRenderingAttributes(
-        model_matrix: math.Matrix,
-        layer_id: textures.TileableArrayTexture.LayerId,
-        tint: util.Color,
-    ) rendering.LevelGeometryAttributes {
-        return .{
-            .model_matrix = model_matrix.toFloatArray(),
-            .texture_layer_id = @intToFloat(f32, @enumToInt(layer_id)),
-            .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
-        };
     }
 };
 
@@ -839,6 +857,25 @@ const Wall = struct {
             else => .wall,
         };
     }
+
+    fn getWallData(self: Wall) rendering.WallRenderer.WallData {
+        const wall_properties =
+            Wall.getWallTypeProperties(self.start_position, self.end_position, self.wall_type);
+        const length = wall_properties.corrected_end_position
+            .subtract(wall_properties.corrected_start_position).length();
+        return .{
+            .properties = makeRenderingAttributes(
+                self.model_matrix,
+                self.getTextureLayerId(),
+                self.tint,
+            ),
+            .texture_repeat_dimensions = .{
+                .x = length / wall_properties.texture_scale,
+                .y = wall_properties.height / wall_properties.texture_scale,
+                .z = wall_properties.thickness / wall_properties.texture_scale,
+            },
+        };
+    }
 };
 
 const BillboardObject = struct {
@@ -935,3 +972,15 @@ const Json = struct {
         pos: math.FlatVector,
     };
 };
+
+fn makeRenderingAttributes(
+    model_matrix: math.Matrix,
+    layer_id: textures.TileableArrayTexture.LayerId,
+    tint: util.Color,
+) rendering.LevelGeometryAttributes {
+    return .{
+        .model_matrix = model_matrix.toFloatArray(),
+        .texture_layer_id = @intToFloat(f32, @enumToInt(layer_id)),
+        .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
+    };
+}
