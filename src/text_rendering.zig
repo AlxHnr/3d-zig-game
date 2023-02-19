@@ -1,6 +1,8 @@
 /// Contains functions for rendering text. Text characters are rendered as billboards and will
 /// rotate around the Y axis towards the camera. The characters ' ' and '\n' affect the formatting
 /// of the rendered text. All strings passed to these functions are assumed to contain valid UTF-8.
+/// TODO: Add padding between lines and characters
+/// TODO: Fix kerning of some characters
 const std = @import("std");
 const BillboardData = @import("rendering.zig").BillboardRenderer.BillboardData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
