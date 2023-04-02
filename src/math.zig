@@ -29,7 +29,8 @@ pub const FlatVector = struct {
         const own_length = self.length();
         return if (own_length < epsilon)
             self
-        else .{ .x = self.x / own_length, .z = self.z / own_length };
+        else
+            .{ .x = self.x / own_length, .z = self.z / own_length };
     }
 
     pub fn lerp(self: FlatVector, other: FlatVector, t: f32) FlatVector {
@@ -109,7 +110,8 @@ pub const Vector3d = struct {
         const own_length = self.length();
         return if (own_length < epsilon)
             self
-        else .{ .x = self.x / own_length, .y = self.y / own_length, .z = self.z / own_length };
+        else
+            .{ .x = self.x / own_length, .y = self.y / own_length, .z = self.z / own_length };
     }
 
     pub fn lerp(self: Vector3d, other: Vector3d, t: f32) Vector3d {
@@ -177,8 +179,8 @@ pub const Matrix = struct {
 
     pub fn multiply(self: Matrix, other: Matrix) Matrix {
         var result: [4]@Vector(4, f32) = undefined;
-        for (other.transpose().rows) |column, column_index| {
-            for (self.rows) |row, row_index| {
+        for (other.transpose().rows, 0..) |column, column_index| {
+            for (self.rows, 0..) |row, row_index| {
                 result[row_index][column_index] = @reduce(.Add, row * column);
             }
         }
@@ -187,7 +189,7 @@ pub const Matrix = struct {
 
     pub fn multiplyScalar(self: Matrix, scalar: f32) Matrix {
         var result: [4]@Vector(4, f32) = undefined;
-        for (self.rows) |row, index| {
+        for (self.rows, 0..) |row, index| {
             result[index] = row * @splat(4, scalar);
         }
         return .{ .rows = result };
@@ -283,7 +285,7 @@ pub const Matrix = struct {
             .{ 1, -1, 1, -1 },
             .{ -1, 1, -1, 1 },
         };
-        for (self.rows) |_, index| {
+        for (self.rows, 0..) |_, index| {
             result[index] = negation_matrix[index] * @Vector(4, f32){
                 getDeterminant3x3(self.getCofactorSubmatrix(index, 0)),
                 getDeterminant3x3(self.getCofactorSubmatrix(index, 1)),
@@ -297,7 +299,7 @@ pub const Matrix = struct {
     fn getCofactorSubmatrix(self: Matrix, row_to_ignore: usize, column_to_ignore: usize) [3][3]f32 {
         var result: [3][3]f32 = undefined;
         const column_indices = getOtherIndices(column_to_ignore);
-        for (getOtherIndices(row_to_ignore)) |row_index, index| {
+        for (getOtherIndices(row_to_ignore), 0..) |row_index, index| {
             result[index] = .{
                 self.rows[row_index][column_indices[0]],
                 self.rows[row_index][column_indices[1]],

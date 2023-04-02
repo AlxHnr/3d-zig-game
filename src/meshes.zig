@@ -58,7 +58,7 @@ pub const BottomlessCube = struct {
         };
 
         var result: [90]f32 = undefined;
-        for (corner_indices) |corner_index, index| {
+        for (corner_indices, 0..) |corner_index, index| {
             result[index * 3 + 0] = corners[corner_index][0];
             result[index * 3 + 1] = corners[corner_index][1];
             result[index * 3 + 2] = corners[corner_index][2];

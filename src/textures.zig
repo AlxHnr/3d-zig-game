@@ -47,7 +47,7 @@ pub const TileableArrayTexture = struct {
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
 
-        for (std.enums.values(LayerId)) |value, index| {
+        for (std.enums.values(LayerId), 0..) |value, index| {
             var path_buffer: [64]u8 = undefined;
             const texture_path = try std.fmt.bufPrintZ(path_buffer[0..], "assets/{s}.png", .{
                 @tagName(value),
@@ -210,7 +210,7 @@ pub const SpriteSheetTexture = struct {
 
     fn computeFontSourcePixelMap() [font_character_count]TextureSourceRectangle {
         var result: [font_character_count]TextureSourceRectangle = undefined;
-        for (result) |_, index| {
+        for (result, 0..) |_, index| {
             result[index] = .{
                 .x = @intCast(u16, @mod(index, 32) * 16),
                 .y = @intCast(u16, @divFloor(index, 32) * 16),
@@ -223,7 +223,7 @@ pub const SpriteSheetTexture = struct {
 
     fn computeSpriteTexcoordMap() std.EnumArray(SpriteId, TextureCoordinates) {
         var result: std.EnumArray(SpriteId, TextureCoordinates) = undefined;
-        for (std.enums.values(SpriteId)) |key, index| {
+        for (std.enums.values(SpriteId), 0..) |key, index| {
             result.set(key, toTexcoords(sprite_source_pixel_map[index]));
         }
         return result;
@@ -231,7 +231,7 @@ pub const SpriteSheetTexture = struct {
 
     fn computeFontTexcoordMap() [font_character_count]TextureCoordinates {
         var result: [font_character_count]TextureCoordinates = undefined;
-        for (result) |_, index| {
+        for (result, 0..) |_, index| {
             result[index] = toTexcoords(font_source_pixel_map[index]);
         }
         return result;
@@ -248,7 +248,7 @@ pub const SpriteSheetTexture = struct {
 
     fn computeSpriteAspectRatioMap() std.EnumArray(SpriteId, f32) {
         var result: std.EnumArray(SpriteId, f32) = undefined;
-        for (std.enums.values(SpriteId)) |key, index| {
+        for (std.enums.values(SpriteId), 0..) |key, index| {
             const ratio =
                 @intToFloat(f32, sprite_source_pixel_map[index].h) /
                 @intToFloat(f32, sprite_source_pixel_map[index].w);

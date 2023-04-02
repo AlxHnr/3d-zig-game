@@ -61,7 +61,7 @@ pub const Collection = struct {
         interval_between_previous_and_current_tick: f32,
     ) void {
         std.debug.assert(self.gems.items.len <= data.len);
-        for (self.gems.items) |gem_states, index| {
+        for (self.gems.items, 0..) |gem_states, index| {
             data[index] = gem_states.state_at_previous_tick.lerp(
                 gem_states.state_at_next_tick,
                 interval_between_previous_and_current_tick,

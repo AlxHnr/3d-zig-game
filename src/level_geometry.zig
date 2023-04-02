@@ -163,14 +163,14 @@ pub const LevelGeometry = struct {
             self.walls.solid.items.len + self.walls.translucent.items.len,
         );
         defer allocator.free(walls);
-        for (self.walls.solid.items) |wall, index| {
+        for (self.walls.solid.items, 0..) |wall, index| {
             walls[index] = .{
                 .t = @tagName(wall.wall_type),
                 .start = wall.start_position,
                 .end = wall.end_position,
             };
         }
-        for (self.walls.translucent.items) |wall, index| {
+        for (self.walls.translucent.items, 0..) |wall, index| {
             walls[self.walls.solid.items.len + index] = .{
                 .t = @tagName(wall.wall_type),
                 .start = wall.start_position,
@@ -180,7 +180,7 @@ pub const LevelGeometry = struct {
 
         var floors = try allocator.alloc(Json.Floor, self.floors.items.len);
         defer allocator.free(floors);
-        for (self.floors.items) |floor, index| {
+        for (self.floors.items, 0..) |floor, index| {
             floors[index] = .{
                 .t = @tagName(floor.floor_type),
                 .side_a_start = floor.side_a_start,
@@ -191,7 +191,7 @@ pub const LevelGeometry = struct {
 
         var billboards = try allocator.alloc(Json.BillboardObject, self.billboard_objects.items.len);
         defer allocator.free(billboards);
-        for (self.billboard_objects.items) |billboard, index| {
+        for (self.billboard_objects.items, 0..) |billboard, index| {
             billboards[index] = .{
                 .t = @tagName(billboard.object_type),
                 .pos = billboard.boundaries.position,
@@ -332,28 +332,28 @@ pub const LevelGeometry = struct {
 
     /// If the given object id does not exist, this function will do nothing.
     pub fn removeObject(self: *LevelGeometry, object_id: u64) void {
-        for (self.walls.solid.items) |*wall, index| {
+        for (self.walls.solid.items, 0..) |*wall, index| {
             if (wall.object_id == object_id) {
                 _ = self.walls.solid.orderedRemove(index);
                 self.walls_have_changed = true;
                 return;
             }
         }
-        for (self.walls.translucent.items) |*wall, index| {
+        for (self.walls.translucent.items, 0..) |*wall, index| {
             if (wall.object_id == object_id) {
                 _ = self.walls.translucent.orderedRemove(index);
                 self.walls_have_changed = true;
                 return;
             }
         }
-        for (self.floors.items) |*floor, index| {
+        for (self.floors.items, 0..) |*floor, index| {
             if (floor.object_id == object_id) {
                 _ = self.floors.orderedRemove(index);
                 self.floors_have_changed = true;
                 return;
             }
         }
-        for (self.billboard_objects.items) |billboard, index| {
+        for (self.billboard_objects.items, 0..) |billboard, index| {
             if (billboard.object_id == object_id) {
                 _ = self.billboard_objects.orderedRemove(index);
                 self.billboards_have_changed = true;
@@ -424,7 +424,7 @@ pub const LevelGeometry = struct {
         }
 
         if (ray.collidesWithGround()) |impact_point| {
-            for (self.floors.items) |_, index| {
+            for (self.floors.items, 0..) |_, index| {
                 // The last floor in this array is always drawn at the top.
                 const floor = self.floors.items[self.floors.items.len - index - 1];
                 if (floor.boundaries.collidesWithPoint(impact_point.position.toFlatVector())) {
@@ -536,10 +536,10 @@ pub const LevelGeometry = struct {
         );
         defer allocator.free(data);
 
-        for (self.walls.solid.items) |wall, index| {
+        for (self.walls.solid.items, 0..) |wall, index| {
             data[index] = wall.getWallData();
         }
-        for (self.walls.translucent.items) |wall, index| {
+        for (self.walls.translucent.items, 0..) |wall, index| {
             data[self.walls.solid.items.len + index] = wall.getWallData();
         }
         self.wall_renderer.uploadWalls(data);
@@ -581,7 +581,7 @@ pub const LevelGeometry = struct {
         );
         defer allocator.free(data);
 
-        for (self.billboard_objects.items) |billboard, index| {
+        for (self.billboard_objects.items, 0..) |billboard, index| {
             data[index] = billboard.getBillboardData(sprite_sheet_texture);
         }
         self.billboard_renderer.uploadBillboards(data);
