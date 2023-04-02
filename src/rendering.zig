@@ -253,7 +253,6 @@ pub const FloorRenderer = struct {
 
 /// Basic geometry data to be uploaded as vertex attributes to the GPU.
 pub const LevelGeometryAttributes = extern struct {
-    /// Same row order as the float16 returned by raymath.MatrixToFloatV().
     model_matrix: [16]f32,
     /// Index of the layer in the array texture passed to render(). Will be rounded.
     texture_layer_id: f32,
