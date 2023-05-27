@@ -81,10 +81,8 @@ pub const LevelGeometry = struct {
         var geometry = try create(allocator);
         errdefer geometry.destroy();
 
-        var token_stream = std.json.TokenStream.init(json);
-        const options = .{ .allocator = allocator };
-        const tree = try std.json.parse(Json.SerializableData, &token_stream, options);
-        defer std.json.parseFree(Json.SerializableData, tree, options);
+        const tree = try std.json.parseFromSlice(Json.SerializableData, allocator, json, .{});
+        defer std.json.parseFree(Json.SerializableData, allocator, tree);
 
         for (tree.walls) |wall| {
             const wall_type = std.meta.stringToEnum(WallType, wall.t) orelse {
@@ -204,7 +202,7 @@ pub const LevelGeometry = struct {
             .billboard_objects = billboards,
         };
         try std.json.stringify(data, .{
-            .whitespace = .{ .indent = .{ .Space = 0 }, .separator = false },
+            .whitespace = .{ .indent = .{ .space = 0 }, .separator = false },
         }, outstream);
     }
 

@@ -20,6 +20,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const tests = b.addTest(.{ .root_source_file = .{ .path = "src/test.zig" } });
+    const test_run_artifact = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&tests.step);
+    test_step.dependOn(&test_run_artifact.step);
 }
