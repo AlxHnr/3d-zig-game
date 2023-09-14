@@ -8,6 +8,7 @@ const collision = @import("collision.zig");
 const util = @import("util.zig");
 const math = @import("math.zig");
 const epsilon = math.epsilon;
+const text_rendering = @import("text_rendering.zig");
 
 test "Create collision rectangle" {
     const rectangle = collision.Rectangle.create(
@@ -116,4 +117,24 @@ test "Matrix inversion" {
     try expectApproxEqRel(@as(f32, 0.0119788675), result.rows[3][1], epsilon);
     try expectApproxEqRel(@as(f32, 0.0213212781), result.rows[3][2], epsilon);
     try expectApproxEqRel(@as(f32, 0.0027789229), result.rows[3][3], epsilon);
+}
+
+test "Text rendering: utility functions" {
+    const white = util.Color.white;
+    const Segment = text_rendering.TextSegment;
+    const getCount = text_rendering.getBillboardCount;
+    try expect(getCount(&[_]Segment{.{ .color = white, .text = "" }}) == 0);
+    try expect(getCount(&[_]Segment{.{ .color = white, .text = "   " }}) == 0);
+    try expect(getCount(&[_]Segment{.{ .color = white, .text = "Hello" }}) == 5);
+    try expect(getCount(&[_]Segment{.{ .color = white, .text = "Hello World" }}) == 10);
+    try expect(getCount(&[_]Segment{.{ .color = white, .text = "Hello\n \nWorld\n" }}) == 10);
+    try expect(getCount(&[_]Segment{.{ .color = white, .text = "ÖÖÖÖ" }}) == 4);
+
+    const text_block =
+        [_]Segment{
+        .{ .color = white, .text = "This is" },
+        .{ .color = white, .text = " a text with potentially" },
+        .{ .color = white, .text = "\n\nmultiple colors" },
+    };
+    try expect(getCount(&text_block) == 40);
 }
