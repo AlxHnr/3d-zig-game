@@ -14,9 +14,9 @@ pub const Color = struct {
 
     pub fn fromRgb8(r: u8, g: u8, b: u8) Color {
         return .{
-            .r = @intToFloat(f32, r) / 255,
-            .g = @intToFloat(f32, g) / 255,
-            .b = @intToFloat(f32, b) / 255,
+            .r = @as(f32, @floatFromInt(r)) / 255,
+            .g = @as(f32, @floatFromInt(g)) / 255,
+            .b = @as(f32, @floatFromInt(b)) / 255,
         };
     }
 
@@ -52,10 +52,12 @@ pub const TickTimer = struct {
         self.leftover_time_from_last_tick = elapsed_time % self.tick_duration;
         return LapResult{
             .elapsed_ticks = elapsed_time / self.tick_duration,
-            .next_tick_progress = @floatCast(f32, @intToFloat(
-                f64,
-                self.leftover_time_from_last_tick,
-            ) / @intToFloat(f64, self.tick_duration)),
+            .next_tick_progress = @floatCast(
+                @as(
+                    f64,
+                    @floatFromInt(self.leftover_time_from_last_tick),
+                ) / @as(f64, @floatFromInt(self.tick_duration)),
+            ),
         };
     }
 
@@ -75,10 +77,10 @@ pub fn getPreviousEnumWrapAround(value: anytype) @TypeOf(value) {
         };
         std.debug.assert(argument_is_enum);
     }
-    return @intToEnum(@TypeOf(value), if (@enumToInt(value) == 0)
+    return @enumFromInt(if (@intFromEnum(value) == 0)
         @typeInfo(@TypeOf(value)).Enum.fields.len - 1
     else
-        @enumToInt(value) - 1);
+        @intFromEnum(value) - 1);
 }
 
 pub fn getNextEnumWrapAround(value: anytype) @TypeOf(value) {
@@ -89,8 +91,7 @@ pub fn getNextEnumWrapAround(value: anytype) @TypeOf(value) {
         };
         std.debug.assert(argument_is_enum);
     }
-    return @intToEnum(
-        @TypeOf(value),
-        @mod(@intCast(usize, @enumToInt(value)) + 1, @typeInfo(@TypeOf(value)).Enum.fields.len),
+    return @enumFromInt(
+        @mod(@as(usize, @intFromEnum(value)) + 1, @typeInfo(@TypeOf(value)).Enum.fields.len),
     );
 }

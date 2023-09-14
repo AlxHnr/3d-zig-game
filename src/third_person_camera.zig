@@ -82,7 +82,7 @@ pub const Camera = struct {
 
     pub fn increaseDistanceToObject(self: *Camera, offset: f32) void {
         self.target_distance_from_object =
-            std.math.max(self.target_distance_from_object + offset, 5);
+            @max(self.target_distance_from_object + offset, 5);
     }
 
     /// Angle between 0 and 1.55 (89 degrees). Will be clamped into this range.
@@ -108,8 +108,8 @@ pub const Camera = struct {
         max_distance_from_target: ?f32,
     ) collision.Ray3d {
         const clip_ray = math.Vector3d{
-            .x = @intToFloat(f32, mouse_x) / @intToFloat(f32, screen_width) * 2 - 1,
-            .y = 1 - @intToFloat(f32, mouse_y) / @intToFloat(f32, screen_height) * 2,
+            .x = @as(f32, @floatFromInt(mouse_x)) / @as(f32, @floatFromInt(screen_width)) * 2 - 1,
+            .y = 1 - @as(f32, @floatFromInt(mouse_y)) / @as(f32, @floatFromInt(screen_height)) * 2,
             .z = 0,
         };
         const view_ray = getProjectionMatrix(screen_width, screen_height)
@@ -235,7 +235,7 @@ pub const Camera = struct {
     fn getAdjustedCameraPosition(self: Camera, max_distance_from_target: ?f32) math.Vector3d {
         const offset_from_target = self.position.subtract(self.target_position);
         const max_distance = max_distance_from_target orelse offset_from_target.length();
-        const distance = std.math.min(offset_from_target.length(), max_distance);
+        const distance = @min(offset_from_target.length(), max_distance);
         const prevent_seeing_trough_walls_factor = 0.95;
         const updated_offset = offset_from_target.normalize()
             .scale(distance * prevent_seeing_trough_walls_factor);
@@ -244,7 +244,7 @@ pub const Camera = struct {
 
     fn getProjectionMatrix(screen_width: u16, screen_height: u16) math.Matrix {
         const field_of_view = std.math.degreesToRadians(f32, 45);
-        const ratio = @intToFloat(f32, screen_width) / @intToFloat(f32, screen_height);
+        const ratio = @as(f32, @floatFromInt(screen_width)) / @as(f32, @floatFromInt(screen_height));
         const near = 0.01;
         const far = 1000.0;
         const f = 1.0 / std.math.tan(field_of_view / 2);

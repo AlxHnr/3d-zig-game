@@ -49,13 +49,13 @@ pub const Shader = struct {
         var buffer_length: c_int = undefined;
         gl.getProgramiv(program_id, gl.INFO_LOG_LENGTH, &buffer_length);
 
-        var buffer = try gpa.allocator().alloc(u8, @intCast(usize, buffer_length));
+        var buffer = try gpa.allocator().alloc(u8, @intCast(buffer_length));
         defer gpa.allocator().free(buffer);
 
         var string_length: c_int = undefined;
         gl.getProgramInfoLog(program_id, buffer_length, &string_length, buffer.ptr);
 
-        std.log.err("failed to link shader: {s}", .{buffer[0..@intCast(usize, string_length)]});
+        std.log.err("failed to link shader: {s}", .{buffer[0..@intCast(string_length)]});
 
         return Error.FailedToCompileAndLinkShader;
     }
@@ -76,7 +76,7 @@ pub const Shader = struct {
             std.log.err("failed to retrieve location of attribute \"{s}\"", .{attribute_name});
             return Error.FailedToRetrieveShaderLocation;
         }
-        return @intCast(c_uint, location);
+        return @intCast(location);
     }
 
     pub fn getUniformLocation(self: Shader, uniform_name: [:0]const u8) Error!c_int {
@@ -107,13 +107,13 @@ fn compileShader(allocator: std.mem.Allocator, shader_type: c_uint, source: [*:0
     var buffer_length: c_int = undefined;
     gl.getShaderiv(shader, gl.INFO_LOG_LENGTH, &buffer_length);
 
-    var buffer = try allocator.alloc(u8, @intCast(usize, buffer_length));
+    var buffer = try allocator.alloc(u8, @intCast(buffer_length));
     defer allocator.free(buffer);
 
     var string_length: c_int = undefined;
-    gl.getShaderInfoLog(shader, @intCast(c_int, buffer.len), &string_length, buffer.ptr);
+    gl.getShaderInfoLog(shader, @intCast(buffer.len), &string_length, buffer.ptr);
 
-    std.log.err("failed to compile shader: {s}", .{buffer[0..@intCast(usize, string_length)]});
+    std.log.err("failed to compile shader: {s}", .{buffer[0..@intCast(string_length)]});
 
     return Error.FailedToCompileAndLinkShader;
 }

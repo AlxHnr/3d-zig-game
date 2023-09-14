@@ -190,7 +190,7 @@ pub const Matrix = struct {
     pub fn multiplyScalar(self: Matrix, scalar: f32) Matrix {
         var result: [4]@Vector(4, f32) = undefined;
         for (self.rows, 0..) |row, index| {
-            result[index] = row * @splat(4, scalar);
+            result[index] = row * @as(@Vector(4, f32), @splat(scalar));
         }
         return .{ .rows = result };
     }

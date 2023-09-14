@@ -13,10 +13,10 @@ pub const State = struct {
         return State{
             .mode = Mode.insert_objects,
             .object_type_to_insert = .{
-                .used_field = @intToEnum(ObjectTypeToInsert.UsedField, 0),
-                .wall = @intToEnum(LevelGeometry.WallType, 0),
-                .floor = @intToEnum(LevelGeometry.FloorType, 0),
-                .billboard = @intToEnum(LevelGeometry.BillboardObjectType, 0),
+                .used_field = @enumFromInt(0),
+                .wall = @enumFromInt(0),
+                .floor = @enumFromInt(0),
+                .billboard = @enumFromInt(0),
             },
             .currently_edited_object = null,
         };

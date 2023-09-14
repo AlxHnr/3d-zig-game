@@ -13,7 +13,7 @@ pub const FourStepCycle = struct {
 
     /// Takes a speed value >= 0 where 1 skips a full frame,
     pub fn processElapsedTick(self: *FourStepCycle, speed: f32) void {
-        self.cycle = self.cycle + std.math.max(0, speed);
+        self.cycle = self.cycle + @max(0, speed);
         if (self.cycle > 1) {
             self.cycle = 0;
             self.step = self.step +% 1;

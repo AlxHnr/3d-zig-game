@@ -63,7 +63,7 @@ pub const TileableArrayTexture = struct {
                 0,
                 0,
                 0,
-                @intCast(c_int, index),
+                @intCast(index),
                 texture_width,
                 texture_height,
                 1,
@@ -212,8 +212,8 @@ pub const SpriteSheetTexture = struct {
         var result: [font_character_count]TextureSourceRectangle = undefined;
         for (result, 0..) |_, index| {
             result[index] = .{
-                .x = @intCast(u16, @mod(index, 32) * 16),
-                .y = @intCast(u16, @divFloor(index, 32) * 16),
+                .x = @as(u16, @mod(index, 32) * 16),
+                .y = @as(u16, @divFloor(index, 32) * 16),
                 .w = 8,
                 .h = 8,
             };
@@ -239,10 +239,10 @@ pub const SpriteSheetTexture = struct {
 
     fn toTexcoords(source: TextureSourceRectangle) TextureCoordinates {
         return .{
-            .x = @intToFloat(f32, source.x) / texture_width,
-            .y = @intToFloat(f32, source.y) / texture_height,
-            .w = @intToFloat(f32, source.w) / texture_width,
-            .h = @intToFloat(f32, source.h) / texture_height,
+            .x = @as(f32, source.x) / texture_width,
+            .y = @as(f32, source.y) / texture_height,
+            .w = @as(f32, source.w) / texture_width,
+            .h = @as(f32, source.h) / texture_height,
         };
     }
 
@@ -250,8 +250,8 @@ pub const SpriteSheetTexture = struct {
         var result: std.EnumArray(SpriteId, f32) = undefined;
         for (std.enums.values(SpriteId), 0..) |key, index| {
             const ratio =
-                @intToFloat(f32, sprite_source_pixel_map[index].h) /
-                @intToFloat(f32, sprite_source_pixel_map[index].w);
+                @as(f32, sprite_source_pixel_map[index].h) /
+                @as(f32, sprite_source_pixel_map[index].w);
             result.set(key, ratio);
         }
         return result;

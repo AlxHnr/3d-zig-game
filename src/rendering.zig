@@ -112,7 +112,7 @@ pub const WallRenderer = struct {
             gl.TRIANGLES,
             0,
             vertex_count,
-            @intCast(c_int, self.walls_uploaded_to_vbo),
+            @intCast(self.walls_uploaded_to_vbo),
         );
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, 0);
         gl.bindVertexArray(0);
@@ -399,8 +399,8 @@ pub const BillboardRenderer = struct {
         updateVbo(self.vertex_vbo_id, &vertex_data, size, &size, gl.STATIC_DRAW);
 
         const screen_to_ndc_matrix = math.Matrix{ .rows = .{
-            .{ 2 / @intToFloat(f32, screen_width), 0, 0, -1 },
-            .{ 0, -2 / @intToFloat(f32, screen_height), 0, 1 },
+            .{ 2 / @as(f32, screen_width), 0, 0, -1 },
+            .{ 0, -2 / @as(f32, screen_height), 0, 1 },
             .{ 0, 0, 0, 0 },
             .{ 0, 0, 0, 1 },
         } };
@@ -426,8 +426,8 @@ pub const BillboardRenderer = struct {
         /// Precomputed angle at which the billboard should be rotated around the Z axis. Defaults
         /// to no rotation.
         z_rotation: extern struct { sine: f32, cosine: f32 } = .{
-            .sine = std.math.sin(@floatCast(f32, 0)),
-            .cosine = std.math.cos(@floatCast(f32, 0)),
+            .sine = std.math.sin(@as(f32, 0)),
+            .cosine = std.math.cos(@as(f32, 0)),
         },
         /// Specifies the part of the currently bound texture which should be stretched onto the
         /// billboard. Values range from 0 to 1, where (0, 0) is the top left corner of the texture.
@@ -464,8 +464,7 @@ fn setupAndBindStandingQuadVbo(position_location: c_uint, texture_coords_locatio
     const stride = @sizeOf([4]f32); // x, y, u, v.
     gl.vertexAttribPointer(position_location, 2, gl.FLOAT, 0, stride, null); // x, y
     gl.enableVertexAttribArray(position_location);
-    gl.vertexAttribPointer(texture_coords_location, 2, gl.FLOAT, 0, stride, @intToPtr(
-        ?*u8,
+    gl.vertexAttribPointer(texture_coords_location, 2, gl.FLOAT, 0, stride, @ptrFromInt(
         @sizeOf([2]f32), // u, v
     ));
     gl.enableVertexAttribArray(texture_coords_location);
@@ -480,7 +479,7 @@ fn updateVbo(
     current_capacity: *usize,
     usage: gl.GLenum,
 ) void {
-    const signed_size = @intCast(isize, size);
+    const signed_size = @as(isize, @intCast(size));
 
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo_id);
     if (size <= current_capacity.*) {
@@ -505,7 +504,7 @@ fn setupVertexAttribute(
         gl.FLOAT,
         0,
         all_components_size,
-        @intToPtr(?*u8, offset_to_first_component),
+        @ptrFromInt(offset_to_first_component),
     );
     gl.vertexAttribDivisor(attribute_location, 1);
 }
@@ -544,5 +543,5 @@ fn setTextureSamplerId(shader: Shader, loc_texture_sampler: c_int) void {
 
 fn renderStandingQuadInstanced(instance_count: usize) void {
     const vertex_count = meshes.StandingQuad.vertex_data.len / 2;
-    gl.drawArraysInstanced(gl.TRIANGLES, 0, vertex_count, @intCast(c_int, instance_count));
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, vertex_count, @intCast(instance_count));
 }

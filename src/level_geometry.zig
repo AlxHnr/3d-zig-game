@@ -82,15 +82,15 @@ pub const LevelGeometry = struct {
         errdefer geometry.destroy();
 
         const tree = try std.json.parseFromSlice(Json.SerializableData, allocator, json, .{});
-        defer std.json.parseFree(Json.SerializableData, allocator, tree);
+        defer tree.deinit();
 
-        for (tree.walls) |wall| {
+        for (tree.value.walls) |wall| {
             const wall_type = std.meta.stringToEnum(WallType, wall.t) orelse {
                 return Error.FailedToDeserializeLevelGeometry;
             };
             _ = try geometry.addWall(wall.start, wall.end, wall_type);
         }
-        for (tree.floors) |floor| {
+        for (tree.value.floors) |floor| {
             const floor_type = std.meta.stringToEnum(FloorType, floor.t) orelse {
                 return Error.FailedToDeserializeLevelGeometry;
             };
@@ -101,7 +101,7 @@ pub const LevelGeometry = struct {
                 floor_type,
             );
         }
-        for (tree.billboard_objects) |billboard| {
+        for (tree.value.billboard_objects) |billboard| {
             const object_type = std.meta.stringToEnum(BillboardObjectType, billboard.t) orelse {
                 return Error.FailedToDeserializeLevelGeometry;
             };
@@ -201,9 +201,7 @@ pub const LevelGeometry = struct {
             .floors = floors,
             .billboard_objects = billboards,
         };
-        try std.json.stringify(data, .{
-            .whitespace = .{ .indent = .{ .space = 0 }, .separator = false },
-        }, outstream);
+        try std.json.stringify(data, .{ .whitespace = .indent_1 }, outstream);
     }
 
     pub const WallType = enum {
@@ -978,7 +976,7 @@ fn makeRenderingAttributes(
 ) rendering.LevelGeometryAttributes {
     return .{
         .model_matrix = model_matrix.toFloatArray(),
-        .texture_layer_id = @intToFloat(f32, @enumToInt(layer_id)),
+        .texture_layer_id = @as(f32, @floatFromInt(@intFromEnum(layer_id))),
         .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
     };
 }

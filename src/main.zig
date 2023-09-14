@@ -128,8 +128,8 @@ const ProgramContext = struct {
             if (event.type == sdl.SDL_WINDOWEVENT and
                 event.window.event == sdl.SDL_WINDOWEVENT_RESIZED)
             {
-                self.screen_width = @intCast(u16, event.window.data1);
-                self.screen_height = @intCast(u16, event.window.data2);
+                self.screen_width = @intCast(event.window.data1);
+                self.screen_height = @intCast(event.window.data2);
                 gl.viewport(0, 0, event.window.data1, event.window.data2);
             } else if (event.type == sdl.SDL_MOUSEBUTTONDOWN) {
                 if (event.button.button == sdl.SDL_BUTTON_LEFT) {
@@ -201,8 +201,8 @@ const ProgramContext = struct {
         var mouse_y: c_int = undefined;
         _ = sdl.SDL_GetMouseState(&mouse_x, &mouse_y);
         return .{
-            .x = @intCast(u16, std.math.clamp(mouse_x, 0, self.screen_width)),
-            .y = @intCast(u16, std.math.clamp(mouse_y, 0, self.screen_height)),
+            .x = @intCast(std.math.clamp(mouse_x, 0, self.screen_width)),
+            .y = @intCast(std.math.clamp(mouse_y, 0, self.screen_height)),
         };
     }
 
