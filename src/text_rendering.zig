@@ -32,8 +32,8 @@ pub fn populateBillboardData(
     const info = getInfo(text_segments);
     const half_size = character_size / 2;
     const offset_to_top_left_corner = .{
-        .x = -@as(f32, info.codepoint_count_in_longest_line) * half_size,
-        .y = @as(f32, info.newline_count + 1) * half_size,
+        .x = -@as(f32, @floatFromInt(info.codepoint_count_in_longest_line)) * half_size,
+        .y = @as(f32, @floatFromInt(info.newline_count + 1)) * half_size,
         .z = 0,
     };
     populateBillboardDataRaw(
@@ -60,8 +60,8 @@ pub fn populateBillboardData2d(
     out: []BillboardData,
 ) void {
     const position = .{
-        .x = @as(f32, screen_position_x),
-        .y = @as(f32, screen_position_y),
+        .x = @as(f32, @floatFromInt(screen_position_x)),
+        .y = @as(f32, @floatFromInt(screen_position_y)),
         .z = 0,
     };
     const offset_to_top_left_corner = .{ .x = 0, .y = 0, .z = 0 };
@@ -69,7 +69,7 @@ pub fn populateBillboardData2d(
         text_segments,
         position,
         offset_to_top_left_corner,
-        @floatCast(character_size_pixels),
+        @floatFromInt(character_size_pixels),
         false,
         sprite_sheet_texture,
         out,
@@ -95,7 +95,7 @@ fn getInfo(text_segments: []const TextSegment) TextSegmentInfo {
         while (iterator.nextCodepoint()) |codepoint| {
             if (codepoint == '\n') {
                 result.newline_count = result.newline_count + 1;
-                result.codepoint_count_in_longest_line = std.math.max(
+                result.codepoint_count_in_longest_line = @max(
                     result.codepoint_count_in_longest_line,
                     codepoints_in_current_line,
                 );
@@ -108,7 +108,7 @@ fn getInfo(text_segments: []const TextSegment) TextSegmentInfo {
             }
         }
     }
-    result.codepoint_count_in_longest_line = std.math.max(
+    result.codepoint_count_in_longest_line = @max(
         result.codepoint_count_in_longest_line,
         codepoints_in_current_line,
     );

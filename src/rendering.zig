@@ -399,8 +399,8 @@ pub const BillboardRenderer = struct {
         updateVbo(self.vertex_vbo_id, &vertex_data, size, &size, gl.STATIC_DRAW);
 
         const screen_to_ndc_matrix = math.Matrix{ .rows = .{
-            .{ 2 / @as(f32, screen_width), 0, 0, -1 },
-            .{ 0, -2 / @as(f32, screen_height), 0, 1 },
+            .{ 2 / @as(f32, @floatFromInt(screen_width)), 0, 0, -1 },
+            .{ 0, -2 / @as(f32, @floatFromInt(screen_height)), 0, 1 },
             .{ 0, 0, 0, 0 },
             .{ 0, 0, 0, 1 },
         } };
