@@ -27,6 +27,18 @@ test "Create collision rectangle" {
     try expectApproxEqRel(std.math.cos(-expected_angle), rectangle.inverse_rotation.cosine, epsilon);
 }
 
+test "Collision between circle and point" {
+    const circle = collision.Circle{ .position = .{ .x = 20, .z = -15 }, .radius = 5 };
+    try expect(circle.collidesWithPoint(.{ .x = 5, .z = -5 }) == null);
+    try expect(circle.collidesWithPoint(.{ .x = 20, .z = -5 }) == null);
+    try expect(circle.collidesWithPoint(.{ .x = 5, .z = -15 }) == null);
+
+    const displacement_vector = circle.collidesWithPoint(.{ .x = 22, .z = -16 });
+    try expect(displacement_vector != null);
+    try expectApproxEqRel(@as(f32, -2.472135), displacement_vector.?.x, epsilon);
+    try expectApproxEqRel(@as(f32, 1.236067), displacement_vector.?.z, epsilon);
+}
+
 test "Collisions between lines" {
     try expect(collision.lineCollidesWithLine(
         .{ .x = -1, .z = -3 },
