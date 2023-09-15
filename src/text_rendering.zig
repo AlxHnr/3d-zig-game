@@ -160,13 +160,9 @@ fn populateBillboardDataRaw(
             } else {
                 const source = sprite_sheet_texture.getFontCharacterTexcoords(codepoint);
                 out[index] = .{
-                    .position = .{
-                        .x = position.x,
-                        .y = position.y + offset.y,
-                        .z = position.z,
-                    },
+                    .position = .{ .x = position.x, .y = position.y, .z = position.z },
                     .size = .{ .w = character_size, .h = character_size },
-                    .x_offset_from_origin = offset.x,
+                    .offset_from_origin = .{ .x = offset.x, .y = offset.y },
                     .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
                     .tint = .{ .r = segment.color.r, .g = segment.color.g, .b = segment.color.b },
                 };

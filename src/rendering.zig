@@ -282,7 +282,7 @@ pub const BillboardRenderer = struct {
         const loc_billboard_center_position =
             try shader.getAttributeLocation("billboard_center_position");
         const loc_size = try shader.getAttributeLocation("size");
-        const loc_x_offset_from_origin = try shader.getAttributeLocation("x_offset_from_origin");
+        const loc_offset_from_origin = try shader.getAttributeLocation("offset_from_origin");
         const loc_z_rotation = try shader.getAttributeLocation("z_rotation");
         const loc_source_rect = try shader.getAttributeLocation("source_rect");
         const loc_tint = try shader.getAttributeLocation("tint");
@@ -299,9 +299,9 @@ pub const BillboardRenderer = struct {
             "position",
         ), @sizeOf(BillboardData));
         setupVertexAttribute(loc_size, 2, @offsetOf(BillboardData, "size"), @sizeOf(BillboardData));
-        setupVertexAttribute(loc_x_offset_from_origin, 1, @offsetOf(
+        setupVertexAttribute(loc_offset_from_origin, 2, @offsetOf(
             BillboardData,
-            "x_offset_from_origin",
+            "offset_from_origin",
         ), @sizeOf(BillboardData));
         setupVertexAttribute(loc_z_rotation, 2, @offsetOf(
             BillboardData,
@@ -314,11 +314,11 @@ pub const BillboardRenderer = struct {
         comptime {
             assert(@offsetOf(BillboardData, "position") == 0);
             assert(@offsetOf(BillboardData, "size") == 12);
-            assert(@offsetOf(BillboardData, "x_offset_from_origin") == 20);
-            assert(@offsetOf(BillboardData, "z_rotation") == 24);
-            assert(@offsetOf(BillboardData, "source_rect") == 32);
-            assert(@offsetOf(BillboardData, "tint") == 48);
-            assert(@sizeOf(BillboardData) == 60);
+            assert(@offsetOf(BillboardData, "offset_from_origin") == 20);
+            assert(@offsetOf(BillboardData, "z_rotation") == 28);
+            assert(@offsetOf(BillboardData, "source_rect") == 36);
+            assert(@offsetOf(BillboardData, "tint") == 52);
+            assert(@sizeOf(BillboardData) == 64);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -422,7 +422,7 @@ pub const BillboardRenderer = struct {
         size: extern struct { w: f32, h: f32 },
         /// Will be applied after scaling but before Z rotation. Can be used to preserve character
         /// order when rendering text.
-        x_offset_from_origin: f32 = 0,
+        offset_from_origin: extern struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
         /// Precomputed angle at which the billboard should be rotated around the Z axis. Defaults
         /// to no rotation.
         z_rotation: extern struct { sine: f32, cosine: f32 } = .{
