@@ -32,6 +32,29 @@ pub fn populateBillboardData(
         center_position,
         getOffsetToTopLeftCorner(text_segments, character_size),
         character_size,
+        false,
+        true,
+        sprite_sheet_texture,
+        out,
+    );
+}
+
+/// Text size is specified in screen pixels and will preserve its exact size independently from its
+/// distance to the camera.
+pub fn populateBillboardDataExactPixelSize(
+    text_segments: []const TextSegment,
+    center_position: Vector3d,
+    character_size_pixels: u16,
+    sprite_sheet_texture: SpriteSheetTexture,
+    /// Must have enough capacity to store all billboards. See getBillboardCount().
+    out: []BillboardData,
+) void {
+    populateBillboardDataRaw(
+        text_segments,
+        center_position,
+        getOffsetToTopLeftCorner(text_segments, @floatFromInt(character_size_pixels)),
+        @floatFromInt(character_size_pixels),
+        true,
         true,
         sprite_sheet_texture,
         out,
@@ -61,6 +84,7 @@ pub fn populateBillboardData2d(
         position,
         offset_to_top_left_corner,
         @floatFromInt(character_size_pixels),
+        false,
         false,
         sprite_sheet_texture,
         out,
@@ -135,6 +159,8 @@ fn populateBillboardDataRaw(
     /// Depending on the rendering method, the character size can be either relative to game-world
     /// units or to screen pixels. See render() and render2d() in BillboardRenderer.
     character_size: f32,
+    /// True if the billboard should have a fixed pixel size independently from its distance.
+    preserve_exact_pixel_size: bool,
     y_axis_points_upwards: bool,
     sprite_sheet_texture: SpriteSheetTexture,
     /// Must have enough capacity to store all billboards. See getBillboardCount().
@@ -172,6 +198,7 @@ fn populateBillboardDataRaw(
                     .offset_from_origin = .{ .x = offset.x, .y = offset.y },
                     .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
                     .tint = .{ .r = segment.color.r, .g = segment.color.g, .b = segment.color.b },
+                    .preserve_exact_pixel_size = if (preserve_exact_pixel_size) 1 else 0,
                 };
                 offset.x = offset.x + offset_increment.x;
                 index = index + 1;
