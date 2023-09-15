@@ -269,6 +269,7 @@ pub const BillboardRenderer = struct {
     billboard_capacity_in_vbo: usize,
     shader: Shader,
     y_rotation_location: c_int,
+    screen_dimensions_location: c_int,
     vp_matrix_location: c_int,
 
     pub fn create() !BillboardRenderer {
@@ -288,6 +289,7 @@ pub const BillboardRenderer = struct {
         const loc_tint = try shader.getAttributeLocation("tint");
         const loc_y_rotation_towards_camera =
             try shader.getUniformLocation("y_rotation_towards_camera");
+        const loc_screen_dimensions = try shader.getUniformLocation("screen_dimensions");
         const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
@@ -333,6 +335,7 @@ pub const BillboardRenderer = struct {
             .billboard_capacity_in_vbo = 0,
             .shader = shader,
             .y_rotation_location = loc_y_rotation_towards_camera,
+            .screen_dimensions_location = loc_screen_dimensions,
             .vp_matrix_location = loc_vp_matrix,
         };
     }
@@ -359,6 +362,7 @@ pub const BillboardRenderer = struct {
     pub fn render(
         self: BillboardRenderer,
         vp_matrix: math.Matrix,
+        screen_dimensions: math.ScreenDimensions,
         camera_direction: math.Vector3d,
         texture_id: c_uint,
     ) void {
@@ -368,11 +372,16 @@ pub const BillboardRenderer = struct {
             std.math.sin(camera_rotation_to_z_axis),
             std.math.cos(camera_rotation_to_z_axis),
         };
+        const screen_dimensions_f32 = [2]f32{
+            @as(f32, @floatFromInt(screen_dimensions.width)),
+            @as(f32, @floatFromInt(screen_dimensions.height)),
+        };
 
         self.shader.enable();
         gl.bindVertexArray(self.vao_id);
         gl.bindTexture(gl.TEXTURE_2D, texture_id);
         gl.uniform2fv(self.y_rotation_location, 1, &y_rotation_towards_camera);
+        gl.uniform2fv(self.screen_dimensions_location, 1, &screen_dimensions_f32);
         gl.uniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
         renderStandingQuadInstanced(self.billboards_uploaded_to_vbo);
         gl.bindTexture(gl.TEXTURE_2D, 0);
@@ -404,9 +413,10 @@ pub const BillboardRenderer = struct {
             .{ 0, 0, 0, 1 },
         } };
 
+        const forward = .{ .x = 0, .y = 0, .z = -1 };
         const culling_is_enabled = gl.isEnabled(gl.CULL_FACE);
         gl.disable(gl.CULL_FACE);
-        self.render(screen_to_ndc_matrix, .{ .x = 0, .y = 0, .z = -1 }, texture_id);
+        self.render(screen_to_ndc_matrix, screen_dimensions, forward, texture_id);
         if (culling_is_enabled == 1) {
             gl.enable(gl.CULL_FACE);
         }

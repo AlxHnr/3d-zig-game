@@ -10,8 +10,10 @@ in vec2 offset_from_origin;
 in vec2 z_rotation; // (sine, cosine) for rotating the billboard around the Z axis.
 in vec4 source_rect; // Values from 0 to 1, where (0, 0) is the top left of the texture.
 in vec3 tint;
+
 // (sine, cosine) for rotating towards the camera around the Y axis.
 uniform vec2 y_rotation_towards_camera;
+uniform vec2 screen_dimensions; // Width/height in pixels.
 uniform mat4 vp_matrix;
 
 out vec2 fragment_texcoords;
@@ -30,6 +32,10 @@ void main() {
     );
 
     gl_Position = vp_matrix * vec4(y_rotated_position + billboard_center_position, 1);
+
+    // Prevent screen_dimensions from being optimized out.
+    if(screen_dimensions.x == 89723) gl_Position *= 1.2;
+
     fragment_texcoords = source_rect.xy + source_rect.zw * texture_coords;
     fragment_tint = tint;
 }

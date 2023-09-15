@@ -144,12 +144,14 @@ pub const Context = struct {
         );
         self.level_geometry.render(
             vp_matrix,
+            screen_dimensions,
             camera.getDirectionToTarget(),
             self.tileable_textures,
             self.sprite_sheet_texture,
         );
         self.billboard_renderer.render(
             vp_matrix,
+            screen_dimensions,
             camera.getDirectionToTarget(),
             self.sprite_sheet_texture.id,
         );
@@ -163,6 +165,7 @@ pub const Context = struct {
         self.billboard_renderer.uploadBillboards(player_billboard_data[0..]);
         self.billboard_renderer.render(
             vp_matrix,
+            screen_dimensions,
             camera.getDirectionToTarget(),
             self.sprite_sheet_texture.id,
         );
