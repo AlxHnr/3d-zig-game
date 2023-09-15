@@ -24,6 +24,10 @@ out vec3 fragment_tint;
 
 void main() {
     vec2 scaled_position = vertex_position * size + offset_from_origin;
+
+    // Sizes specified in pixels must be multiplied by 2 when they exist in 3d game space.
+    scaled_position *= preserve_exact_pixel_size + 1;
+
     vec3 z_rotated_position = vec3(
         scaled_position.x * z_rotation[1] + scaled_position.y * z_rotation[0],
         -scaled_position.x * z_rotation[0] + scaled_position.y * z_rotation[1],
