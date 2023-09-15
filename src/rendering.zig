@@ -287,6 +287,8 @@ pub const BillboardRenderer = struct {
         const loc_z_rotation = try shader.getAttributeLocation("z_rotation");
         const loc_source_rect = try shader.getAttributeLocation("source_rect");
         const loc_tint = try shader.getAttributeLocation("tint");
+        const loc_preserve_exact_pixel_size =
+            try shader.getAttributeLocation("preserve_exact_pixel_size");
         const loc_y_rotation_towards_camera =
             try shader.getUniformLocation("y_rotation_towards_camera");
         const loc_screen_dimensions = try shader.getUniformLocation("screen_dimensions");
@@ -313,6 +315,10 @@ pub const BillboardRenderer = struct {
             BillboardData,
         ));
         setupVertexAttribute(loc_tint, 3, @offsetOf(BillboardData, "tint"), @sizeOf(BillboardData));
+        setupVertexAttribute(loc_preserve_exact_pixel_size, 1, @offsetOf(
+            BillboardData,
+            "preserve_exact_pixel_size",
+        ), @sizeOf(BillboardData));
         comptime {
             assert(@offsetOf(BillboardData, "position") == 0);
             assert(@offsetOf(BillboardData, "size") == 12);
@@ -320,7 +326,8 @@ pub const BillboardRenderer = struct {
             assert(@offsetOf(BillboardData, "z_rotation") == 28);
             assert(@offsetOf(BillboardData, "source_rect") == 36);
             assert(@offsetOf(BillboardData, "tint") == 52);
-            assert(@sizeOf(BillboardData) == 64);
+            assert(@offsetOf(BillboardData, "preserve_exact_pixel_size") == 64);
+            assert(@sizeOf(BillboardData) == 68);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -443,6 +450,10 @@ pub const BillboardRenderer = struct {
         source_rect: extern struct { x: f32, y: f32, w: f32, h: f32 },
         /// Color values from 0 to 1. Defaults to white (no tint).
         tint: extern struct { r: f32, g: f32, b: f32 } = .{ .r = 1, .g = 1, .b = 1 },
+        /// 0 if the billboard should shrink with increasing camera distance.
+        /// 1 if the billboard should have a fixed pixel size independently from its distance to the
+        /// camera.
+        preserve_exact_pixel_size: f32 = 0,
     };
 };
 

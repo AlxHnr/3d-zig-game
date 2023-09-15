@@ -10,6 +10,9 @@ in vec2 offset_from_origin;
 in vec2 z_rotation; // (sine, cosine) for rotating the billboard around the Z axis.
 in vec4 source_rect; // Values from 0 to 1, where (0, 0) is the top left of the texture.
 in vec3 tint;
+// 0 if the billboard should shrink with increasing camera distance.
+// 1 if the billboard should have a fixed pixel size independently from its distance to the camera.
+in float preserve_exact_pixel_size;
 
 // (sine, cosine) for rotating towards the camera around the Y axis.
 uniform vec2 y_rotation_towards_camera;
@@ -21,20 +24,23 @@ out vec3 fragment_tint;
 
 void main() {
     vec2 scaled_position = vertex_position * size + offset_from_origin;
-    vec2 z_rotated_position = vec2(
+    vec3 z_rotated_position = vec3(
         scaled_position.x * z_rotation[1] + scaled_position.y * z_rotation[0],
-        -scaled_position.x * z_rotation[0] + scaled_position.y * z_rotation[1]
+        -scaled_position.x * z_rotation[0] + scaled_position.y * z_rotation[1],
+        0
     );
     vec3 y_rotated_position = vec3(
         z_rotated_position.x * y_rotation_towards_camera[1],
         z_rotated_position.y,
         z_rotated_position.x * y_rotation_towards_camera[0]
     );
+    vec3 offset_from_position = mix(y_rotated_position, vec3(0, 0, 0), preserve_exact_pixel_size);
+    vec2 offset_on_screen =
+      mix(vec2(0, 0), z_rotated_position.xy, preserve_exact_pixel_size) / screen_dimensions;
 
-    gl_Position = vp_matrix * vec4(y_rotated_position + billboard_center_position, 1);
-
-    // Prevent screen_dimensions from being optimized out.
-    if(screen_dimensions.x == 89723) gl_Position *= 1.2;
+    gl_Position = vp_matrix * vec4(billboard_center_position + offset_from_position, 1);
+    gl_Position /= mix(1, gl_Position.w, preserve_exact_pixel_size);
+    gl_Position.xy += offset_on_screen;
 
     fragment_texcoords = source_rect.xy + source_rect.zw * texture_coords;
     fragment_tint = tint;
