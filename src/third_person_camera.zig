@@ -67,12 +67,11 @@ pub const Camera = struct {
 
     pub fn getViewProjectionMatrix(
         self: Camera,
-        screen_width: u16,
-        screen_height: u16,
+        screen_dimensions: math.ScreenDimensions,
         /// Optional distance limit to prevent walls from covering the cameras target object.
         max_distance_from_target: ?f32,
     ) math.Matrix {
-        return getProjectionMatrix(screen_width, screen_height)
+        return getProjectionMatrix(screen_dimensions)
             .multiply(self.getViewMatrix(max_distance_from_target));
     }
 
@@ -102,17 +101,16 @@ pub const Camera = struct {
         self: Camera,
         mouse_x: u16,
         mouse_y: u16,
-        screen_width: u16,
-        screen_height: u16,
+        screen_dimensions: math.ScreenDimensions,
         /// Optional value to account for walls covering the camera.
         max_distance_from_target: ?f32,
     ) collision.Ray3d {
         const clip_ray = math.Vector3d{
-            .x = @as(f32, @floatFromInt(mouse_x)) / @as(f32, @floatFromInt(screen_width)) * 2 - 1,
-            .y = 1 - @as(f32, @floatFromInt(mouse_y)) / @as(f32, @floatFromInt(screen_height)) * 2,
+            .x = @as(f32, @floatFromInt(mouse_x)) / @as(f32, @floatFromInt(screen_dimensions.width)) * 2 - 1,
+            .y = 1 - @as(f32, @floatFromInt(mouse_y)) / @as(f32, @floatFromInt(screen_dimensions.height)) * 2,
             .z = 0,
         };
-        const view_ray = getProjectionMatrix(screen_width, screen_height)
+        const view_ray = getProjectionMatrix(screen_dimensions)
             .invert().multiplyVector4d(.{ clip_ray.x, clip_ray.y, -1, 0 });
         const unnormalized_direction = self.getViewMatrix(max_distance_from_target)
             .invert().multiplyVector4d(.{ view_ray[0], view_ray[1], -1, 0 });
@@ -242,9 +240,12 @@ pub const Camera = struct {
         return self.target_position.add(updated_offset);
     }
 
-    fn getProjectionMatrix(screen_width: u16, screen_height: u16) math.Matrix {
+    fn getProjectionMatrix(screen_dimensions: math.ScreenDimensions) math.Matrix {
         const field_of_view = std.math.degreesToRadians(f32, 45);
-        const ratio = @as(f32, @floatFromInt(screen_width)) / @as(f32, @floatFromInt(screen_height));
+        const ratio = @as(f32, @floatFromInt(screen_dimensions.width)) / @as(
+            f32,
+            @floatFromInt(screen_dimensions.height),
+        );
         const near = 0.01;
         const far = 1000.0;
         const f = 1.0 / std.math.tan(field_of_view / 2);

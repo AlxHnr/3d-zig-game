@@ -118,8 +118,7 @@ pub const Context = struct {
     pub fn render(
         self: *Context,
         allocator: std.mem.Allocator,
-        screen_width: u16,
-        screen_height: u16,
+        screen_dimensions: math.ScreenDimensions,
     ) !void {
         try self.level_geometry.prepareRender(allocator, self.sprite_sheet_texture);
 
@@ -140,8 +139,7 @@ pub const Context = struct {
         const camera = self.main_character
             .getCamera(self.interval_between_previous_and_current_tick);
         const vp_matrix = camera.getViewProjectionMatrix(
-            screen_width,
-            screen_height,
+            screen_dimensions,
             self.max_camera_distance,
         );
         self.level_geometry.render(
@@ -190,12 +188,11 @@ pub const Context = struct {
         self: Context,
         mouse_x: u16,
         mouse_y: u16,
-        screen_width: u16,
-        screen_height: u16,
+        screen_dimensions: math.ScreenDimensions,
     ) collision.Ray3d {
         return self.main_character
             .getCamera(self.interval_between_previous_and_current_tick)
-            .get3DRay(mouse_x, mouse_y, screen_width, screen_height, self.max_camera_distance);
+            .get3DRay(mouse_x, mouse_y, screen_dimensions, self.max_camera_distance);
     }
 
     pub fn increaseCameraDistance(self: *Context, value: f32) void {

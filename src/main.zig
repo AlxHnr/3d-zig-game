@@ -7,8 +7,7 @@ const sdl = @import("sdl.zig");
 const GameContext = @import("game_context.zig").Context;
 
 const ProgramContext = struct {
-    screen_width: u16,
-    screen_height: u16,
+    screen_dimensions: math.ScreenDimensions,
     window: *sdl.SDL_Window,
     gl_context: sdl.SDL_GLContext,
     allocator: std.mem.Allocator,
@@ -74,8 +73,7 @@ const ProgramContext = struct {
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
         return .{
-            .screen_width = screen_width,
-            .screen_height = screen_height,
+            .screen_dimensions = .{ .width = screen_width, .height = screen_height },
             .window = window.?,
             .gl_context = gl_context,
             .allocator = allocator,
@@ -110,8 +108,7 @@ const ProgramContext = struct {
         const ray = self.game_context.castRay(
             mouse_position.x,
             mouse_position.y,
-            self.screen_width,
-            self.screen_height,
+            self.screen_dimensions,
         );
         self.edit_mode_state.updateCurrentActionTarget(
             self.game_context.getMutableLevelGeometry(),
@@ -128,8 +125,10 @@ const ProgramContext = struct {
             if (event.type == sdl.SDL_WINDOWEVENT and
                 event.window.event == sdl.SDL_WINDOWEVENT_RESIZED)
             {
-                self.screen_width = @intCast(event.window.data1);
-                self.screen_height = @intCast(event.window.data2);
+                self.screen_dimensions = .{
+                    .width = @intCast(event.window.data1),
+                    .height = @intCast(event.window.data2),
+                };
                 gl.viewport(0, 0, event.window.data1, event.window.data2);
             } else if (event.type == sdl.SDL_MOUSEBUTTONDOWN) {
                 if (event.button.button == sdl.SDL_BUTTON_LEFT) {
@@ -189,7 +188,7 @@ const ProgramContext = struct {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
         gl.enable(gl.DEPTH_TEST);
 
-        try self.game_context.render(self.allocator, self.screen_width, self.screen_height);
+        try self.game_context.render(self.allocator, self.screen_dimensions);
 
         gl.disable(gl.DEPTH_TEST);
         sdl.SDL_GL_SwapWindow(self.window);
@@ -201,8 +200,8 @@ const ProgramContext = struct {
         var mouse_y: c_int = undefined;
         _ = sdl.SDL_GetMouseState(&mouse_x, &mouse_y);
         return .{
-            .x = @intCast(std.math.clamp(mouse_x, 0, self.screen_width)),
-            .y = @intCast(std.math.clamp(mouse_y, 0, self.screen_height)),
+            .x = @intCast(std.math.clamp(mouse_x, 0, self.screen_dimensions.width)),
+            .y = @intCast(std.math.clamp(mouse_y, 0, self.screen_dimensions.height)),
         };
     }
 

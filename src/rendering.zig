@@ -385,8 +385,7 @@ pub const BillboardRenderer = struct {
     /// screen. Z will be ignored.
     pub fn render2d(
         self: BillboardRenderer,
-        screen_width: u16,
-        screen_height: u16,
+        screen_dimensions: math.ScreenDimensions,
         texture_id: c_uint,
     ) void {
         // Flip V texture coordinate to preserve orientation when inverting Y.
@@ -399,8 +398,8 @@ pub const BillboardRenderer = struct {
         updateVbo(self.vertex_vbo_id, &vertex_data, size, &size, gl.STATIC_DRAW);
 
         const screen_to_ndc_matrix = math.Matrix{ .rows = .{
-            .{ 2 / @as(f32, @floatFromInt(screen_width)), 0, 0, -1 },
-            .{ 0, -2 / @as(f32, @floatFromInt(screen_height)), 0, 1 },
+            .{ 2 / @as(f32, @floatFromInt(screen_dimensions.width)), 0, 0, -1 },
+            .{ 0, -2 / @as(f32, @floatFromInt(screen_dimensions.height)), 0, 1 },
             .{ 0, 0, 0, 0 },
             .{ 0, 0, 0, 1 },
         } };
