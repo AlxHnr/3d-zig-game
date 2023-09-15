@@ -1,8 +1,6 @@
 //! Contains functions for rendering text. Text characters are rendered as billboards and will
 //! rotate around the Y axis towards the camera. The characters ' ' and '\n' affect the formatting
 //! of the rendered text. All strings passed to these functions are assumed to contain valid UTF-8.
-//! TODO: Add padding between lines and characters
-//! TODO: Fix kerning of some characters
 const std = @import("std");
 const BillboardData = @import("rendering.zig").BillboardRenderer.BillboardData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
@@ -116,6 +114,13 @@ fn getInfo(text_segments: []const TextSegment) TextSegmentInfo {
     return result;
 }
 
+fn flip(value: f32, y_axis_points_upwards: bool) f32 {
+    if (y_axis_points_upwards) {
+        return -value;
+    }
+    return value;
+}
+
 fn populateBillboardDataRaw(
     text_segments: []const TextSegment,
     position: Vector3d,
@@ -130,8 +135,13 @@ fn populateBillboardDataRaw(
 ) void {
     // Billboard positions usually specify their center. Offsets are applied to align the top left
     // corner of the text block.
-    const y_offset = if (y_axis_points_upwards) -character_size else character_size;
-    const offset_increment = Vector3d{ .x = character_size, .y = y_offset, .z = undefined };
+    const y_offset = flip(character_size, y_axis_points_upwards);
+    const font_letter_spacing = SpriteSheetTexture.getFontLetterSpacing(character_size);
+    const offset_increment = Vector3d{
+        .x = character_size + font_letter_spacing.horizontal,
+        .y = y_offset + flip(font_letter_spacing.vertical, y_axis_points_upwards),
+        .z = undefined,
+    };
     var offset = offset_to_top_left_corner.add(.{
         .x = character_size / 2,
         .y = y_offset / 2,

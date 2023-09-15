@@ -176,6 +176,16 @@ pub const SpriteSheetTexture = struct {
         return font_texcoord_map[codepoint - '!'];
     }
 
+    /// Gap between consecutive characters in a sentence.
+    const FontLetterSpacing = struct { horizontal: f32, vertical: f32 };
+
+    pub fn getFontLetterSpacing(scaling_factor: f32) FontLetterSpacing {
+        const character_side_length = @as(f32, 8);
+        const character_padding_length = @as(f32, 1);
+        const padding = (character_padding_length / character_side_length) * scaling_factor;
+        return .{ .horizontal = padding, .vertical = padding };
+    }
+
     const texture_width = 512;
     const texture_height = 512;
     const font_character_count = 94;
