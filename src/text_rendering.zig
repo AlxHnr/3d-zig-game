@@ -27,17 +27,10 @@ pub fn populateBillboardData(
     /// Must have enough capacity to store all billboards. See getBillboardCount().
     out: []BillboardData,
 ) void {
-    const info = getInfo(text_segments);
-    const half_size = character_size / 2;
-    const offset_to_top_left_corner = .{
-        .x = -@as(f32, @floatFromInt(info.codepoint_count_in_longest_line)) * half_size,
-        .y = @as(f32, @floatFromInt(info.newline_count + 1)) * half_size,
-        .z = 0,
-    };
     populateBillboardDataRaw(
         text_segments,
         center_position,
-        offset_to_top_left_corner,
+        getOffsetToTopLeftCorner(text_segments, character_size),
         character_size,
         true,
         sprite_sheet_texture,
@@ -112,6 +105,20 @@ fn getInfo(text_segments: []const TextSegment) TextSegmentInfo {
     );
 
     return result;
+}
+
+fn getOffsetToTopLeftCorner(text_segments: []const TextSegment, character_size: f32) Vector3d {
+    const info = getInfo(text_segments);
+    const font_letter_spacing = SpriteSheetTexture.getFontLetterSpacing(character_size);
+    const half_sizes = .{
+        .w = (character_size + font_letter_spacing.horizontal) / 2,
+        .h = (character_size + font_letter_spacing.vertical) / 2,
+    };
+    return .{
+        .x = -@as(f32, @floatFromInt(info.codepoint_count_in_longest_line)) * half_sizes.w,
+        .y = @as(f32, @floatFromInt(info.newline_count + 1)) * half_sizes.h,
+        .z = 0,
+    };
 }
 
 fn flip(value: f32, y_axis_points_upwards: bool) f32 {
