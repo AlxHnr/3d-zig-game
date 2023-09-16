@@ -41,6 +41,42 @@ test "Collision between circle and point" {
     try expectXZ(circle.collidesWithPoint(.{ .x = 22, .z = -16 }), -2.472135, 1.236067);
 }
 
+test "Collision between circle and line" {
+    const circle = collision.Circle{ .position = .{ .x = 2, .z = 1.5 }, .radius = 0.5 };
+    try expect(circle.collidesWithLine(.{ .x = 2, .z = 3 }, .{ .x = 3, .z = 2 }) == null);
+    try expect(circle.collidesWithLine(.{ .x = 2.5, .z = 2.5 }, .{ .x = 3.5, .z = 3.5 }) == null);
+
+    // Line is partially inside circle.
+    try expectXZ(circle.collidesWithLine(
+        .{ .x = 2.2, .z = 1.7 },
+        .{ .x = 3, .z = 2 },
+    ), -0.153553, -0.153553);
+    try expectXZ(circle.collidesWithLine(
+        .{ .x = 3, .z = 2 },
+        .{ .x = 2.2, .z = 1.7 },
+    ), -0.153553, -0.153553);
+
+    // Line is inside circle.
+    try expectXZ(circle.collidesWithLine(
+        .{ .x = 1.6, .z = 1.3 },
+        .{ .x = 2.1, .z = 1.6 },
+    ), 0.0472135, 0.0236068);
+    try expectXZ(circle.collidesWithLine(
+        .{ .x = 2.1, .z = 1.6 },
+        .{ .x = 1.6, .z = 1.3 },
+    ), 0.0472135, 0.0236068);
+
+    // Line goes trough circle.
+    try expectXZ(circle.collidesWithLine(
+        .{ .x = 1.7, .z = 0.3 },
+        .{ .x = 1.7, .z = 2.7 },
+    ), 0.2, 0);
+    try expectXZ(circle.collidesWithLine(
+        .{ .x = 1, .z = 0 },
+        .{ .x = 3, .z = 2 },
+    ), -0.1035533, 0.1035533);
+}
+
 test "Collisions between lines" {
     try expect(collision.lineCollidesWithLine(
         .{ .x = -1, .z = -3 },
@@ -79,6 +115,14 @@ test "Collisions between lines" {
         .{ .x = -2.5, .z = 8 },
         .{ .x = 2.5, .z = 8 },
     ) == null);
+}
+
+test "Collision between line and point" {
+    const line_start = .{ .x = 0, .z = 0 };
+    const line_end = .{ .x = 10, .z = 10 };
+    try expect(!collision.lineCollidesWithPoint(line_start, line_end, .{ .x = 2, .z = 3 }));
+    try expect(!collision.lineCollidesWithPoint(line_start, line_end, .{ .x = 11, .z = 11 }));
+    try expect(collision.lineCollidesWithPoint(line_start, line_end, .{ .x = 5, .z = 5 }));
 }
 
 test "Matrix multiplication" {

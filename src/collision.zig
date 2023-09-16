@@ -130,6 +130,41 @@ pub const Circle = struct {
 
     /// If a collision occurs, return a displacement vector for moving self out of other. The
     /// returned displacement vector must be added to self.position to resolve the collision.
+    pub fn collidesWithLine(
+        self: Circle,
+        line_start: math.FlatVector,
+        line_end: math.FlatVector,
+    ) ?math.FlatVector {
+        const start_displacement_vector = self.collidesWithPoint(line_start);
+        const end_displacement_vector = self.collidesWithPoint(line_end);
+
+        // Line endpoints are outside the circle.
+        if (start_displacement_vector == null and end_displacement_vector == null) {
+            const line_offset = line_end.subtract(line_start);
+            const circle_to_line_offset = self.position.subtract(line_start);
+            const t = circle_to_line_offset.dotProduct(line_offset) / line_offset.lengthSquared();
+            if (t < 0 or t > 1) {
+                return null;
+            }
+            const closest_point_on_line = line_start.add(line_offset.scale(t));
+            return self.collidesWithPoint(closest_point_on_line);
+        }
+
+        // Line endpoints are inside the circle.
+        if (end_displacement_vector == null) {
+            return start_displacement_vector;
+        }
+        if (start_displacement_vector == null) {
+            return end_displacement_vector;
+        }
+        if (start_displacement_vector.?.lengthSquared() < end_displacement_vector.?.lengthSquared()) {
+            return start_displacement_vector;
+        }
+        return end_displacement_vector;
+    }
+
+    /// If a collision occurs, return a displacement vector for moving self out of other. The
+    /// returned displacement vector must be added to self.position to resolve the collision.
     pub fn collidesWithRectangle(self: Circle, rectangle: Rectangle) ?math.FlatVector {
         const rotated_self_position = rectangle.rotation.rotate(self.position);
         const reference_point = math.FlatVector{
@@ -213,6 +248,21 @@ pub fn lineCollidesWithLine(
         return first_line_start.lerp(first_line_end, t1);
     }
     return null;
+}
+
+pub fn lineCollidesWithPoint(
+    line_start: math.FlatVector,
+    line_end: math.FlatVector,
+    point: math.FlatVector,
+) bool {
+    const line_offset = line_end.subtract(line_start);
+    const point_to_line_start = point.subtract(line_start);
+    const t = point_to_line_start.dotProduct(line_offset) / line_offset.lengthSquared();
+    if (t < 0 or t > 1) {
+        return false;
+    }
+    const closest_point_on_line = line_start.add(line_offset.scale(t));
+    return closest_point_on_line.subtract(point).lengthSquared() < math.epsilon;
 }
 
 pub const Ray3d = struct {
