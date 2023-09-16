@@ -61,13 +61,19 @@ test "Collision between circle and line" {
     try expectXZ(circle.collidesWithLine(
         .{ .x = 1.6, .z = 1.3 },
         .{ .x = 2.1, .z = 1.6 },
-    ), 0.0472135, 0.0236068);
+    ), 0.239600360, -0.399334996);
     try expectXZ(circle.collidesWithLine(
         .{ .x = 2.1, .z = 1.6 },
         .{ .x = 1.6, .z = 1.3 },
-    ), 0.0472135, 0.0236068);
+    ), 0.239600360, -0.399334996);
 
-    // Line has length zero and is inside circle.
+    // Line is inside circle, but circles center doesn't project onto line.
+    try expectXZ(circle.collidesWithLine(
+        .{ .x = 2.1, .z = 1.4 },
+        .{ .x = 2.3, .z = 1.4 },
+    ), -0.2535532, 0.2535535);
+
+    // Line is inside circle and has zero length.
     try expectXZ(circle.collidesWithLine(
         .{ .x = 1.6, .z = 1.3 },
         .{ .x = 1.6, .z = 1.3 },

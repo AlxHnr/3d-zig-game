@@ -137,32 +137,28 @@ pub const Circle = struct {
     ) ?math.FlatVector {
         const line_offset = line_end.subtract(line_start);
         const line_length_squared = line_offset.lengthSquared();
-        const start_displacement_vector = self.collidesWithPoint(line_start);
-        if (line_length_squared < math.epsilon) {
-            return start_displacement_vector;
-        }
-
-        const end_displacement_vector = self.collidesWithPoint(line_end);
-
-        // Line endpoints are outside the circle.
-        if (start_displacement_vector == null and end_displacement_vector == null) {
-            const circle_to_line_offset = self.position.subtract(line_start);
-            const t = circle_to_line_offset.dotProduct(line_offset) / line_length_squared;
-            if (t < 0 or t > 1) {
-                return null;
-            }
+        const circle_to_line_offset = self.position.subtract(line_start);
+        const t = circle_to_line_offset.dotProduct(line_offset) / line_length_squared;
+        if (t > 0 and t < 1) {
+            // Circle's center can be projected onto line.
             const closest_point_on_line = line_start.add(line_offset.scale(t));
             return self.collidesWithPoint(closest_point_on_line);
         }
 
-        // Line endpoints are inside the circle.
-        if (end_displacement_vector == null) {
+        const start_displacement_vector = self.collidesWithPoint(line_start);
+        if (line_length_squared < math.epsilon) {
+            // Line has length zero.
             return start_displacement_vector;
         }
+
+        const end_displacement_vector = self.collidesWithPoint(line_end);
         if (start_displacement_vector == null) {
             return end_displacement_vector;
         }
-        if (start_displacement_vector.?.lengthSquared() < end_displacement_vector.?.lengthSquared()) {
+        if (end_displacement_vector == null) {
+            return start_displacement_vector;
+        }
+        if (start_displacement_vector.?.lengthSquared() > end_displacement_vector.?.lengthSquared()) {
             return start_displacement_vector;
         }
         return end_displacement_vector;
