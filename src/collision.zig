@@ -135,14 +135,19 @@ pub const Circle = struct {
         line_start: math.FlatVector,
         line_end: math.FlatVector,
     ) ?math.FlatVector {
+        const line_offset = line_end.subtract(line_start);
+        const line_length_squared = line_offset.lengthSquared();
         const start_displacement_vector = self.collidesWithPoint(line_start);
+        if (line_length_squared < math.epsilon) {
+            return start_displacement_vector;
+        }
+
         const end_displacement_vector = self.collidesWithPoint(line_end);
 
         // Line endpoints are outside the circle.
         if (start_displacement_vector == null and end_displacement_vector == null) {
-            const line_offset = line_end.subtract(line_start);
             const circle_to_line_offset = self.position.subtract(line_start);
-            const t = circle_to_line_offset.dotProduct(line_offset) / line_offset.lengthSquared();
+            const t = circle_to_line_offset.dotProduct(line_offset) / line_length_squared;
             if (t < 0 or t > 1) {
                 return null;
             }
@@ -256,8 +261,13 @@ pub fn lineCollidesWithPoint(
     point: math.FlatVector,
 ) bool {
     const line_offset = line_end.subtract(line_start);
+    const line_length_squared = line_offset.lengthSquared();
+    if (line_length_squared < math.epsilon) {
+        return point.subtract(line_start).lengthSquared() < math.epsilon;
+    }
+
     const point_to_line_start = point.subtract(line_start);
-    const t = point_to_line_start.dotProduct(line_offset) / line_offset.lengthSquared();
+    const t = point_to_line_start.dotProduct(line_offset) / line_length_squared;
     if (t < 0 or t > 1) {
         return false;
     }

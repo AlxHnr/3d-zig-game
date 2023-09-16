@@ -45,6 +45,7 @@ test "Collision between circle and line" {
     const circle = collision.Circle{ .position = .{ .x = 2, .z = 1.5 }, .radius = 0.5 };
     try expect(circle.collidesWithLine(.{ .x = 2, .z = 3 }, .{ .x = 3, .z = 2 }) == null);
     try expect(circle.collidesWithLine(.{ .x = 2.5, .z = 2.5 }, .{ .x = 3.5, .z = 3.5 }) == null);
+    try expect(circle.collidesWithLine(.{ .x = 0, .z = 0 }, .{ .x = 0, .z = 0 }) == null);
 
     // Line is partially inside circle.
     try expectXZ(circle.collidesWithLine(
@@ -63,6 +64,12 @@ test "Collision between circle and line" {
     ), 0.0472135, 0.0236068);
     try expectXZ(circle.collidesWithLine(
         .{ .x = 2.1, .z = 1.6 },
+        .{ .x = 1.6, .z = 1.3 },
+    ), 0.0472135, 0.0236068);
+
+    // Line has length zero and is inside circle.
+    try expectXZ(circle.collidesWithLine(
+        .{ .x = 1.6, .z = 1.3 },
         .{ .x = 1.6, .z = 1.3 },
     ), 0.0472135, 0.0236068);
 
@@ -122,7 +129,9 @@ test "Collision between line and point" {
     const line_end = .{ .x = 10, .z = 10 };
     try expect(!collision.lineCollidesWithPoint(line_start, line_end, .{ .x = 2, .z = 3 }));
     try expect(!collision.lineCollidesWithPoint(line_start, line_end, .{ .x = 11, .z = 11 }));
+    try expect(!collision.lineCollidesWithPoint(line_start, line_start, .{ .x = 11, .z = 11 }));
     try expect(collision.lineCollidesWithPoint(line_start, line_end, .{ .x = 5, .z = 5 }));
+    try expect(collision.lineCollidesWithPoint(line_start, line_start, line_start));
 }
 
 test "Matrix multiplication" {
