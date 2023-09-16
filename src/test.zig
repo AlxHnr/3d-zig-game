@@ -10,6 +10,12 @@ const math = @import("math.zig");
 const epsilon = math.epsilon;
 const text_rendering = @import("text_rendering.zig");
 
+fn expectXZ(vector: ?math.FlatVector, expected_x: f32, expected_z: f32) !void {
+    try expect(vector != null);
+    try expectApproxEqRel(expected_x, vector.?.x, epsilon);
+    try expectApproxEqRel(expected_z, vector.?.z, epsilon);
+}
+
 test "Create collision rectangle" {
     const rectangle = collision.Rectangle.create(
         .{ .x = 12, .z = -3.1 },
@@ -32,11 +38,7 @@ test "Collision between circle and point" {
     try expect(circle.collidesWithPoint(.{ .x = 5, .z = -5 }) == null);
     try expect(circle.collidesWithPoint(.{ .x = 20, .z = -5 }) == null);
     try expect(circle.collidesWithPoint(.{ .x = 5, .z = -15 }) == null);
-
-    const displacement_vector = circle.collidesWithPoint(.{ .x = 22, .z = -16 });
-    try expect(displacement_vector != null);
-    try expectApproxEqRel(@as(f32, -2.472135), displacement_vector.?.x, epsilon);
-    try expectApproxEqRel(@as(f32, 1.236067), displacement_vector.?.z, epsilon);
+    try expectXZ(circle.collidesWithPoint(.{ .x = 22, .z = -16 }), -2.472135, 1.236067);
 }
 
 test "Collisions between lines" {
