@@ -223,14 +223,8 @@ pub fn lineCollidesWithLine(
     second_line_start: math.FlatVector,
     second_line_end: math.FlatVector,
 ) ?math.FlatVector {
-    const first_line_lengths = math.FlatVector{
-        .x = first_line_end.x - first_line_start.x,
-        .z = first_line_end.z - first_line_start.z,
-    };
-    const second_line_lengths = math.FlatVector{
-        .x = second_line_end.x - second_line_start.x,
-        .z = second_line_end.z - second_line_start.z,
-    };
+    const first_line_lengths = first_line_end.subtract(first_line_start);
+    const second_line_lengths = second_line_end.subtract(second_line_start);
     const divisor =
         second_line_lengths.z * first_line_lengths.x -
         second_line_lengths.x * first_line_lengths.z;
@@ -238,10 +232,7 @@ pub fn lineCollidesWithLine(
         return null;
     }
 
-    const line_start_offsets = math.FlatVector{
-        .x = first_line_start.x - second_line_start.x,
-        .z = first_line_start.z - second_line_start.z,
-    };
+    const line_start_offsets = first_line_start.subtract(second_line_start);
     const t1 =
         (second_line_lengths.x * line_start_offsets.z -
         second_line_lengths.z * line_start_offsets.x) / divisor;
