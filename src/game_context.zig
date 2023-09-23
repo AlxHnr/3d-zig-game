@@ -216,6 +216,10 @@ pub const Context = struct {
             .getDirectionToTarget();
     }
 
+    pub fn getPlayerGemCount(self: Context) u64 {
+        return self.main_character.gem_count;
+    }
+
     fn loadLevelGeometry(allocator: std.mem.Allocator, file_path: []const u8) !LevelGeometry {
         var json = try std.fs.cwd().readFileAlloc(allocator, file_path, 20 * 1024 * 1024);
         defer allocator.free(json);
