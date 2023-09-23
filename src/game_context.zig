@@ -314,12 +314,8 @@ const Player = struct {
         gem_collection: *gems.Collection,
     ) void {
         self.state_at_previous_tick = self.state_at_next_tick;
-        self.state_at_next_tick.processElapsedTick(level_geometry);
-        self.gem_count = self.gem_count + gem_collection.processCollision(gems.CollisionObject{
-            .id = self.id,
-            .boundaries = self.state_at_next_tick.character.boundaries,
-            .height = self.state_at_next_tick.character.height,
-        }, level_geometry);
+        self.gem_count +=
+            self.state_at_next_tick.processElapsedTick(self.id, level_geometry, gem_collection);
     }
 
     fn getBillboardData(
@@ -394,16 +390,45 @@ const Player = struct {
             };
         }
 
-        fn processElapsedTick(self: *State, level_geometry: LevelGeometry) void {
-            if (level_geometry.collidesWithCircle(self.character.boundaries)) |displacement_vector| {
-                self.character.resolveCollision(displacement_vector);
+        /// Return the amount of collected gems.
+        fn processElapsedTick(
+            self: *State,
+            player_id: u64,
+            level_geometry: LevelGeometry,
+            gem_collection: *gems.Collection,
+        ) u64 {
+            var gems_collected: u64 = 0;
+            var character = &self.character;
+
+            // Determined by trial and error to prevent an object with a radius of 0.05 from passing
+            // trough a fence with a thickness of 0.15.
+            const max_velocity_substep = 0.1;
+
+            const velocity_direction = character.velocity.normalize();
+            var velocity_remaining = character.velocity.length();
+            while (velocity_remaining > math.epsilon) {
+                const velocity_to_apply = @min(velocity_remaining, max_velocity_substep);
+                character.processVelocitySubstep(velocity_direction.scale(velocity_to_apply));
+                velocity_remaining -= velocity_to_apply;
+
+                if (level_geometry.collidesWithCircle(character.boundaries)) |displacement_vector| {
+                    character.resolveCollision(displacement_vector);
+                }
+                gems_collected += gem_collection.processCollision(.{
+                    .id = player_id,
+                    .boundaries = character.boundaries,
+                    .height = character.height,
+                }, level_geometry);
             }
-            self.character.processElapsedTick();
+
+            character.processElapsedTick();
             self.camera.processElapsedTick(
-                self.character.boundaries.position,
-                self.character.getLookingDirection(),
+                character.boundaries.position,
+                character.getLookingDirection(),
             );
-            self.animation_cycle.processElapsedTick(self.character.velocity.length() * 0.75);
+            self.animation_cycle.processElapsedTick(character.velocity.length() * 0.75);
+
+            return gems_collected;
         }
     };
 };
@@ -464,9 +489,11 @@ const Character = struct {
         }
     }
 
-    fn processElapsedTick(self: *Character) void {
-        self.boundaries.position = self.boundaries.position.add(self.velocity);
+    fn processVelocitySubstep(self: *Character, velocity_step: math.FlatVector) void {
+        self.boundaries.position = self.boundaries.position.add(velocity_step);
+    }
 
+    fn processElapsedTick(self: *Character) void {
         const is_accelerating = self.acceleration_direction.length() > math.epsilon;
         if (is_accelerating) {
             const max_velocity = 0.15;
