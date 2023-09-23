@@ -18,6 +18,24 @@ pub fn getBillboardCount(text_segments: []const TextSegment) usize {
     return getInfo(text_segments).required_billboard_count;
 }
 
+const Dimensions = struct {
+    width: f32,
+    height: f32,
+};
+
+pub fn getTextBlockDimensions(text_segments: []const TextSegment, character_size: f32) Dimensions {
+    const info = getInfo(text_segments);
+    const font_letter_spacing = SpriteSheetTexture.getFontLetterSpacing(character_size);
+    const longest_line = @as(f32, @floatFromInt(info.codepoint_count_in_longest_line));
+    const line_count = @as(f32, @floatFromInt(
+        @intFromBool(info.codepoint_count_in_longest_line > 0) + info.newline_count,
+    ));
+    return .{
+        .width = longest_line * (character_size + font_letter_spacing.horizontal),
+        .height = line_count * (character_size + font_letter_spacing.vertical),
+    };
+}
+
 pub fn populateBillboardData(
     text_segments: []const TextSegment,
     center_position: Vector3d,
