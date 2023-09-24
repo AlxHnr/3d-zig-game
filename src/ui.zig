@@ -10,15 +10,15 @@ pub const Widget = union(enum) {
     text: Text,
     box: Box,
 
-    pub fn getBillboardCount(self: Widget) usize {
-        return switch (self) {
-            inline else => |subtype| subtype.getBillboardCount(),
-        };
-    }
-
     pub fn getDimensionsInPixels(self: Widget) ScreenDimensions {
         return switch (self) {
             inline else => |subtype| subtype.getDimensionsInPixels(),
+        };
+    }
+
+    pub fn getBillboardCount(self: Widget) usize {
+        return switch (self) {
+            inline else => |subtype| subtype.getBillboardCount(),
         };
     }
 
@@ -59,10 +59,6 @@ pub const Text = struct {
         };
     }
 
-    pub fn getBillboardCount(self: Text) usize {
-        return text_rendering.getBillboardCount(self.wrapped_segments);
-    }
-
     pub fn getDimensionsInPixels(self: Text) ScreenDimensions {
         const dimensions = text_rendering.getTextBlockDimensions(
             self.wrapped_segments,
@@ -73,6 +69,10 @@ pub const Text = struct {
             .width = @as(u16, @intFromFloat(dimensions.width)),
             .height = @as(u16, @intFromFloat(dimensions.height)),
         };
+    }
+
+    pub fn getBillboardCount(self: Text) usize {
+        return text_rendering.getBillboardCount(self.wrapped_segments);
     }
 
     pub fn populateBillboardData(
@@ -231,6 +231,14 @@ pub const Box = struct {
         };
     }
 
+    pub fn getDimensionsInPixels(self: Box) ScreenDimensions {
+        const content = self.wrapped_widget.getDimensionsInPixels();
+        return .{
+            .width = @as(u16, @intFromFloat(self.scaled_sprite.width)) * 2 + content.width,
+            .height = @as(u16, @intFromFloat(self.scaled_sprite.height)) * 2 + content.height,
+        };
+    }
+
     pub fn getBillboardCount(self: Box) usize {
         return dialog_sprite_count + self.wrapped_widget.getBillboardCount();
     }
@@ -274,14 +282,6 @@ pub const Box = struct {
             screen_position_y + @as(u16, @intFromFloat(sprite.h)),
             out[dialog_sprite_count..],
         );
-    }
-
-    pub fn getDimensionsInPixels(self: Box) ScreenDimensions {
-        const content = self.wrapped_widget.getDimensionsInPixels();
-        return .{
-            .width = @as(u16, @intFromFloat(self.scaled_sprite.width)) * 2 + content.width,
-            .height = @as(u16, @intFromFloat(self.scaled_sprite.height)) * 2 + content.height,
-        };
     }
 
     const BillboardDataHelper = struct {
