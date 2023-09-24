@@ -192,9 +192,11 @@ const ProgramContext = struct {
     fn render(self: *ProgramContext) !void {
         gl.clearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
-        gl.enable(gl.DEPTH_TEST);
 
+        gl.enable(gl.DEPTH_TEST);
         try self.game_context.render(self.allocator, self.screen_dimensions);
+
+        gl.disable(gl.DEPTH_TEST);
         try self.hud.render(
             self.allocator,
             self.screen_dimensions,
@@ -202,7 +204,6 @@ const ProgramContext = struct {
             self.edit_mode_state,
         );
 
-        gl.disable(gl.DEPTH_TEST);
         sdl.SDL_GL_SwapWindow(self.window);
     }
 
