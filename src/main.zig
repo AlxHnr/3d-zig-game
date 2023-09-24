@@ -5,6 +5,7 @@ const gl = @import("gl");
 const math = @import("math.zig");
 const sdl = @import("sdl.zig");
 const GameContext = @import("game_context.zig").Context;
+const Hud = @import("hud.zig").Hud;
 
 const ProgramContext = struct {
     screen_dimensions: math.ScreenDimensions,
@@ -12,6 +13,7 @@ const ProgramContext = struct {
     gl_context: sdl.SDL_GLContext,
     allocator: std.mem.Allocator,
     game_context: GameContext,
+    hud: Hud,
     edit_mode_state: edit_mode.State,
     edit_mode_view: enum { from_behind, top_down },
 
@@ -72,18 +74,26 @@ const ProgramContext = struct {
         gl.enable(gl.STENCIL_TEST);
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
+        var game_context = try GameContext.create(allocator, default_map_path);
+        errdefer game_context.destroy(allocator);
+
+        var hud = try Hud.create();
+        errdefer hud.destroy();
+
         return .{
             .screen_dimensions = .{ .width = screen_width, .height = screen_height },
             .window = window.?,
             .gl_context = gl_context,
             .allocator = allocator,
-            .game_context = try GameContext.create(allocator, default_map_path),
+            .game_context = game_context,
+            .hud = hud,
             .edit_mode_state = edit_mode.State.create(),
             .edit_mode_view = .from_behind,
         };
     }
 
     fn destroy(self: *ProgramContext) void {
+        self.hud.destroy(self.allocator);
         self.game_context.destroy(self.allocator);
         sdl.SDL_GL_DeleteContext(self.gl_context);
         sdl.SDL_DestroyWindow(self.window);
@@ -189,6 +199,7 @@ const ProgramContext = struct {
         gl.enable(gl.DEPTH_TEST);
 
         try self.game_context.render(self.allocator, self.screen_dimensions);
+        try self.hud.render(self.allocator, self.screen_dimensions, self.game_context);
 
         gl.disable(gl.DEPTH_TEST);
         sdl.SDL_GL_SwapWindow(self.window);
