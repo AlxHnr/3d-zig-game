@@ -213,7 +213,7 @@ pub const SpriteSheetTexture = struct {
         TextureSourceRectangle,
         @typeInfo(SpriteId).Enum.fields.len,
         .{
-            .gem = .{ .x = 72, .y = 88, .w = 14, .h = 14 },
+            .gem = .{ .x = 72, .y = 88, .w = 14, .h = 13 },
             .player_back_frame_0 = .{ .x = 0, .y = 48, .w = 16, .h = 32 },
             .player_back_frame_1 = .{ .x = 24, .y = 48, .w = 16, .h = 32 },
             .player_back_frame_2 = .{ .x = 48, .y = 48, .w = 16, .h = 32 },

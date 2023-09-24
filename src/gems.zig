@@ -95,8 +95,8 @@ pub const Collection = struct {
 };
 
 const Gem = struct {
-    /// Width and height of the gem in the game world.
-    side_length: f32,
+    /// Width of the gem in the game world.
+    width: f32,
     boundaries: collision.Circle,
 
     /// This value will progress from 0 to 1. Only then the following values will be considered.
@@ -110,10 +110,10 @@ const Gem = struct {
 
     fn create(position: math.FlatVector) Gem {
         return Gem{
-            .side_length = 0.4,
+            .width = 0.4,
             .boundaries = collision.Circle{
                 .position = position,
-                .radius = 1.2, // Larger than side_length to make picking up gems easier.
+                .radius = 1.2, // Larger than width to make picking up gems easier.
             },
             .spawn_animation_progress = 0,
             .pickup_animation_progress = null,
@@ -125,7 +125,7 @@ const Gem = struct {
         const self_progress = self.pickup_animation_progress orelse 0;
         const other_progress = other.pickup_animation_progress orelse 0;
         return Gem{
-            .side_length = math.lerp(self.side_length, other.side_length, t),
+            .width = math.lerp(self.width, other.width, t),
             .boundaries = self.boundaries.lerp(other.boundaries, t),
             .spawn_animation_progress = math.lerp(
                 self.spawn_animation_progress,
@@ -150,18 +150,22 @@ const Gem = struct {
         sprite_sheet_texture: SpriteSheetTexture,
     ) BillboardData {
         const source = sprite_sheet_texture.getSpriteTexcoords(.gem);
+        const sprite_aspect_ratio = sprite_sheet_texture.getSpriteAspectRatio(.gem);
         var billboard_data = BillboardData{
             .position = .{
                 .x = self.boundaries.position.x,
-                .y = self.side_length / 2,
+                .y = self.width * sprite_aspect_ratio / 2,
                 .z = self.boundaries.position.z,
             },
-            .size = .{ .w = self.side_length, .h = self.side_length },
+            .size = .{
+                .w = self.width,
+                .h = self.width * sprite_aspect_ratio,
+            },
             .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
         };
         if (self.spawn_animation_progress < 1) {
             const jump_heigth = 1.5;
-            const length = self.side_length * self.spawn_animation_progress;
+            const length = self.width * self.spawn_animation_progress;
             const t = (self.spawn_animation_progress - 0.5) * 2;
             const y = (1 - t * t + length / 2) * jump_heigth;
             billboard_data.position = .{
@@ -182,15 +186,15 @@ const Gem = struct {
 
             const lerp_start = math.Vector3d{
                 .x = self.boundaries.position.x,
-                .y = self.side_length / 2,
+                .y = self.width * sprite_aspect_ratio / 2,
                 .z = self.boundaries.position.z,
             };
             const lerped_position = lerp_start.lerp(lerp_destination, progress);
             billboard_data.position.x = lerped_position.x;
             billboard_data.position.y = lerped_position.y;
             billboard_data.position.z = lerped_position.z;
-            billboard_data.size.w = self.side_length * (1 - progress);
-            billboard_data.size.h = billboard_data.size.w;
+            billboard_data.size.w = self.width * (1 - progress);
+            billboard_data.size.h = billboard_data.size.w * sprite_aspect_ratio;
         }
         return billboard_data;
     }
