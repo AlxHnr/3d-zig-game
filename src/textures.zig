@@ -179,7 +179,7 @@ pub const SpriteSheetTexture = struct {
     const font_character_side_length = 8;
 
     /// Gap between consecutive characters in a sentence.
-    const FontLetterSpacing = struct { horizontal: f32, vertical: f32 };
+    pub const FontLetterSpacing = struct { horizontal: f32, vertical: f32 };
 
     pub fn getFontLetterSpacing(scaling_factor: f32) FontLetterSpacing {
         const character_padding_length = @as(f32, 1);
