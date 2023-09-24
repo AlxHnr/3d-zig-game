@@ -7,6 +7,7 @@ const std = @import("std");
 
 /// Polymorphic dispatcher serving as an interface.
 pub const Widget = union(enum) {
+    text: Text,
     box: Box,
 
     pub fn getBillboardCount(self: Widget) usize {
@@ -36,6 +37,60 @@ pub const Widget = union(enum) {
                 out,
             ),
         }
+    }
+};
+
+pub const Text = struct {
+    /// Non-owning slice.
+    wrapped_segments: []const text_rendering.TextSegment,
+    /// Non-owning pointer.
+    sprite_sheet: *const SpriteSheetTexture,
+    font_size: u16,
+
+    pub fn wrap(
+        segments: []const text_rendering.TextSegment,
+        sprite_sheet: *const SpriteSheetTexture,
+        text_scale: u8,
+    ) Text {
+        return .{
+            .wrapped_segments = segments,
+            .sprite_sheet = sprite_sheet,
+            .font_size = sprite_sheet.getFontSizeMultiple(text_scale),
+        };
+    }
+
+    pub fn getBillboardCount(self: Text) usize {
+        return text_rendering.getBillboardCount(self.wrapped_segments);
+    }
+
+    pub fn getDimensionsInPixels(self: Text) ScreenDimensions {
+        const dimensions = text_rendering.getTextBlockDimensions(
+            self.wrapped_segments,
+            @as(f32, @floatFromInt(self.font_size)),
+            self.sprite_sheet.*,
+        );
+        return .{
+            .width = @as(u16, @intFromFloat(dimensions.width)),
+            .height = @as(u16, @intFromFloat(dimensions.height)),
+        };
+    }
+
+    pub fn populateBillboardData(
+        self: Text,
+        /// Top left corner.
+        screen_position_x: u16,
+        screen_position_y: u16,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardData,
+    ) void {
+        return text_rendering.populateBillboardData2d(
+            self.wrapped_segments,
+            screen_position_x,
+            screen_position_y,
+            self.font_size,
+            self.sprite_sheet.*,
+            out,
+        );
     }
 };
 
