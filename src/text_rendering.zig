@@ -27,12 +27,13 @@ pub fn getTextBlockDimensions(text_segments: []const TextSegment, character_size
     const info = getInfo(text_segments);
     const font_letter_spacing = SpriteSheetTexture.getFontLetterSpacing(character_size);
     const longest_line = @as(f32, @floatFromInt(info.codepoint_count_in_longest_line));
-    const line_count = @as(f32, @floatFromInt(
-        @intFromBool(info.codepoint_count_in_longest_line > 0) + info.newline_count,
-    ));
+    const line_count = @as(f32, @floatFromInt(1 + info.newline_count));
+
+    const horizontal_spaces = 1 + longest_line;
+    const vertical_spaces = 1 + line_count;
     return .{
-        .width = longest_line * (character_size + font_letter_spacing.horizontal),
-        .height = line_count * (character_size + font_letter_spacing.vertical),
+        .width = longest_line * character_size + horizontal_spaces * font_letter_spacing.horizontal,
+        .height = line_count * character_size + vertical_spaces * font_letter_spacing.vertical,
     };
 }
 
@@ -193,7 +194,12 @@ fn populateBillboardDataRaw(
         .y = y_offset + flip(font_letter_spacing.vertical, y_axis_points_upwards),
         .z = undefined,
     };
-    var offset = offset_to_top_left_corner.add(.{
+    const start_position = offset_to_top_left_corner.add(.{
+        .x = font_letter_spacing.horizontal,
+        .y = font_letter_spacing.vertical,
+        .z = 0,
+    });
+    var offset = start_position.add(.{
         .x = character_size / 2,
         .y = y_offset / 2,
         .z = 0,
@@ -206,7 +212,7 @@ fn populateBillboardDataRaw(
             if (codepoint == ' ') {
                 offset.x = offset.x + offset_increment.x;
             } else if (codepoint == '\n') {
-                offset.x = offset_to_top_left_corner.x + character_size / 2;
+                offset.x = start_position.x + character_size / 2;
                 offset.y = offset.y + offset_increment.y;
             } else {
                 const source = sprite_sheet_texture.getFontCharacterTexcoords(codepoint);
