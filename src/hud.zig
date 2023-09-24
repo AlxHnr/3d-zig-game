@@ -92,7 +92,7 @@ const GemCountInfo = struct {
         var segments = try allocator.alloc(text_rendering.TextSegment, 1);
         errdefer allocator.free(segments);
 
-        var widgets = try allocator.alloc(ui.Widget, 4);
+        var widgets = try allocator.alloc(ui.Widget, 3);
         errdefer allocator.free(widgets);
 
         segments[0] = .{
@@ -101,7 +101,7 @@ const GemCountInfo = struct {
         };
         widgets[0] = .{ .sprite = ui.Sprite.create(.gem, sprite_sheet.*, 3) };
         widgets[1] = .{ .text = ui.Text.wrap(segments, sprite_sheet, 4) };
-        widgets[2] = .{ .vertical_split = ui.VerticalSplit.wrap(&widgets[0], &widgets[1]) };
+        widgets[2] = .{ .split = ui.Split.wrap(.vertical, widgets[0..2]) };
 
         return .{
             .buffer = buffer,

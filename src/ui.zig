@@ -8,9 +8,9 @@ const std = @import("std");
 /// Polymorphic dispatcher serving as an interface.
 pub const Widget = union(enum) {
     box: Box,
-    text: Text,
+    split: Split,
     sprite: Sprite,
-    vertical_split: VerticalSplit,
+    text: Text,
 
     pub fn getDimensionsInPixels(self: Widget) ScreenDimensions {
         return switch (self) {
@@ -165,56 +165,83 @@ pub const Sprite = struct {
     }
 };
 
-pub const VerticalSplit = struct {
-    /// Non-owning pointer.
-    wrapped_widgets: struct { left: *const Widget, right: *const Widget },
+pub const Split = struct {
+    split_type: Type,
+    /// Non-owning slice.
+    wrapped_widgets: []const Widget,
 
-    pub fn wrap(left: *const Widget, right: *const Widget) VerticalSplit {
-        return .{ .wrapped_widgets = .{ .left = left, .right = right } };
+    pub const Type = enum { horizontal, vertical };
+
+    pub fn wrap(split_type: Type, widgets_to_wrap: []const Widget) Split {
+        return .{ .split_type = split_type, .wrapped_widgets = widgets_to_wrap };
     }
 
-    pub fn getDimensionsInPixels(self: VerticalSplit) ScreenDimensions {
-        return getTotalDimensions(
-            self.wrapped_widgets.left.getDimensionsInPixels(),
-            self.wrapped_widgets.right.getDimensionsInPixels(),
-        );
+    pub fn getDimensionsInPixels(self: Split) ScreenDimensions {
+        var result = ScreenDimensions{ .width = 0, .height = 0 };
+        for (self.wrapped_widgets) |widget| {
+            const dimensions = widget.getDimensionsInPixels();
+
+            switch (self.split_type) {
+                .horizontal => {
+                    result.width = @max(result.width, dimensions.width);
+                    result.height += dimensions.height;
+                },
+                .vertical => {
+                    result.width += dimensions.width;
+                    result.height = @max(result.height, dimensions.height);
+                },
+            }
+        }
+        return result;
     }
 
-    pub fn getBillboardCount(self: VerticalSplit) usize {
-        return self.wrapped_widgets.left.getBillboardCount() +
-            self.wrapped_widgets.right.getBillboardCount();
+    pub fn getBillboardCount(self: Split) usize {
+        var result: usize = 0;
+        for (self.wrapped_widgets) |widget| {
+            result += widget.getBillboardCount();
+        }
+        return result;
     }
 
     pub fn populateBillboardData(
-        self: VerticalSplit,
+        self: Split,
         /// Top left corner.
         screen_position_x: u16,
         screen_position_y: u16,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardData,
     ) void {
-        const left_dimensions = self.wrapped_widgets.left.getDimensionsInPixels();
-        const right_dimensions = self.wrapped_widgets.right.getDimensionsInPixels();
-        const total_dimensions = getTotalDimensions(left_dimensions, right_dimensions);
-        const left_billboard_count = self.wrapped_widgets.left.getBillboardCount();
+        const total_dimensions = self.getDimensionsInPixels();
+        var start: usize = 0;
+        var end: usize = 0;
+        var screen_x = screen_position_x;
+        var screen_y = screen_position_y;
 
-        self.wrapped_widgets.left.populateBillboardData(
-            screen_position_x,
-            screen_position_y + total_dimensions.height / 2 - left_dimensions.height / 2,
-            out[0..left_billboard_count],
-        );
-        self.wrapped_widgets.right.populateBillboardData(
-            screen_position_x + left_dimensions.width,
-            screen_position_y + total_dimensions.height / 2 - right_dimensions.height / 2,
-            out[left_billboard_count..],
-        );
-    }
+        for (self.wrapped_widgets) |widget| {
+            const dimensions = widget.getDimensionsInPixels();
 
-    fn getTotalDimensions(left: ScreenDimensions, right: ScreenDimensions) ScreenDimensions {
-        return .{
-            .width = left.width + right.width,
-            .height = @max(left.height, right.height),
-        };
+            start = end;
+            end += widget.getBillboardCount();
+
+            switch (self.split_type) {
+                .horizontal => {
+                    widget.populateBillboardData(
+                        screen_x + total_dimensions.width / 2 - dimensions.width / 2,
+                        screen_y,
+                        out[start..end],
+                    );
+                    screen_y += dimensions.height;
+                },
+                .vertical => {
+                    widget.populateBillboardData(
+                        screen_x,
+                        screen_y + total_dimensions.height / 2 - dimensions.height / 2,
+                        out[start..end],
+                    );
+                    screen_x += dimensions.width;
+                },
+            }
+        }
     }
 };
 
