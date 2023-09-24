@@ -162,6 +162,13 @@ pub const SpriteSheetTexture = struct {
         return sprite_texcoord_map.get(sprite_id);
     }
 
+    pub const PixelDimensions = struct { w: u16, h: u16 };
+
+    pub fn getSpriteDimensionsInPixels(_: SpriteSheetTexture, sprite_id: SpriteId) PixelDimensions {
+        const source = sprite_source_pixel_map[@intFromEnum(sprite_id)];
+        return .{ .w = source.w, .h = source.h };
+    }
+
     /// Returns the aspect ratio (height / width) of the specified sprite.
     pub fn getSpriteAspectRatio(_: SpriteSheetTexture, sprite_id: SpriteId) f32 {
         return sprite_aspect_ratio_map.get(sprite_id);
