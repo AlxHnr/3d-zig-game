@@ -40,13 +40,13 @@ pub const Hud = struct {
         game_context: GameContext,
         edit_mode_state: EditModeState,
     ) !void {
-        var gem_buffer: [16]u8 = undefined;
         var edit_mode_buffer: [64]u8 = undefined;
-        const gem_info = try GemCountInfo.create(
+        var gem_info = try GemCountInfo.create(
+            allocator,
             game_context.getPlayerGemCount(),
-            self.sprite_sheet,
-            &gem_buffer,
+            &self.sprite_sheet,
         );
+        defer gem_info.destroy(allocator);
         const edit_mode_info = try EditModeInfo.create(edit_mode_state, &edit_mode_buffer);
 
         const gem_billboard_count = gem_info.getBillboardCount();
@@ -59,11 +59,7 @@ pub const Hud = struct {
 
         var start: usize = 0;
         var end = gem_billboard_count;
-        gem_info.populateBillboardData(
-            screen_dimensions,
-            self.sprite_sheet,
-            self.billboard_buffer[start..end],
-        );
+        gem_info.populateBillboardData(screen_dimensions, self.billboard_buffer[start..end]);
 
         start = end;
         end += edit_mode_billboard_count;
@@ -78,42 +74,63 @@ pub const Hud = struct {
 };
 
 const GemCountInfo = struct {
-    segments: [1]text_rendering.TextSegment,
-    image_with_text: ui.ImageWithText,
+    buffer: []u8,
+    segments: []text_rendering.TextSegment,
+    widgets: []ui.Widget,
+    /// Non-owning pointer.
+    main_widget: *const ui.Widget,
 
     fn create(
+        allocator: std.mem.Allocator,
         gem_count: u64,
-        sprite_sheet: SpriteSheetTexture,
-        /// Returned result keeps a reference to this buffer.
-        buffer: []u8,
+        /// Returned object keeps a reference to this sprite sheet.
+        sprite_sheet: *const SpriteSheetTexture,
     ) !GemCountInfo {
+        var buffer = try allocator.alloc(u8, 16);
+        errdefer allocator.free(buffer);
+
+        var segments = try allocator.alloc(text_rendering.TextSegment, 1);
+        errdefer allocator.free(segments);
+
+        var widgets = try allocator.alloc(ui.Widget, 4);
+        errdefer allocator.free(widgets);
+
+        segments[0] = .{
+            .color = Color.fromRgb8(0, 0, 0),
+            .text = try std.fmt.bufPrint(buffer, "{}", .{gem_count}),
+        };
+        widgets[0] = .{ .sprite = ui.Sprite.create(.gem, sprite_sheet.*, 3) };
+        widgets[1] = .{ .text = ui.Text.wrap(segments, sprite_sheet, 4) };
+        widgets[2] = .{ .vertical_split = ui.VerticalSplit.wrap(&widgets[0], &widgets[1]) };
+
         return .{
-            .segments = [_]text_rendering.TextSegment{.{
-                .color = Color.fromRgb8(0, 0, 0),
-                .text = try std.fmt.bufPrint(buffer, "{}", .{gem_count}),
-            }},
-            .image_with_text = ui.ImageWithText.create(.gem, 3, sprite_sheet, 4),
+            .buffer = buffer,
+            .segments = segments,
+            .widgets = widgets,
+            .main_widget = &widgets[2],
         };
     }
 
+    fn destroy(self: *GemCountInfo, allocator: std.mem.Allocator) void {
+        allocator.free(self.widgets);
+        allocator.free(self.segments);
+        allocator.free(self.buffer);
+    }
+
     fn getBillboardCount(self: GemCountInfo) usize {
-        return self.image_with_text.getBillboardCount(&self.segments);
+        return self.main_widget.getBillboardCount();
     }
 
     fn populateBillboardData(
         self: GemCountInfo,
         screen_dimensions: ScreenDimensions,
-        sprite_sheet: SpriteSheetTexture,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardRenderer.BillboardData,
     ) void {
-        const info_dimensions =
-            self.image_with_text.getDimensionsInPixels(&self.segments, sprite_sheet);
-        self.image_with_text.populateBillboardData(
+        const info_dimensions = self.main_widget.getDimensionsInPixels();
+        self.main_widget.populateBillboardData(
             0,
             screen_dimensions.height - info_dimensions.height,
-            sprite_sheet,
-            &self.segments,
             out,
         );
     }
