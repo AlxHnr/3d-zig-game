@@ -103,9 +103,11 @@ pub const State = struct {
         }
     }
 
-    /// Returns a slice describing the current edit mode state. Fails if the given buffer is too
-    /// small.
-    pub fn describe(self: State, string_buffer: []u8) ![:0]u8 {
+    /// Returns two slices slice describing:
+    ///   1. Current edit mode state
+    ///   2. Currently selected object (can be an empty string)
+    /// Fails if the given buffer is too small.
+    pub fn describe(self: State, string_buffer: []u8) ![2][]const u8 {
         switch (self.mode) {
             .insert_objects => {
                 const enum_string = switch (self.object_type_to_insert.used_field) {
@@ -114,12 +116,15 @@ pub const State = struct {
                     .billboard => @tagName(self.object_type_to_insert.billboard),
                 };
 
-                return std.fmt.bufPrintZ(string_buffer, "inserting {s} of type {s}", .{
-                    @tagName(self.object_type_to_insert.used_field),
-                    enum_string,
-                });
+                return .{
+                    "Insert Mode",
+                    try std.fmt.bufPrint(string_buffer, "{s}: {s}", .{
+                        @tagName(self.object_type_to_insert.used_field),
+                        enum_string,
+                    }),
+                };
             },
-            .delete_objects => return std.fmt.bufPrintZ(string_buffer, "delete mode", .{}),
+            .delete_objects => return .{ "Delete Mode", "" },
         }
     }
 
