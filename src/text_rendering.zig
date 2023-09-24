@@ -18,7 +18,7 @@ pub fn getBillboardCount(text_segments: []const TextSegment) usize {
     return getInfo(text_segments).required_billboard_count;
 }
 
-const Dimensions = struct {
+pub const Dimensions = struct {
     width: f32,
     height: f32,
 };
