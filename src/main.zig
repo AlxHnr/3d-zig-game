@@ -195,7 +195,12 @@ const ProgramContext = struct {
         gl.enable(gl.DEPTH_TEST);
 
         try self.game_context.render(self.allocator, self.screen_dimensions);
-        try self.hud.render(self.allocator, self.screen_dimensions, self.game_context);
+        try self.hud.render(
+            self.allocator,
+            self.screen_dimensions,
+            self.game_context,
+            self.edit_mode_state,
+        );
 
         gl.disable(gl.DEPTH_TEST);
         sdl.SDL_GL_SwapWindow(self.window);

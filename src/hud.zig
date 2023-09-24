@@ -1,6 +1,7 @@
 const std = @import("std");
 const BillboardRenderer = @import("rendering.zig").BillboardRenderer;
 const Color = @import("util.zig").Color;
+const EditModeState = @import("edit_mode.zig").State;
 const ScreenDimensions = @import("math.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const text_rendering = @import("text_rendering.zig");
@@ -36,22 +37,37 @@ pub const Hud = struct {
         allocator: std.mem.Allocator,
         screen_dimensions: ScreenDimensions,
         game_context: GameContext,
+        edit_mode_state: EditModeState,
     ) !void {
         var gem_buffer: [16]u8 = undefined;
-        const gem_info = try GemCountInfo.create(game_context.getPlayerGemCount(), gem_buffer[0..]);
+        var edit_mode_buffer: [64]u8 = undefined;
+        const gem_info = try GemCountInfo.create(game_context.getPlayerGemCount(), &gem_buffer);
+        const edit_mode_info = try EditModeInfo.create(edit_mode_state, &edit_mode_buffer);
 
-        const billboard_count = gem_info.getBillboardCount();
-        if (self.billboard_buffer.len < billboard_count) {
-            self.billboard_buffer = try allocator.realloc(self.billboard_buffer, billboard_count);
+        const gem_billboard_count = gem_info.getBillboardCount();
+        const edit_mode_billboard_count = edit_mode_info.getBillboardCount();
+        const total_billboard_count = gem_billboard_count + edit_mode_billboard_count;
+        if (self.billboard_buffer.len < total_billboard_count) {
+            self.billboard_buffer =
+                try allocator.realloc(self.billboard_buffer, total_billboard_count);
         }
 
+        var start: usize = 0;
+        var end = gem_billboard_count;
         gem_info.populateBillboardData(
             screen_dimensions,
             self.sprite_sheet,
-            self.billboard_buffer[0..],
+            self.billboard_buffer[start..end],
         );
 
-        self.renderer.uploadBillboards(self.billboard_buffer);
+        start = end;
+        end += edit_mode_billboard_count;
+        edit_mode_info.populateBillboardData(
+            self.sprite_sheet,
+            self.billboard_buffer[start..end],
+        );
+
+        self.renderer.uploadBillboards(self.billboard_buffer[0..end]);
         self.renderer.render2d(screen_dimensions, self.sprite_sheet.id);
     }
 };
@@ -122,6 +138,44 @@ const GemCountInfo = struct {
             font_size,
             sprite_sheet,
             out[1..],
+        );
+    }
+};
+
+const EditModeInfo = struct {
+    segments: [3]text_rendering.TextSegment,
+
+    fn create(
+        state: EditModeState,
+        /// Returned result keeps a reference to this buffer.
+        buffer: []u8,
+    ) !EditModeInfo {
+        const text_color = Color.fromRgb8(0, 0, 0);
+        const description = try state.describe(buffer);
+        return .{ .segments = [_]text_rendering.TextSegment{
+            .{ .color = text_color, .text = description[0] },
+            .{ .color = text_color, .text = "\n" },
+            .{ .color = text_color, .text = description[1] },
+        } };
+    }
+
+    fn getBillboardCount(self: EditModeInfo) usize {
+        return text_rendering.getBillboardCount(&self.segments);
+    }
+
+    fn populateBillboardData(
+        self: EditModeInfo,
+        sprite_sheet: SpriteSheetTexture,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardRenderer.BillboardData,
+    ) void {
+        text_rendering.populateBillboardData2d(
+            &self.segments,
+            0,
+            0,
+            SpriteSheetTexture.getFontSizeMultiple(2),
+            sprite_sheet,
+            out,
         );
     }
 };
