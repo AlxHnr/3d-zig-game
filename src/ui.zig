@@ -10,6 +10,7 @@ pub const Widget = union(enum) {
     box: Box,
     text: Text,
     sprite: Sprite,
+    vertical_split: VerticalSplit,
 
     pub fn getDimensionsInPixels(self: Widget) ScreenDimensions {
         return switch (self) {
@@ -274,6 +275,59 @@ pub const ImageWithText = struct {
                 sprite_dimensions.height,
                 @as(u16, @intFromFloat(text_dimensions.height)),
             ),
+        };
+    }
+};
+
+pub const VerticalSplit = struct {
+    /// Non-owning pointer.
+    wrapped_widgets: struct { left: *const Widget, right: *const Widget },
+
+    pub fn wrap(left: *const Widget, right: *const Widget) VerticalSplit {
+        return .{ .wrapped_widgets = .{ .left = left, .right = right } };
+    }
+
+    pub fn getDimensionsInPixels(self: VerticalSplit) ScreenDimensions {
+        return getTotalDimensions(
+            self.wrapped_widgets.left.getDimensionsInPixels(),
+            self.wrapped_widgets.right.getDimensionsInPixels(),
+        );
+    }
+
+    pub fn getBillboardCount(self: VerticalSplit) usize {
+        return self.wrapped_widgets.left.getBillboardCount() +
+            self.wrapped_widgets.right.getBillboardCount();
+    }
+
+    pub fn populateBillboardData(
+        self: VerticalSplit,
+        /// Top left corner.
+        screen_position_x: u16,
+        screen_position_y: u16,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardData,
+    ) void {
+        const left_dimensions = self.wrapped_widgets.left.getDimensionsInPixels();
+        const right_dimensions = self.wrapped_widgets.right.getDimensionsInPixels();
+        const total_dimensions = getTotalDimensions(left_dimensions, right_dimensions);
+        const left_billboard_count = self.wrapped_widgets.left.getBillboardCount();
+
+        self.wrapped_widgets.left.populateBillboardData(
+            screen_position_x,
+            screen_position_y + total_dimensions.height / 2 - left_dimensions.height / 2,
+            out[0..left_billboard_count],
+        );
+        self.wrapped_widgets.right.populateBillboardData(
+            screen_position_x + left_dimensions.width,
+            screen_position_y + total_dimensions.height / 2 - right_dimensions.height / 2,
+            out[left_billboard_count..],
+        );
+    }
+
+    fn getTotalDimensions(left: ScreenDimensions, right: ScreenDimensions) ScreenDimensions {
+        return .{
+            .width = left.width + right.width,
+            .height = @max(left.height, right.height),
         };
     }
 };
