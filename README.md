@@ -20,6 +20,6 @@ Install zig 0.11.0 and run `zig build run` inside the projects directory.
 * **F5** - Reload map from disk
 * **left mouse button** - Start/stop placing object
 * **mouse wheel** - Zoom in/out
-* **right mouse button + mouse wheel** - Cycle trough placeable objects _(see console output)_
-* **middle mouse button** - Cycle trough object types _(see console output)_
+* **right mouse button + mouse wheel** - Cycle trough placeable objects
+* **middle mouse button** - Cycle trough object types
 * **delete** - Toggle delete/insert mode
