@@ -6,6 +6,7 @@ const ScreenDimensions = @import("math.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const text_rendering = @import("text_rendering.zig");
 const GameContext = @import("game_context.zig").Context;
+const ui = @import("ui.zig");
 
 pub const Hud = struct {
     renderer: BillboardRenderer,
@@ -41,7 +42,11 @@ pub const Hud = struct {
     ) !void {
         var gem_buffer: [16]u8 = undefined;
         var edit_mode_buffer: [64]u8 = undefined;
-        const gem_info = try GemCountInfo.create(game_context.getPlayerGemCount(), &gem_buffer);
+        const gem_info = try GemCountInfo.create(
+            game_context.getPlayerGemCount(),
+            self.sprite_sheet,
+            &gem_buffer,
+        );
         const edit_mode_info = try EditModeInfo.create(edit_mode_state, &edit_mode_buffer);
 
         const gem_billboard_count = gem_info.getBillboardCount();
@@ -74,26 +79,25 @@ pub const Hud = struct {
 
 const GemCountInfo = struct {
     segments: [1]text_rendering.TextSegment,
+    image_with_text: ui.ImageWithText,
 
     fn create(
         gem_count: u64,
+        sprite_sheet: SpriteSheetTexture,
         /// Returned result keeps a reference to this buffer.
         buffer: []u8,
     ) !GemCountInfo {
-        const text_color = Color.fromRgb8(0, 0, 0);
         return .{
-            .segments = [_]text_rendering.TextSegment{
-                .{
-                    .color = text_color,
-                    .text = try std.fmt.bufPrint(buffer, "{}", .{gem_count}),
-                },
-            },
+            .segments = [_]text_rendering.TextSegment{.{
+                .color = Color.fromRgb8(0, 0, 0),
+                .text = try std.fmt.bufPrint(buffer, "{}", .{gem_count}),
+            }},
+            .image_with_text = ui.ImageWithText.create(.gem, 3, sprite_sheet, 4),
         };
     }
 
     fn getBillboardCount(self: GemCountInfo) usize {
-        return 1 + // Gem icon.
-            text_rendering.getBillboardCount(&self.segments);
+        return self.image_with_text.getBillboardCount(&self.segments);
     }
 
     fn populateBillboardData(
@@ -103,45 +107,14 @@ const GemCountInfo = struct {
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardRenderer.BillboardData,
     ) void {
-        const font_size = sprite_sheet.getFontSizeMultiple(4);
-        const font_size_f32 = @as(f32, @floatFromInt(font_size));
-        const font_letter_spacing = sprite_sheet.getFontLetterSpacing(font_size_f32);
-        const text_dimensions = text_rendering.getTextBlockDimensions(
-            &self.segments,
-            font_size_f32,
+        const info_dimensions =
+            self.image_with_text.getDimensionsInPixels(&self.segments, sprite_sheet);
+        self.image_with_text.populateBillboardData(
+            0,
+            screen_dimensions.height - info_dimensions.height,
             sprite_sheet,
-        );
-
-        // Place gem icon on screen.
-        const source = sprite_sheet.getSpriteTexcoords(.gem);
-        const source_dimensions = sprite_sheet.getSpriteDimensionsInPixels(.gem);
-        const multiple = 3;
-        const dimensions = .{
-            .w = @as(f32, @floatFromInt(source_dimensions.w)) * multiple,
-            .h = @as(f32, @floatFromInt(source_dimensions.h)) * multiple,
-        };
-        const spacing = .{
-            .horizontal = font_letter_spacing.horizontal,
-            .vertical = font_letter_spacing.vertical,
-        };
-        out[0] = .{
-            .position = .{
-                .x = spacing.horizontal * 2 + dimensions.w / 2,
-                .y = @as(f32, @floatFromInt(screen_dimensions.height)) -
-                    spacing.vertical - dimensions.h / 2,
-                .z = 0,
-            },
-            .size = .{ .w = dimensions.w, .h = dimensions.h },
-            .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
-        };
-
-        text_rendering.populateBillboardData2d(
             &self.segments,
-            @as(u16, @intFromFloat(spacing.horizontal * 3 + out[0].size.w)),
-            screen_dimensions.height - @as(u16, @intFromFloat(text_dimensions.height)),
-            font_size,
-            sprite_sheet,
-            out[1..],
+            out,
         );
     }
 };
