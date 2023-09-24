@@ -3,6 +3,51 @@ const ScreenDimensions = @import("math.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const text_rendering = @import("text_rendering.zig");
 
+const std = @import("std");
+
+/// Polymorphic dispatcher serving as an interface.
+pub const Widget = union(enum) {
+    image_with_text: ImageWithText,
+    box: Box,
+
+    pub fn getBillboardCount(self: Widget, segments: []const text_rendering.TextSegment) usize {
+        return switch (self) {
+            inline else => |subtype| subtype.getBillboardCount(segments),
+        };
+    }
+
+    pub fn getDimensionsInPixels(
+        self: Widget,
+        segments: []const text_rendering.TextSegment,
+        sprite_sheet: SpriteSheetTexture,
+    ) ScreenDimensions {
+        return switch (self) {
+            inline else => |subtype| subtype.getDimensionsInPixels(segments, sprite_sheet),
+        };
+    }
+
+    pub fn populateBillboardData(
+        self: Widget,
+        /// Top left corner.
+        screen_position_x: u16,
+        screen_position_y: u16,
+        sprite_sheet: SpriteSheetTexture,
+        segments: []const text_rendering.TextSegment,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardData,
+    ) void {
+        switch (self) {
+            inline else => |subtype| subtype.populateBillboardData(
+                screen_position_x,
+                screen_position_y,
+                sprite_sheet,
+                segments,
+                out,
+            ),
+        }
+    }
+};
+
 pub const ImageWithText = struct {
     sprite_texcoords: SpriteSheetTexture.TextureCoordinates,
     sprite_on_screen_dimensions: struct { w: f32, h: f32 },
@@ -117,40 +162,19 @@ pub const ImageWithText = struct {
     }
 };
 
-pub const BoxedText = struct {
-    wrapped_image_with_text: ImageWithText,
-    /// Dimensions. Assumed to be the same for all dialog box sprites.
+pub const Box = struct {
+    /// Non-owning pointer.
+    wrapped_widget: *const Widget,
+    /// Dimensions of the dialog box elements. Assumed to be the same for all dialog box sprites.
     scaled_sprite: struct { width: f32, height: f32 },
 
-    const box_sprite_count = 9;
+    const dialog_sprite_count = 9;
     const dialog_sprite_scale = 4;
 
-    pub fn create(
-        sprite_sheet: SpriteSheetTexture,
-        /// 1 means the original character size in pixels.
-        text_scale: u8,
-    ) BoxedText {
-        const dummy_value = .dialog_box_top_left;
-        return createWithImage(dummy_value, 0, sprite_sheet, text_scale);
-    }
-
-    pub fn createWithImage(
-        sprite: SpriteSheetTexture.SpriteId,
-        /// 1 means the original size in pixels.
-        sprite_scale: u16,
-        sprite_sheet: SpriteSheetTexture,
-        /// 1 means the original character size in pixels.
-        text_scale: u8,
-    ) BoxedText {
-        // Assumed to be the same for all dialog box sprites.
+    pub fn wrap(wrapped_widget: *const Widget, sprite_sheet: SpriteSheetTexture) Box {
         const dimensions = sprite_sheet.getSpriteDimensionsInPixels(.dialog_box_top_left);
         return .{
-            .wrapped_image_with_text = ImageWithText.create(
-                sprite,
-                sprite_scale,
-                sprite_sheet,
-                text_scale,
-            ),
+            .wrapped_widget = wrapped_widget,
             .scaled_sprite = .{
                 .width = @as(f32, @floatFromInt(dimensions.w)) * dialog_sprite_scale,
                 .height = @as(f32, @floatFromInt(dimensions.h)) * dialog_sprite_scale,
@@ -158,12 +182,12 @@ pub const BoxedText = struct {
         };
     }
 
-    pub fn getBillboardCount(self: BoxedText, segments: []const text_rendering.TextSegment) usize {
-        return box_sprite_count + self.wrapped_image_with_text.getBillboardCount(segments);
+    pub fn getBillboardCount(self: Box, segments: []const text_rendering.TextSegment) usize {
+        return dialog_sprite_count + self.wrapped_widget.getBillboardCount(segments);
     }
 
     pub fn populateBillboardData(
-        self: BoxedText,
+        self: Box,
         /// Top left corner.
         screen_position_x: u16,
         screen_position_y: u16,
@@ -172,11 +196,10 @@ pub const BoxedText = struct {
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardData,
     ) void {
-        const content_dimensions_u16 =
-            self.wrapped_image_with_text.getDimensionsInPixels(segments, sprite_sheet);
+        const content_u16 = self.wrapped_widget.getDimensionsInPixels(segments, sprite_sheet);
         const content = .{
-            .w = @as(f32, @floatFromInt(content_dimensions_u16.width)),
-            .h = @as(f32, @floatFromInt(content_dimensions_u16.height)),
+            .w = @as(f32, @floatFromInt(content_u16.width)),
+            .h = @as(f32, @floatFromInt(content_u16.height)),
         };
         const sprite = .{ .w = self.scaled_sprite.width, .h = self.scaled_sprite.height };
 
@@ -199,24 +222,24 @@ pub const BoxedText = struct {
         helper.insert(.dialog_box_bottom_center, sprite.w, sprite.h + content.h, content.w, sprite.h);
         helper.insert(.dialog_box_bottom_right, sprite.w + content.w, sprite.h + content.h, sprite.w, sprite.h);
 
-        self.wrapped_image_with_text.populateBillboardData(
+        self.wrapped_widget.populateBillboardData(
             screen_position_x + @as(u16, @intFromFloat(sprite.w)),
             screen_position_y + @as(u16, @intFromFloat(sprite.h)),
             sprite_sheet,
             segments,
-            out[box_sprite_count..],
+            out[dialog_sprite_count..],
         );
     }
 
     pub fn getDimensionsInPixels(
-        self: BoxedText,
+        self: Box,
         segments: []const text_rendering.TextSegment,
         sprite_sheet: SpriteSheetTexture,
     ) ScreenDimensions {
-        const content = self.wrapped_image_with_text.getDimensionsInPixels(segments, sprite_sheet);
+        const content = self.wrapped_widget.getDimensionsInPixels(segments, sprite_sheet);
         return .{
-            .width = content.width + @as(u16, @intFromFloat(self.scaled_sprite.width)) * 2,
-            .height = content.height + @as(u16, @intFromFloat(self.scaled_sprite.height)) * 2,
+            .width = @as(u16, @intFromFloat(self.scaled_sprite.width)) * 2 + content.width,
+            .height = @as(u16, @intFromFloat(self.scaled_sprite.height)) * 2 + content.height,
         };
     }
 
