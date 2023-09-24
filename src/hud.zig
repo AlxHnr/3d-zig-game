@@ -93,27 +93,31 @@ const GemCountInfo = struct {
         const text_dimensions = text_rendering.getTextBlockDimensions(&self.segments, font_size_f32);
 
         // Place gem icon on screen.
-        const gem_source = sprite_sheet.getSpriteTexcoords(.gem);
+        const source = sprite_sheet.getSpriteTexcoords(.gem);
+        const source_dimensions = sprite_sheet.getSpriteDimensionsInPixels(.gem);
+        const multiple = 3;
+        const dimensions = .{
+            .w = @as(f32, @floatFromInt(source_dimensions.w)) * multiple,
+            .h = @as(f32, @floatFromInt(source_dimensions.h)) * multiple,
+        };
+        const spacing = .{
+            .horizontal = font_letter_spacing.horizontal,
+            .vertical = font_letter_spacing.vertical,
+        };
         out[0] = .{
             .position = .{
-                .x = font_letter_spacing.horizontal + font_size_f32 / 2,
-                .y = @as(f32, @floatFromInt(
-                    screen_dimensions.height,
-                )) - text_dimensions.height + font_size_f32 / 2,
+                .x = spacing.horizontal * 2 + dimensions.w / 2,
+                .y = @as(f32, @floatFromInt(screen_dimensions.height)) -
+                    spacing.vertical - dimensions.h / 2,
                 .z = 0,
             },
-            .size = .{ .w = font_size_f32, .h = font_size_f32 },
-            .source_rect = .{
-                .x = gem_source.x,
-                .y = gem_source.y,
-                .w = gem_source.w,
-                .h = gem_source.h,
-            },
+            .size = .{ .w = dimensions.w, .h = dimensions.h },
+            .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
         };
 
         text_rendering.populateBillboardData2d(
             &self.segments,
-            @as(u16, @intFromFloat(font_letter_spacing.horizontal)) * 2 + font_size,
+            @as(u16, @intFromFloat(spacing.horizontal * 3 + out[0].size.w)),
             screen_dimensions.height - @as(u16, @intFromFloat(text_dimensions.height)),
             font_size,
             sprite_sheet,
