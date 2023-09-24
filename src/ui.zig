@@ -7,8 +7,9 @@ const std = @import("std");
 
 /// Polymorphic dispatcher serving as an interface.
 pub const Widget = union(enum) {
-    text: Text,
     box: Box,
+    text: Text,
+    sprite: Sprite,
 
     pub fn getDimensionsInPixels(self: Widget) ScreenDimensions {
         return switch (self) {
@@ -91,6 +92,75 @@ pub const Text = struct {
             self.sprite_sheet.*,
             out,
         );
+    }
+};
+
+pub const Sprite = struct {
+    sprite_texcoords: SpriteSheetTexture.TextureCoordinates,
+    sprite_on_screen_dimensions: struct { w: f32, h: f32 },
+    /// Has to be applied twice, both for left/right and top/bottom.
+    sprite_on_screen_spacing: struct { horizontal: f32, vertical: f32 },
+
+    pub fn create(
+        sprite: SpriteSheetTexture.SpriteId,
+        /// 1 means the original size in pixels.
+        sprite_scale: u16,
+        sprite_sheet: SpriteSheetTexture,
+    ) Sprite {
+        const dimensions = sprite_sheet.getSpriteDimensionsInPixels(sprite);
+        return .{
+            .sprite_texcoords = sprite_sheet.getSpriteTexcoords(sprite),
+            .sprite_on_screen_dimensions = .{
+                .w = @as(f32, @floatFromInt(dimensions.w * sprite_scale)),
+                .h = @as(f32, @floatFromInt(dimensions.h * sprite_scale)),
+            },
+            .sprite_on_screen_spacing = .{
+                // 2 Has been picked by trial and error to improve padding.
+                .horizontal = 2 * @as(f32, @floatFromInt(sprite_scale)),
+                .vertical = 2 * @as(f32, @floatFromInt(sprite_scale)),
+            },
+        };
+    }
+
+    pub fn getDimensionsInPixels(self: Sprite) ScreenDimensions {
+        return .{
+            .width = @as(u16, @intFromFloat(self.sprite_on_screen_dimensions.w +
+                self.sprite_on_screen_spacing.horizontal * 2)),
+            .height = @as(u16, @intFromFloat(self.sprite_on_screen_dimensions.h +
+                self.sprite_on_screen_spacing.vertical * 2)),
+        };
+    }
+
+    pub fn getBillboardCount(_: Sprite) usize {
+        return 1;
+    }
+
+    pub fn populateBillboardData(
+        self: Sprite,
+        /// Top left corner.
+        screen_position_x: u16,
+        screen_position_y: u16,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardData,
+    ) void {
+        const sprite_dimensions = self.getDimensionsInPixels();
+        out[0] = .{
+            .position = .{
+                .x = @as(f32, @floatFromInt(screen_position_x + sprite_dimensions.width / 2)),
+                .y = @as(f32, @floatFromInt(screen_position_y + sprite_dimensions.height / 2)),
+                .z = 0,
+            },
+            .size = .{
+                .w = self.sprite_on_screen_dimensions.w,
+                .h = self.sprite_on_screen_dimensions.h,
+            },
+            .source_rect = .{
+                .x = self.sprite_texcoords.x,
+                .y = self.sprite_texcoords.y,
+                .w = self.sprite_texcoords.w,
+                .h = self.sprite_texcoords.h,
+            },
+        };
     }
 };
 
