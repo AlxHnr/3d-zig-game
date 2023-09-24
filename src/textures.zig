@@ -188,7 +188,7 @@ pub const SpriteSheetTexture = struct {
     /// Gap between consecutive characters in a sentence.
     pub const FontLetterSpacing = struct { horizontal: f32, vertical: f32 };
 
-    pub fn getFontLetterSpacing(scaling_factor: f32) FontLetterSpacing {
+    pub fn getFontLetterSpacing(_: SpriteSheetTexture, scaling_factor: f32) FontLetterSpacing {
         const character_padding_length = @as(f32, 1);
         const padding = (character_padding_length / @as(f32, font_character_side_length)) *
             scaling_factor;
@@ -197,7 +197,7 @@ pub const SpriteSheetTexture = struct {
 
     // Return a suitable character size for rendering without scaling artifacts. Takes whole
     // integers like 1, 2, 3, ...
-    pub fn getFontSizeMultiple(step_factor: u8) u16 {
+    pub fn getFontSizeMultiple(_: SpriteSheetTexture, step_factor: u8) u16 {
         return step_factor * font_character_side_length;
     }
 

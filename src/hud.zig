@@ -103,10 +103,14 @@ const GemCountInfo = struct {
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardRenderer.BillboardData,
     ) void {
-        const font_size = SpriteSheetTexture.getFontSizeMultiple(4);
+        const font_size = sprite_sheet.getFontSizeMultiple(4);
         const font_size_f32 = @as(f32, @floatFromInt(font_size));
-        const font_letter_spacing = SpriteSheetTexture.getFontLetterSpacing(font_size_f32);
-        const text_dimensions = text_rendering.getTextBlockDimensions(&self.segments, font_size_f32);
+        const font_letter_spacing = sprite_sheet.getFontLetterSpacing(font_size_f32);
+        const text_dimensions = text_rendering.getTextBlockDimensions(
+            &self.segments,
+            font_size_f32,
+            sprite_sheet,
+        );
 
         // Place gem icon on screen.
         const source = sprite_sheet.getSpriteTexcoords(.gem);
@@ -173,7 +177,7 @@ const EditModeInfo = struct {
             &self.segments,
             0,
             0,
-            SpriteSheetTexture.getFontSizeMultiple(2),
+            sprite_sheet.getFontSizeMultiple(2),
             sprite_sheet,
             out,
         );

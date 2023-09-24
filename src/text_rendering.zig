@@ -23,9 +23,13 @@ const Dimensions = struct {
     height: f32,
 };
 
-pub fn getTextBlockDimensions(text_segments: []const TextSegment, character_size: f32) Dimensions {
+pub fn getTextBlockDimensions(
+    text_segments: []const TextSegment,
+    character_size: f32,
+    sprite_sheet: SpriteSheetTexture,
+) Dimensions {
     const info = getInfo(text_segments);
-    const font_letter_spacing = SpriteSheetTexture.getFontLetterSpacing(character_size);
+    const font_letter_spacing = sprite_sheet.getFontLetterSpacing(character_size);
     const longest_line = @as(f32, @floatFromInt(info.codepoint_count_in_longest_line));
     const line_count = @as(f32, @floatFromInt(1 + info.newline_count));
 
@@ -49,7 +53,7 @@ pub fn populateBillboardData(
     populateBillboardDataRaw(
         text_segments,
         center_position,
-        getOffsetToTopLeftCorner(text_segments, character_size),
+        getOffsetToTopLeftCorner(text_segments, character_size, sprite_sheet_texture),
         character_size,
         false,
         true,
@@ -71,7 +75,11 @@ pub fn populateBillboardDataExactPixelSize(
     populateBillboardDataRaw(
         text_segments,
         center_position,
-        getOffsetToTopLeftCorner(text_segments, @floatFromInt(character_size_pixels)),
+        getOffsetToTopLeftCorner(
+            text_segments,
+            @floatFromInt(character_size_pixels),
+            sprite_sheet_texture,
+        ),
         @floatFromInt(character_size_pixels),
         true,
         true,
@@ -150,9 +158,13 @@ fn getInfo(text_segments: []const TextSegment) TextSegmentInfo {
     return result;
 }
 
-fn getOffsetToTopLeftCorner(text_segments: []const TextSegment, character_size: f32) Vector3d {
+fn getOffsetToTopLeftCorner(
+    text_segments: []const TextSegment,
+    character_size: f32,
+    sprite_sheet: SpriteSheetTexture,
+) Vector3d {
     const info = getInfo(text_segments);
-    const font_letter_spacing = SpriteSheetTexture.getFontLetterSpacing(character_size);
+    const font_letter_spacing = sprite_sheet.getFontLetterSpacing(character_size);
     const half_sizes = .{
         .w = (character_size + font_letter_spacing.horizontal) / 2,
         .h = (character_size + font_letter_spacing.vertical) / 2,
@@ -188,7 +200,7 @@ fn populateBillboardDataRaw(
     // Billboard positions usually specify their center. Offsets are applied to align the top left
     // corner of the text block.
     const y_offset = flip(character_size, y_axis_points_upwards);
-    const font_letter_spacing = SpriteSheetTexture.getFontLetterSpacing(character_size);
+    const font_letter_spacing = sprite_sheet_texture.getFontLetterSpacing(character_size);
     const offset_increment = Vector3d{
         .x = character_size + font_letter_spacing.horizontal,
         .y = y_offset + flip(font_letter_spacing.vertical, y_axis_points_upwards),
