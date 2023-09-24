@@ -104,9 +104,9 @@ pub const Sprite = struct {
 
     pub fn create(
         sprite: SpriteSheetTexture.SpriteId,
+        sprite_sheet: SpriteSheetTexture,
         /// 1 means the original size in pixels.
         sprite_scale: u16,
-        sprite_sheet: SpriteSheetTexture,
     ) Sprite {
         const dimensions = sprite_sheet.getSpriteDimensionsInPixels(sprite);
         return .{
