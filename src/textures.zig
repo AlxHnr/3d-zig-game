@@ -145,6 +145,15 @@ pub const SpriteSheetTexture = struct {
     }
 
     pub const SpriteId = enum(u8) {
+        dialog_box_bottom_center,
+        dialog_box_bottom_left,
+        dialog_box_bottom_right,
+        dialog_box_center_center,
+        dialog_box_center_left,
+        dialog_box_center_right,
+        dialog_box_top_center,
+        dialog_box_top_left,
+        dialog_box_top_right,
         gem,
         player_back_frame_0,
         player_back_frame_1,
@@ -213,6 +222,15 @@ pub const SpriteSheetTexture = struct {
         TextureSourceRectangle,
         @typeInfo(SpriteId).Enum.fields.len,
         .{
+            .dialog_box_bottom_center = .{ .x = 120, .y = 80, .w = 8, .h = 8 },
+            .dialog_box_bottom_left = .{ .x = 104, .y = 80, .w = 8, .h = 8 },
+            .dialog_box_bottom_right = .{ .x = 136, .y = 80, .w = 8, .h = 8 },
+            .dialog_box_center_center = .{ .x = 120, .y = 64, .w = 8, .h = 8 },
+            .dialog_box_center_left = .{ .x = 104, .y = 64, .w = 8, .h = 8 },
+            .dialog_box_center_right = .{ .x = 136, .y = 64, .w = 8, .h = 8 },
+            .dialog_box_top_center = .{ .x = 120, .y = 48, .w = 8, .h = 8 },
+            .dialog_box_top_left = .{ .x = 104, .y = 48, .w = 8, .h = 8 },
+            .dialog_box_top_right = .{ .x = 136, .y = 48, .w = 8, .h = 8 },
             .gem = .{ .x = 72, .y = 88, .w = 14, .h = 13 },
             .player_back_frame_0 = .{ .x = 0, .y = 48, .w = 16, .h = 32 },
             .player_back_frame_1 = .{ .x = 24, .y = 48, .w = 16, .h = 32 },

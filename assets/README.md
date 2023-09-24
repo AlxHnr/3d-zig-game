@@ -31,3 +31,7 @@
 ### [Torus Sans (modified)](https://opengameart.org/content/the-collection-of-8-bit-fonts-for-grafx2-r2)
 * **Author**: devurandom
 * **License**: CC0
+
+### [Retro pixel art dialog box](https://opengameart.org/content/retro-pixel-art-guihud-elements-including-dialogue-box)
+* **Author**: Pace Smith
+* **License**: CC0
