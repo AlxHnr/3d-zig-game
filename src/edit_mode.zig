@@ -207,7 +207,7 @@ pub const State = struct {
 };
 
 /// Reasonable distance to prevent placing/modifying objects too far away from the camera.
-const max_raycast_distance = 1500;
+const max_raycast_distance = 500;
 
 fn cast3DRayToGround(ray: collision.Ray3d) ?math.FlatVector {
     if (ray.collidesWithGround()) |impact_point| {
