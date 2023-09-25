@@ -1,6 +1,7 @@
 const std = @import("std");
 const math = @import("math.zig");
 const collision = @import("collision.zig");
+const ScreenDimensions = @import("util.zig").ScreenDimensions;
 
 /// Camera which smoothly follows an object and auto-rotates across the Y axis.
 pub const Camera = struct {
@@ -67,7 +68,7 @@ pub const Camera = struct {
 
     pub fn getViewProjectionMatrix(
         self: Camera,
-        screen_dimensions: math.ScreenDimensions,
+        screen_dimensions: ScreenDimensions,
         /// Optional distance limit to prevent walls from covering the cameras target object.
         max_distance_from_target: ?f32,
     ) math.Matrix {
@@ -101,7 +102,7 @@ pub const Camera = struct {
         self: Camera,
         mouse_x: u16,
         mouse_y: u16,
-        screen_dimensions: math.ScreenDimensions,
+        screen_dimensions: ScreenDimensions,
         /// Optional value to account for walls covering the camera.
         max_distance_from_target: ?f32,
     ) collision.Ray3d {
@@ -240,7 +241,7 @@ pub const Camera = struct {
         return self.target_position.add(updated_offset);
     }
 
-    fn getProjectionMatrix(screen_dimensions: math.ScreenDimensions) math.Matrix {
+    fn getProjectionMatrix(screen_dimensions: ScreenDimensions) math.Matrix {
         const field_of_view = std.math.degreesToRadians(f32, 45);
         const ratio = @as(f32, @floatFromInt(screen_dimensions.width)) / @as(
             f32,

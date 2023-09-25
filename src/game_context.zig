@@ -7,6 +7,7 @@ const sdl = @import("sdl.zig");
 const std = @import("std");
 const textures = @import("textures.zig");
 
+const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const TickTimer = @import("util.zig").TickTimer;
@@ -119,7 +120,7 @@ pub const Context = struct {
     pub fn render(
         self: *Context,
         allocator: std.mem.Allocator,
-        screen_dimensions: math.ScreenDimensions,
+        screen_dimensions: ScreenDimensions,
     ) !void {
         try self.level_geometry.prepareRender(allocator, self.spritesheet.*);
 
@@ -192,7 +193,7 @@ pub const Context = struct {
         self: Context,
         mouse_x: u16,
         mouse_y: u16,
-        screen_dimensions: math.ScreenDimensions,
+        screen_dimensions: ScreenDimensions,
     ) collision.Ray3d {
         return self.main_character
             .getCamera(self.interval_between_previous_and_current_tick)

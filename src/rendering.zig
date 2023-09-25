@@ -5,6 +5,7 @@ const gl = @import("gl");
 const math = @import("math.zig");
 const meshes = @import("meshes.zig");
 const Shader = @import("shader.zig").Shader;
+const ScreenDimensions = @import("util.zig").ScreenDimensions;
 
 pub const WallRenderer = struct {
     vao_id: c_uint,
@@ -369,7 +370,7 @@ pub const BillboardRenderer = struct {
     pub fn render(
         self: BillboardRenderer,
         vp_matrix: math.Matrix,
-        screen_dimensions: math.ScreenDimensions,
+        screen_dimensions: ScreenDimensions,
         camera_direction: math.Vector3d,
         texture_id: c_uint,
     ) void {
@@ -401,7 +402,7 @@ pub const BillboardRenderer = struct {
     /// screen. Z will be ignored.
     pub fn render2d(
         self: BillboardRenderer,
-        screen_dimensions: math.ScreenDimensions,
+        screen_dimensions: ScreenDimensions,
         texture_id: c_uint,
     ) void {
         // Flip V texture coordinate to preserve orientation when inverting Y.

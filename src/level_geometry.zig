@@ -133,7 +133,7 @@ pub const LevelGeometry = struct {
     pub fn render(
         self: LevelGeometry,
         vp_matrix: math.Matrix,
-        screen_dimensions: math.ScreenDimensions,
+        screen_dimensions: util.ScreenDimensions,
         camera_direction_to_target: math.Vector3d,
         tileable_textures: textures.TileableArrayTexture,
         spritesheet: textures.SpriteSheetTexture,

@@ -16,12 +16,6 @@ pub fn isEqual(a: f32, b: f32) bool {
     return std.math.fabs(a - b) < epsilon;
 }
 
-/// Size in pixels.
-pub const ScreenDimensions = struct {
-    width: u16,
-    height: u16,
-};
-
 /// Vector on a flat plane with no height information.
 pub const FlatVector = struct {
     x: f32,

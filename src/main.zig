@@ -1,6 +1,7 @@
 const Error = @import("error.zig").Error;
 const GameContext = @import("game_context.zig").Context;
 const Hud = @import("hud.zig").Hud;
+const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const edit_mode = @import("edit_mode.zig");
 const gl = @import("gl");
@@ -9,7 +10,7 @@ const sdl = @import("sdl.zig");
 const std = @import("std");
 
 const ProgramContext = struct {
-    screen_dimensions: math.ScreenDimensions,
+    screen_dimensions: ScreenDimensions,
     window: *sdl.SDL_Window,
     gl_context: sdl.SDL_GLContext,
     allocator: std.mem.Allocator,

@@ -1,9 +1,7 @@
 const BillboardData = @import("rendering.zig").BillboardRenderer.BillboardData;
-const ScreenDimensions = @import("math.zig").ScreenDimensions;
+const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const text_rendering = @import("text_rendering.zig");
-
-const std = @import("std");
 
 /// Polymorphic dispatcher serving as an interface.
 pub const Widget = union(enum) {
