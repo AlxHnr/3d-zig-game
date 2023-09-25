@@ -829,7 +829,7 @@ const Wall = struct {
             .metal_fence => 3.5,
             .short_metal_fence => 1.0,
             .tall_hedge => 8.0,
-            .giga_wall => 140.0,
+            .giga_wall => 1000.0,
         };
     }
 
