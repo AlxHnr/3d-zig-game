@@ -287,7 +287,7 @@ pub const Ray3d = struct {
         };
         return ImpactPoint{
             .position = self.start_position.add(offset_to_ground),
-            .distance_from_start_position = offset_to_ground.subtract(self.start_position).length(),
+            .distance_from_start_position = offset_to_ground.length(),
         };
     }
 
