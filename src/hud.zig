@@ -1,24 +1,18 @@
 const std = @import("std");
 const BillboardRenderer = @import("rendering.zig").BillboardRenderer;
 const Color = @import("util.zig").Color;
-const EditModeState = @import("edit_mode.zig").State;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const text_rendering = @import("text_rendering.zig");
-const GameContext = @import("game_context.zig").Context;
 const ui = @import("ui.zig");
 
 pub const Hud = struct {
     renderer: BillboardRenderer,
-    /// Non-owning pointer.
-    spritesheet: *const SpriteSheetTexture,
     billboard_buffer: []BillboardRenderer.BillboardData,
 
-    /// Returned object will keep a reference to the given pointers.
-    pub fn create(spritesheet: *const SpriteSheetTexture) !Hud {
+    pub fn create() !Hud {
         return .{
             .renderer = try BillboardRenderer.create(),
-            .spritesheet = spritesheet,
             .billboard_buffer = &.{},
         };
     }
@@ -32,39 +26,24 @@ pub const Hud = struct {
         self: *Hud,
         allocator: std.mem.Allocator,
         screen_dimensions: ScreenDimensions,
-        game_context: GameContext,
-        edit_mode_state: EditModeState,
+        spritesheet: SpriteSheetTexture,
+        gem_count: u64,
     ) !void {
-        var edit_mode_buffer: [64]u8 = undefined;
-        var gem_info = try GemCountInfo.create(
-            allocator,
-            game_context.getPlayerGemCount(),
-            self.spritesheet,
-        );
+        var gem_info = try GemCountInfo.create(allocator, gem_count, &spritesheet);
         defer gem_info.destroy(allocator);
-        const edit_mode_info = try EditModeInfo.create(edit_mode_state, &edit_mode_buffer);
 
-        const gem_billboard_count = gem_info.getBillboardCount();
-        const edit_mode_billboard_count = edit_mode_info.getBillboardCount();
-        const total_billboard_count = gem_billboard_count + edit_mode_billboard_count;
+        const total_billboard_count = gem_info.getBillboardCount();
         if (self.billboard_buffer.len < total_billboard_count) {
             self.billboard_buffer =
                 try allocator.realloc(self.billboard_buffer, total_billboard_count);
         }
 
-        var start: usize = 0;
-        var end = gem_billboard_count;
-        gem_info.populateBillboardData(screen_dimensions, self.billboard_buffer[start..end]);
-
-        start = end;
-        end += edit_mode_billboard_count;
-        edit_mode_info.populateBillboardData(
-            self.spritesheet.*,
-            self.billboard_buffer[start..end],
+        gem_info.populateBillboardData(
+            screen_dimensions,
+            self.billboard_buffer[0..total_billboard_count],
         );
-
-        self.renderer.uploadBillboards(self.billboard_buffer[0..end]);
-        self.renderer.render2d(screen_dimensions, self.spritesheet.id);
+        self.renderer.uploadBillboards(self.billboard_buffer[0..total_billboard_count]);
+        self.renderer.render2d(screen_dimensions, spritesheet.id);
     }
 };
 
@@ -126,44 +105,6 @@ const GemCountInfo = struct {
         self.main_widget.populateBillboardData(
             0,
             screen_dimensions.height - info_dimensions.height,
-            out,
-        );
-    }
-};
-
-const EditModeInfo = struct {
-    segments: [3]text_rendering.TextSegment,
-
-    fn create(
-        state: EditModeState,
-        /// Returned result keeps a reference to this buffer.
-        buffer: []u8,
-    ) !EditModeInfo {
-        const text_color = Color.fromRgb8(0, 0, 0);
-        const description = try state.describe(buffer);
-        return .{ .segments = [_]text_rendering.TextSegment{
-            .{ .color = text_color, .text = description[0] },
-            .{ .color = text_color, .text = "\n" },
-            .{ .color = text_color, .text = description[1] },
-        } };
-    }
-
-    fn getBillboardCount(self: EditModeInfo) usize {
-        return text_rendering.getBillboardCount(&self.segments);
-    }
-
-    fn populateBillboardData(
-        self: EditModeInfo,
-        spritesheet: SpriteSheetTexture,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardRenderer.BillboardData,
-    ) void {
-        text_rendering.populateBillboardData2d(
-            &self.segments,
-            0,
-            0,
-            spritesheet.getFontSizeMultiple(2),
-            spritesheet,
             out,
         );
     }

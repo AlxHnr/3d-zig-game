@@ -7,8 +7,9 @@ const sdl = @import("sdl.zig");
 const std = @import("std");
 const textures = @import("textures.zig");
 
-const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const Hud = @import("hud.zig").Hud;
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
+const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const TickTimer = @import("util.zig").TickTimer;
 
@@ -23,17 +24,14 @@ pub const Context = struct {
     level_geometry: LevelGeometry,
     gem_collection: gems.Collection,
     tileable_textures: textures.TileableArrayTexture,
-    spritesheet: *const textures.SpriteSheetTexture,
+    spritesheet: *textures.SpriteSheetTexture,
 
     billboard_renderer: rendering.BillboardRenderer,
     billboard_buffer: []rendering.BillboardRenderer.BillboardData,
 
-    pub fn create(
-        allocator: std.mem.Allocator,
-        map_file_path: []const u8,
-        /// Returned context will keep a reference to this pointer.
-        spritesheet: *const textures.SpriteSheetTexture,
-    ) !Context {
+    hud: Hud,
+
+    pub fn create(allocator: std.mem.Allocator, map_file_path: []const u8) !Context {
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);
         errdefer allocator.free(map_file_path_buffer);
 
@@ -55,8 +53,16 @@ pub const Context = struct {
         var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
         errdefer tileable_textures.destroy();
 
+        var spritesheet = try allocator.create(textures.SpriteSheetTexture);
+        errdefer allocator.destroy(spritesheet);
+        spritesheet.* = try textures.SpriteSheetTexture.loadFromDisk();
+        errdefer spritesheet.destroy();
+
         var billboard_renderer = try rendering.BillboardRenderer.create();
         errdefer billboard_renderer.destroy();
+
+        var hud = try Hud.create();
+        errdefer hud.destroy(allocator);
 
         return .{
             .tick_timer = try TickTimer.start(60),
@@ -77,12 +83,17 @@ pub const Context = struct {
 
             .billboard_renderer = billboard_renderer,
             .billboard_buffer = &.{},
+
+            .hud = hud,
         };
     }
 
     pub fn destroy(self: *Context, allocator: std.mem.Allocator) void {
+        self.hud.destroy(allocator);
         allocator.free(self.billboard_buffer);
         self.billboard_renderer.destroy();
+        self.spritesheet.destroy();
+        allocator.destroy(self.spritesheet);
         self.tileable_textures.destroy();
         self.gem_collection.destroy();
         self.level_geometry.destroy();
@@ -173,6 +184,19 @@ pub const Context = struct {
         );
     }
 
+    pub fn renderHud(
+        self: *Context,
+        allocator: std.mem.Allocator,
+        screen_dimensions: ScreenDimensions,
+    ) !void {
+        try self.hud.render(
+            allocator,
+            screen_dimensions,
+            self.spritesheet.*,
+            self.main_character.gem_count,
+        );
+    }
+
     pub fn getMutableLevelGeometry(self: *Context) *LevelGeometry {
         return &self.level_geometry;
     }
@@ -216,10 +240,6 @@ pub const Context = struct {
         return self.main_character
             .getCamera(self.interval_between_previous_and_current_tick)
             .getDirectionToTarget();
-    }
-
-    pub fn getPlayerGemCount(self: Context) u64 {
-        return self.main_character.gem_count;
     }
 
     fn loadLevelGeometry(allocator: std.mem.Allocator, file_path: []const u8) !LevelGeometry {

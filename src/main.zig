@@ -1,24 +1,24 @@
 const Error = @import("error.zig").Error;
+const BillboardRenderer = @import("rendering.zig").BillboardRenderer;
 const GameContext = @import("game_context.zig").Context;
-const Hud = @import("hud.zig").Hud;
-const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const edit_mode = @import("edit_mode.zig");
 const gl = @import("gl");
 const math = @import("math.zig");
 const sdl = @import("sdl.zig");
 const std = @import("std");
+const text_rendering = @import("text_rendering.zig");
+const util = @import("util.zig");
 
 const ProgramContext = struct {
-    screen_dimensions: ScreenDimensions,
+    screen_dimensions: util.ScreenDimensions,
     window: *sdl.SDL_Window,
     gl_context: sdl.SDL_GLContext,
     allocator: std.mem.Allocator,
     game_context: GameContext,
-    hud: Hud,
     edit_mode_state: edit_mode.State,
     edit_mode_view: enum { from_behind, top_down },
-    spritesheet: *SpriteSheetTexture,
+    edit_mode_renderer: EditModeRenderer,
 
     const default_map_path = "maps/default.json";
 
@@ -77,16 +77,11 @@ const ProgramContext = struct {
         gl.enable(gl.STENCIL_TEST);
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
-        var spritesheet = try allocator.create(SpriteSheetTexture);
-        errdefer allocator.destroy(spritesheet);
-        spritesheet.* = try SpriteSheetTexture.loadFromDisk();
-        errdefer spritesheet.destroy();
-
-        var game_context = try GameContext.create(allocator, default_map_path, spritesheet);
+        var game_context = try GameContext.create(allocator, default_map_path);
         errdefer game_context.destroy(allocator);
 
-        var hud = try Hud.create(spritesheet);
-        errdefer hud.destroy();
+        var edit_mode_renderer = try EditModeRenderer.create();
+        errdefer edit_mode_renderer.destroy(allocator);
 
         return .{
             .screen_dimensions = .{ .width = screen_width, .height = screen_height },
@@ -94,17 +89,14 @@ const ProgramContext = struct {
             .gl_context = gl_context,
             .allocator = allocator,
             .game_context = game_context,
-            .hud = hud,
             .edit_mode_state = edit_mode.State.create(),
             .edit_mode_view = .from_behind,
-            .spritesheet = spritesheet,
+            .edit_mode_renderer = edit_mode_renderer,
         };
     }
 
     fn destroy(self: *ProgramContext) void {
-        self.spritesheet.destroy();
-        self.allocator.destroy(self.spritesheet);
-        self.hud.destroy(self.allocator);
+        self.edit_mode_renderer.destroy(self.allocator);
         self.game_context.destroy(self.allocator);
         sdl.SDL_GL_DeleteContext(self.gl_context);
         sdl.SDL_DestroyWindow(self.window);
@@ -208,10 +200,10 @@ const ProgramContext = struct {
         try self.game_context.render(self.allocator, self.screen_dimensions);
 
         gl.disable(gl.DEPTH_TEST);
-        try self.hud.render(
+        try self.game_context.renderHud(self.allocator, self.screen_dimensions);
+        try self.edit_mode_renderer.render(
             self.allocator,
             self.screen_dimensions,
-            self.game_context,
             self.edit_mode_state,
         );
 
@@ -233,6 +225,64 @@ const ProgramContext = struct {
         // Usually a check with SDL_GL_ExtensionSupported() is required, but gl.zig only provides the
         // function name instead of the full extension string.
         return sdl.SDL_GL_GetProcAddress(extension_name);
+    }
+};
+
+const EditModeRenderer = struct {
+    renderer: BillboardRenderer,
+    billboard_buffer: []BillboardRenderer.BillboardData,
+    spritesheet: SpriteSheetTexture,
+
+    fn create() !EditModeRenderer {
+        var renderer = try BillboardRenderer.create();
+        errdefer renderer.destroy();
+
+        var spritesheet = try SpriteSheetTexture.loadFromDisk();
+        errdefer spritesheet.destroy();
+
+        return .{
+            .renderer = renderer,
+            .billboard_buffer = &.{},
+            .spritesheet = spritesheet,
+        };
+    }
+
+    fn destroy(self: *EditModeRenderer, allocator: std.mem.Allocator) void {
+        self.spritesheet.destroy();
+        allocator.free(self.billboard_buffer);
+        self.renderer.destroy();
+    }
+
+    fn render(
+        self: *EditModeRenderer,
+        allocator: std.mem.Allocator,
+        screen_dimensions: util.ScreenDimensions,
+        state: edit_mode.State,
+    ) !void {
+        var text_buffer: [64]u8 = undefined;
+        const description = try state.describe(&text_buffer);
+
+        const text_color = util.Color.fromRgb8(0, 0, 0);
+        const segments = [_]text_rendering.TextSegment{
+            .{ .color = text_color, .text = description[0] },
+            .{ .color = text_color, .text = "\n" },
+            .{ .color = text_color, .text = description[1] },
+        };
+
+        const billboard_count = text_rendering.getBillboardCount(&segments);
+        if (self.billboard_buffer.len < billboard_count) {
+            self.billboard_buffer = try allocator.realloc(self.billboard_buffer, billboard_count);
+        }
+        text_rendering.populateBillboardData2d(
+            &segments,
+            0,
+            0,
+            self.spritesheet.getFontSizeMultiple(2),
+            self.spritesheet,
+            self.billboard_buffer[0..billboard_count],
+        );
+        self.renderer.uploadBillboards(self.billboard_buffer[0..billboard_count]);
+        self.renderer.render2d(screen_dimensions, self.spritesheet.id);
     }
 };
 
