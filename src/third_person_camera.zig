@@ -247,7 +247,7 @@ pub const Camera = struct {
             @floatFromInt(screen_dimensions.height),
         );
         const near = 0.01;
-        const far = 1000.0;
+        const far = 3000.0;
         const f = 1.0 / std.math.tan(field_of_view / 2);
         return .{ .rows = .{
             .{ f / ratio, 0, 0, 0 },
