@@ -22,12 +22,17 @@ pub const Context = struct {
     level_geometry: LevelGeometry,
     gem_collection: gems.Collection,
     tileable_textures: textures.TileableArrayTexture,
-    sprite_sheet_texture: textures.SpriteSheetTexture,
+    sprite_sheet_texture: *const textures.SpriteSheetTexture,
 
     billboard_renderer: rendering.BillboardRenderer,
     billboard_buffer: []rendering.BillboardRenderer.BillboardData,
 
-    pub fn create(allocator: std.mem.Allocator, map_file_path: []const u8) !Context {
+    pub fn create(
+        allocator: std.mem.Allocator,
+        map_file_path: []const u8,
+        /// Returned context will keep a reference to this pointer.
+        sprite_sheet_texture: *const textures.SpriteSheetTexture,
+    ) !Context {
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);
         errdefer allocator.free(map_file_path_buffer);
 
@@ -48,9 +53,6 @@ pub const Context = struct {
 
         var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
         errdefer tileable_textures.destroy();
-
-        var sprite_sheet_texture = try textures.SpriteSheetTexture.loadFromDisk();
-        errdefer sprite_sheet_texture.destroy();
 
         var billboard_renderer = try rendering.BillboardRenderer.create();
         errdefer billboard_renderer.destroy();
@@ -80,7 +82,6 @@ pub const Context = struct {
     pub fn destroy(self: *Context, allocator: std.mem.Allocator) void {
         allocator.free(self.billboard_buffer);
         self.billboard_renderer.destroy();
-        self.sprite_sheet_texture.destroy();
         self.tileable_textures.destroy();
         self.gem_collection.destroy();
         self.level_geometry.destroy();
@@ -120,7 +121,7 @@ pub const Context = struct {
         allocator: std.mem.Allocator,
         screen_dimensions: math.ScreenDimensions,
     ) !void {
-        try self.level_geometry.prepareRender(allocator, self.sprite_sheet_texture);
+        try self.level_geometry.prepareRender(allocator, self.sprite_sheet_texture.*);
 
         const billboards_to_render = self.gem_collection.getBillboardCount();
         if (self.billboard_buffer.len < billboards_to_render) {
@@ -129,7 +130,7 @@ pub const Context = struct {
         }
         self.gem_collection.populateBillboardData(
             self.billboard_buffer,
-            self.sprite_sheet_texture,
+            self.sprite_sheet_texture.*,
             &[_]gems.CollisionObject{self.main_character
                 .getLerpedCollisionObject(self.interval_between_previous_and_current_tick)},
             self.interval_between_previous_and_current_tick,
@@ -147,7 +148,7 @@ pub const Context = struct {
             screen_dimensions,
             camera.getDirectionToTarget(),
             self.tileable_textures,
-            self.sprite_sheet_texture,
+            self.sprite_sheet_texture.*,
         );
         self.billboard_renderer.render(
             vp_matrix,
@@ -158,7 +159,7 @@ pub const Context = struct {
 
         const player_billboard_data = [_]rendering.BillboardRenderer.BillboardData{
             self.main_character.getBillboardData(
-                self.sprite_sheet_texture,
+                self.sprite_sheet_texture.*,
                 self.interval_between_previous_and_current_tick,
             ),
         };

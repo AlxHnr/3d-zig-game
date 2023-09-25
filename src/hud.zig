@@ -10,18 +10,14 @@ const ui = @import("ui.zig");
 
 pub const Hud = struct {
     renderer: BillboardRenderer,
-    sprite_sheet: SpriteSheetTexture,
+    /// Non-owning pointer.
+    sprite_sheet: *const SpriteSheetTexture,
     billboard_buffer: []BillboardRenderer.BillboardData,
 
-    pub fn create() !Hud {
-        var renderer = try BillboardRenderer.create();
-        errdefer renderer.destroy();
-
-        var sprite_sheet = try SpriteSheetTexture.loadFromDisk();
-        errdefer sprite_sheet.destroy();
-
+    /// Returned object will keep a reference to the given pointers.
+    pub fn create(sprite_sheet: *const SpriteSheetTexture) !Hud {
         return .{
-            .renderer = renderer,
+            .renderer = try BillboardRenderer.create(),
             .sprite_sheet = sprite_sheet,
             .billboard_buffer = &.{},
         };
@@ -29,7 +25,6 @@ pub const Hud = struct {
 
     pub fn destroy(self: *Hud, allocator: std.mem.Allocator) void {
         allocator.free(self.billboard_buffer);
-        self.sprite_sheet.destroy();
         self.renderer.destroy();
     }
 
@@ -44,7 +39,7 @@ pub const Hud = struct {
         var gem_info = try GemCountInfo.create(
             allocator,
             game_context.getPlayerGemCount(),
-            &self.sprite_sheet,
+            self.sprite_sheet,
         );
         defer gem_info.destroy(allocator);
         const edit_mode_info = try EditModeInfo.create(edit_mode_state, &edit_mode_buffer);
@@ -64,7 +59,7 @@ pub const Hud = struct {
         start = end;
         end += edit_mode_billboard_count;
         edit_mode_info.populateBillboardData(
-            self.sprite_sheet,
+            self.sprite_sheet.*,
             self.billboard_buffer[start..end],
         );
 

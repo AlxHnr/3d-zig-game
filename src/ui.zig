@@ -49,6 +49,7 @@ pub const Text = struct {
     sprite_sheet: *const SpriteSheetTexture,
     font_size: u16,
 
+    /// Returned object will keep a reference to the given slices and pointers.
     pub fn wrap(
         segments: []const text_rendering.TextSegment,
         sprite_sheet: *const SpriteSheetTexture,
@@ -172,6 +173,7 @@ pub const Split = struct {
 
     pub const Type = enum { horizontal, vertical };
 
+    /// Returned object will keep a reference to the given slice.
     pub fn wrap(split_type: Type, widgets_to_wrap: []const Widget) Split {
         return .{ .split_type = split_type, .wrapped_widgets = widgets_to_wrap };
     }
@@ -256,6 +258,7 @@ pub const Box = struct {
     const dialog_sprite_count = 9;
     const dialog_sprite_scale = 4;
 
+    /// Returned object will keep a reference to the given pointers.
     pub fn wrap(wrapped_widget: *const Widget, sprite_sheet: *const SpriteSheetTexture) Box {
         const dimensions = sprite_sheet.getSpriteDimensionsInPixels(.dialog_box_top_left);
         return .{
@@ -296,7 +299,7 @@ pub const Box = struct {
         const sprite = .{ .w = self.scaled_sprite.width, .h = self.scaled_sprite.height };
 
         const helper = BillboardDataHelper.create(
-            self.sprite_sheet.*,
+            self.sprite_sheet,
             screen_position_x,
             screen_position_y,
             sprite.w,
@@ -322,14 +325,14 @@ pub const Box = struct {
     }
 
     const BillboardDataHelper = struct {
-        sprite_sheet: SpriteSheetTexture,
+        sprite_sheet: *const SpriteSheetTexture,
         top_left_corner: struct { x: f32, y: f32 },
         /// Dimensions. Assumed to be the same for all dialog box sprites.
         scaled_sprite: struct { width: f32, height: f32 },
         out: []BillboardData,
 
         fn create(
-            sprite_sheet: SpriteSheetTexture,
+            sprite_sheet: *const SpriteSheetTexture,
             screen_position_x: u16,
             screen_position_y: u16,
             scaled_sprite_width: f32,
