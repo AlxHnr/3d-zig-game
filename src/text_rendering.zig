@@ -26,10 +26,10 @@ pub const Dimensions = struct {
 pub fn getTextBlockDimensions(
     text_segments: []const TextSegment,
     character_size: f32,
-    sprite_sheet: SpriteSheetTexture,
+    spritesheet: SpriteSheetTexture,
 ) Dimensions {
     const info = getInfo(text_segments);
-    const font_letter_spacing = sprite_sheet.getFontLetterSpacing(character_size);
+    const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
     const longest_line = @as(f32, @floatFromInt(info.codepoint_count_in_longest_line));
     const line_count = @as(f32, @floatFromInt(1 + info.newline_count));
 
@@ -46,18 +46,18 @@ pub fn populateBillboardData(
     center_position: Vector3d,
     /// Size is specified in game-world units.
     character_size: f32,
-    sprite_sheet_texture: SpriteSheetTexture,
+    spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all billboards. See getBillboardCount().
     out: []BillboardData,
 ) void {
     populateBillboardDataRaw(
         text_segments,
         center_position,
-        getOffsetToTopLeftCorner(text_segments, character_size, sprite_sheet_texture),
+        getOffsetToTopLeftCorner(text_segments, character_size, spritesheet),
         character_size,
         false,
         true,
-        sprite_sheet_texture,
+        spritesheet,
         out,
     );
 }
@@ -68,7 +68,7 @@ pub fn populateBillboardDataExactPixelSize(
     text_segments: []const TextSegment,
     center_position: Vector3d,
     character_size_pixels: u16,
-    sprite_sheet_texture: SpriteSheetTexture,
+    spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all billboards. See getBillboardCount().
     out: []BillboardData,
 ) void {
@@ -78,12 +78,12 @@ pub fn populateBillboardDataExactPixelSize(
         getOffsetToTopLeftCorner(
             text_segments,
             @floatFromInt(character_size_pixels),
-            sprite_sheet_texture,
+            spritesheet,
         ),
         @floatFromInt(character_size_pixels),
         true,
         true,
-        sprite_sheet_texture,
+        spritesheet,
         out,
     );
 }
@@ -96,7 +96,7 @@ pub fn populateBillboardData2d(
     screen_position_x: u16,
     screen_position_y: u16,
     character_size_pixels: u16,
-    sprite_sheet_texture: SpriteSheetTexture,
+    spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all billboards. See getBillboardCount().
     out: []BillboardData,
 ) void {
@@ -113,7 +113,7 @@ pub fn populateBillboardData2d(
         @floatFromInt(character_size_pixels),
         false,
         false,
-        sprite_sheet_texture,
+        spritesheet,
         out,
     );
 }
@@ -161,10 +161,10 @@ fn getInfo(text_segments: []const TextSegment) TextSegmentInfo {
 fn getOffsetToTopLeftCorner(
     text_segments: []const TextSegment,
     character_size: f32,
-    sprite_sheet: SpriteSheetTexture,
+    spritesheet: SpriteSheetTexture,
 ) Vector3d {
     const info = getInfo(text_segments);
-    const font_letter_spacing = sprite_sheet.getFontLetterSpacing(character_size);
+    const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
     const half_sizes = .{
         .w = (character_size + font_letter_spacing.horizontal) / 2,
         .h = (character_size + font_letter_spacing.vertical) / 2,
@@ -193,14 +193,14 @@ fn populateBillboardDataRaw(
     /// True if the billboard should have a fixed pixel size independently from its distance.
     preserve_exact_pixel_size: bool,
     y_axis_points_upwards: bool,
-    sprite_sheet_texture: SpriteSheetTexture,
+    spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all billboards. See getBillboardCount().
     out: []BillboardData,
 ) void {
     // Billboard positions usually specify their center. Offsets are applied to align the top left
     // corner of the text block.
     const y_offset = flip(character_size, y_axis_points_upwards);
-    const font_letter_spacing = sprite_sheet_texture.getFontLetterSpacing(character_size);
+    const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
     const offset_increment = Vector3d{
         .x = character_size + font_letter_spacing.horizontal,
         .y = y_offset + flip(font_letter_spacing.vertical, y_axis_points_upwards),
@@ -227,7 +227,7 @@ fn populateBillboardDataRaw(
                 offset.x = start_position.x + character_size / 2;
                 offset.y = offset.y + offset_increment.y;
             } else {
-                const source = sprite_sheet_texture.getFontCharacterTexcoords(codepoint);
+                const source = spritesheet.getFontCharacterTexcoords(codepoint);
                 out[index] = .{
                     .position = .{ .x = position.x, .y = position.y, .z = position.z },
                     .size = .{ .w = character_size, .h = character_size },

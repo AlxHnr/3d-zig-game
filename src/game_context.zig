@@ -22,7 +22,7 @@ pub const Context = struct {
     level_geometry: LevelGeometry,
     gem_collection: gems.Collection,
     tileable_textures: textures.TileableArrayTexture,
-    sprite_sheet_texture: *const textures.SpriteSheetTexture,
+    spritesheet: *const textures.SpriteSheetTexture,
 
     billboard_renderer: rendering.BillboardRenderer,
     billboard_buffer: []rendering.BillboardRenderer.BillboardData,
@@ -31,7 +31,7 @@ pub const Context = struct {
         allocator: std.mem.Allocator,
         map_file_path: []const u8,
         /// Returned context will keep a reference to this pointer.
-        sprite_sheet_texture: *const textures.SpriteSheetTexture,
+        spritesheet: *const textures.SpriteSheetTexture,
     ) !Context {
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);
         errdefer allocator.free(map_file_path_buffer);
@@ -64,7 +64,7 @@ pub const Context = struct {
                 0,
                 0,
                 0,
-                sprite_sheet_texture.getSpriteAspectRatio(.player_back_frame_1),
+                spritesheet.getSpriteAspectRatio(.player_back_frame_1),
             ),
             .max_camera_distance = null,
 
@@ -72,7 +72,7 @@ pub const Context = struct {
             .level_geometry = level_geometry,
             .gem_collection = gem_collection,
             .tileable_textures = tileable_textures,
-            .sprite_sheet_texture = sprite_sheet_texture,
+            .spritesheet = spritesheet,
 
             .billboard_renderer = billboard_renderer,
             .billboard_buffer = &.{},
@@ -121,7 +121,7 @@ pub const Context = struct {
         allocator: std.mem.Allocator,
         screen_dimensions: math.ScreenDimensions,
     ) !void {
-        try self.level_geometry.prepareRender(allocator, self.sprite_sheet_texture.*);
+        try self.level_geometry.prepareRender(allocator, self.spritesheet.*);
 
         const billboards_to_render = self.gem_collection.getBillboardCount();
         if (self.billboard_buffer.len < billboards_to_render) {
@@ -130,7 +130,7 @@ pub const Context = struct {
         }
         self.gem_collection.populateBillboardData(
             self.billboard_buffer,
-            self.sprite_sheet_texture.*,
+            self.spritesheet.*,
             &[_]gems.CollisionObject{self.main_character
                 .getLerpedCollisionObject(self.interval_between_previous_and_current_tick)},
             self.interval_between_previous_and_current_tick,
@@ -148,18 +148,18 @@ pub const Context = struct {
             screen_dimensions,
             camera.getDirectionToTarget(),
             self.tileable_textures,
-            self.sprite_sheet_texture.*,
+            self.spritesheet.*,
         );
         self.billboard_renderer.render(
             vp_matrix,
             screen_dimensions,
             camera.getDirectionToTarget(),
-            self.sprite_sheet_texture.id,
+            self.spritesheet.id,
         );
 
         const player_billboard_data = [_]rendering.BillboardRenderer.BillboardData{
             self.main_character.getBillboardData(
-                self.sprite_sheet_texture.*,
+                self.spritesheet.*,
                 self.interval_between_previous_and_current_tick,
             ),
         };
@@ -168,7 +168,7 @@ pub const Context = struct {
             vp_matrix,
             screen_dimensions,
             camera.getDirectionToTarget(),
-            self.sprite_sheet_texture.id,
+            self.spritesheet.id,
         );
     }
 
@@ -325,7 +325,7 @@ const Player = struct {
 
     fn getBillboardData(
         self: Player,
-        sprite_sheet_texture: textures.SpriteSheetTexture,
+        spritesheet: textures.SpriteSheetTexture,
         interval_between_previous_and_current_tick: f32,
     ) rendering.BillboardRenderer.BillboardData {
         const state_to_render = self.state_at_previous_tick.lerp(
@@ -345,7 +345,7 @@ const Player = struct {
             0 => .player_back_frame_0,
             2 => .player_back_frame_2,
         };
-        const source = sprite_sheet_texture.getSpriteTexcoords(sprite_id);
+        const source = spritesheet.getSpriteTexcoords(sprite_id);
         return .{
             .position = .{
                 .x = state_to_render.character.boundaries.position.x,

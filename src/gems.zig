@@ -56,7 +56,7 @@ pub const Collection = struct {
     pub fn populateBillboardData(
         self: Collection,
         data: []BillboardData,
-        sprite_sheet_texture: SpriteSheetTexture,
+        spritesheet: SpriteSheetTexture,
         collision_objects: []const CollisionObject,
         interval_between_previous_and_current_tick: f32,
     ) void {
@@ -65,7 +65,7 @@ pub const Collection = struct {
             data[index] = gem_states.state_at_previous_tick.lerp(
                 gem_states.state_at_next_tick,
                 interval_between_previous_and_current_tick,
-            ).getBillboardData(collision_objects, sprite_sheet_texture);
+            ).getBillboardData(collision_objects, spritesheet);
         }
     }
 
@@ -147,10 +147,10 @@ const Gem = struct {
     fn getBillboardData(
         self: Gem,
         collision_objects: []const CollisionObject,
-        sprite_sheet_texture: SpriteSheetTexture,
+        spritesheet: SpriteSheetTexture,
     ) BillboardData {
-        const source = sprite_sheet_texture.getSpriteTexcoords(.gem);
-        const sprite_aspect_ratio = sprite_sheet_texture.getSpriteAspectRatio(.gem);
+        const source = spritesheet.getSpriteTexcoords(.gem);
+        const sprite_aspect_ratio = spritesheet.getSpriteAspectRatio(.gem);
         var billboard_data = BillboardData{
             .position = .{
                 .x = self.boundaries.position.x,

@@ -114,7 +114,7 @@ pub const LevelGeometry = struct {
     pub fn prepareRender(
         self: *LevelGeometry,
         allocator: std.mem.Allocator,
-        sprite_sheet_texture: textures.SpriteSheetTexture,
+        spritesheet: textures.SpriteSheetTexture,
     ) !void {
         if (self.walls_have_changed) {
             try self.uploadWallsToRenderer(allocator);
@@ -125,7 +125,7 @@ pub const LevelGeometry = struct {
             self.floors_have_changed = false;
         }
         if (self.billboards_have_changed) {
-            try self.uploadBillboardsToRenderer(allocator, sprite_sheet_texture);
+            try self.uploadBillboardsToRenderer(allocator, spritesheet);
             self.billboards_have_changed = false;
         }
     }
@@ -136,7 +136,7 @@ pub const LevelGeometry = struct {
         screen_dimensions: math.ScreenDimensions,
         camera_direction_to_target: math.Vector3d,
         tileable_textures: textures.TileableArrayTexture,
-        sprite_sheet_texture: textures.SpriteSheetTexture,
+        spritesheet: textures.SpriteSheetTexture,
     ) void {
         // Prevent floors from overpainting each other.
         gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
@@ -149,7 +149,7 @@ pub const LevelGeometry = struct {
             vp_matrix,
             screen_dimensions,
             camera_direction_to_target,
-            sprite_sheet_texture.id,
+            spritesheet.id,
         );
     }
 
@@ -571,7 +571,7 @@ pub const LevelGeometry = struct {
     fn uploadBillboardsToRenderer(
         self: *LevelGeometry,
         allocator: std.mem.Allocator,
-        sprite_sheet_texture: textures.SpriteSheetTexture,
+        spritesheet: textures.SpriteSheetTexture,
     ) !void {
         var data = try allocator.alloc(
             rendering.BillboardRenderer.BillboardData,
@@ -580,7 +580,7 @@ pub const LevelGeometry = struct {
         defer allocator.free(data);
 
         for (self.billboard_objects.items, 0..) |billboard, index| {
-            data[index] = billboard.getBillboardData(sprite_sheet_texture);
+            data[index] = billboard.getBillboardData(spritesheet);
         }
         self.billboard_renderer.uploadBillboards(data);
     }
@@ -912,14 +912,14 @@ const BillboardObject = struct {
 
     fn getBillboardData(
         self: BillboardObject,
-        sprite_sheet_texture: textures.SpriteSheetTexture,
+        spritesheet: textures.SpriteSheetTexture,
     ) rendering.BillboardRenderer.BillboardData {
         const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (self.object_type) {
             .small_bush => .small_bush,
         };
-        const source = sprite_sheet_texture.getSpriteTexcoords(sprite_id);
+        const source = spritesheet.getSpriteTexcoords(sprite_id);
         const half_height = self.boundaries.radius *
-            sprite_sheet_texture.getSpriteAspectRatio(sprite_id);
+            spritesheet.getSpriteAspectRatio(sprite_id);
         return .{
             .position = .{
                 .x = self.boundaries.position.x,

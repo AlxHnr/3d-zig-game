@@ -17,7 +17,7 @@ const ProgramContext = struct {
     hud: Hud,
     edit_mode_state: edit_mode.State,
     edit_mode_view: enum { from_behind, top_down },
-    sprite_sheet: *SpriteSheetTexture,
+    spritesheet: *SpriteSheetTexture,
 
     const default_map_path = "maps/default.json";
 
@@ -76,15 +76,15 @@ const ProgramContext = struct {
         gl.enable(gl.STENCIL_TEST);
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
-        var sprite_sheet = try allocator.create(SpriteSheetTexture);
-        errdefer allocator.destroy(sprite_sheet);
-        sprite_sheet.* = try SpriteSheetTexture.loadFromDisk();
-        errdefer sprite_sheet.destroy();
+        var spritesheet = try allocator.create(SpriteSheetTexture);
+        errdefer allocator.destroy(spritesheet);
+        spritesheet.* = try SpriteSheetTexture.loadFromDisk();
+        errdefer spritesheet.destroy();
 
-        var game_context = try GameContext.create(allocator, default_map_path, sprite_sheet);
+        var game_context = try GameContext.create(allocator, default_map_path, spritesheet);
         errdefer game_context.destroy(allocator);
 
-        var hud = try Hud.create(sprite_sheet);
+        var hud = try Hud.create(spritesheet);
         errdefer hud.destroy();
 
         return .{
@@ -96,13 +96,13 @@ const ProgramContext = struct {
             .hud = hud,
             .edit_mode_state = edit_mode.State.create(),
             .edit_mode_view = .from_behind,
-            .sprite_sheet = sprite_sheet,
+            .spritesheet = spritesheet,
         };
     }
 
     fn destroy(self: *ProgramContext) void {
-        self.sprite_sheet.destroy();
-        self.allocator.destroy(self.sprite_sheet);
+        self.spritesheet.destroy();
+        self.allocator.destroy(self.spritesheet);
         self.hud.destroy(self.allocator);
         self.game_context.destroy(self.allocator);
         sdl.SDL_GL_DeleteContext(self.gl_context);

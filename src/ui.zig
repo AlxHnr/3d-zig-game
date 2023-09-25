@@ -46,19 +46,19 @@ pub const Text = struct {
     /// Non-owning slice.
     wrapped_segments: []const text_rendering.TextSegment,
     /// Non-owning pointer.
-    sprite_sheet: *const SpriteSheetTexture,
+    spritesheet: *const SpriteSheetTexture,
     font_size: u16,
 
     /// Returned object will keep a reference to the given slices and pointers.
     pub fn wrap(
         segments: []const text_rendering.TextSegment,
-        sprite_sheet: *const SpriteSheetTexture,
+        spritesheet: *const SpriteSheetTexture,
         text_scale: u8,
     ) Text {
         return .{
             .wrapped_segments = segments,
-            .sprite_sheet = sprite_sheet,
-            .font_size = sprite_sheet.getFontSizeMultiple(text_scale),
+            .spritesheet = spritesheet,
+            .font_size = spritesheet.getFontSizeMultiple(text_scale),
         };
     }
 
@@ -66,7 +66,7 @@ pub const Text = struct {
         const dimensions = text_rendering.getTextBlockDimensions(
             self.wrapped_segments,
             @as(f32, @floatFromInt(self.font_size)),
-            self.sprite_sheet.*,
+            self.spritesheet.*,
         );
         return .{
             .width = @as(u16, @intFromFloat(dimensions.width)),
@@ -91,7 +91,7 @@ pub const Text = struct {
             screen_position_x,
             screen_position_y,
             self.font_size,
-            self.sprite_sheet.*,
+            self.spritesheet.*,
             out,
         );
     }
@@ -105,13 +105,13 @@ pub const Sprite = struct {
 
     pub fn create(
         sprite: SpriteSheetTexture.SpriteId,
-        sprite_sheet: SpriteSheetTexture,
+        spritesheet: SpriteSheetTexture,
         /// 1 means the original size in pixels.
         sprite_scale: u16,
     ) Sprite {
-        const dimensions = sprite_sheet.getSpriteDimensionsInPixels(sprite);
+        const dimensions = spritesheet.getSpriteDimensionsInPixels(sprite);
         return .{
-            .sprite_texcoords = sprite_sheet.getSpriteTexcoords(sprite),
+            .sprite_texcoords = spritesheet.getSpriteTexcoords(sprite),
             .sprite_on_screen_dimensions = .{
                 .w = @as(f32, @floatFromInt(dimensions.w * sprite_scale)),
                 .h = @as(f32, @floatFromInt(dimensions.h * sprite_scale)),
@@ -251,7 +251,7 @@ pub const Box = struct {
     /// Non-owning pointer.
     wrapped_widget: *const Widget,
     /// Non-owning pointer.
-    sprite_sheet: *const SpriteSheetTexture,
+    spritesheet: *const SpriteSheetTexture,
     /// Dimensions of the dialog box elements. Assumed to be the same for all dialog box sprites.
     scaled_sprite: struct { width: f32, height: f32 },
 
@@ -259,11 +259,11 @@ pub const Box = struct {
     const dialog_sprite_scale = 4;
 
     /// Returned object will keep a reference to the given pointers.
-    pub fn wrap(wrapped_widget: *const Widget, sprite_sheet: *const SpriteSheetTexture) Box {
-        const dimensions = sprite_sheet.getSpriteDimensionsInPixels(.dialog_box_top_left);
+    pub fn wrap(wrapped_widget: *const Widget, spritesheet: *const SpriteSheetTexture) Box {
+        const dimensions = spritesheet.getSpriteDimensionsInPixels(.dialog_box_top_left);
         return .{
             .wrapped_widget = wrapped_widget,
-            .sprite_sheet = sprite_sheet,
+            .spritesheet = spritesheet,
             .scaled_sprite = .{
                 .width = @as(f32, @floatFromInt(dimensions.w)) * dialog_sprite_scale,
                 .height = @as(f32, @floatFromInt(dimensions.h)) * dialog_sprite_scale,
@@ -299,7 +299,7 @@ pub const Box = struct {
         const sprite = .{ .w = self.scaled_sprite.width, .h = self.scaled_sprite.height };
 
         const helper = BillboardDataHelper.create(
-            self.sprite_sheet,
+            self.spritesheet,
             screen_position_x,
             screen_position_y,
             sprite.w,
@@ -325,14 +325,14 @@ pub const Box = struct {
     }
 
     const BillboardDataHelper = struct {
-        sprite_sheet: *const SpriteSheetTexture,
+        spritesheet: *const SpriteSheetTexture,
         top_left_corner: struct { x: f32, y: f32 },
         /// Dimensions. Assumed to be the same for all dialog box sprites.
         scaled_sprite: struct { width: f32, height: f32 },
         out: []BillboardData,
 
         fn create(
-            sprite_sheet: *const SpriteSheetTexture,
+            spritesheet: *const SpriteSheetTexture,
             screen_position_x: u16,
             screen_position_y: u16,
             scaled_sprite_width: f32,
@@ -340,7 +340,7 @@ pub const Box = struct {
             out: []BillboardData,
         ) BillboardDataHelper {
             return .{
-                .sprite_sheet = sprite_sheet,
+                .spritesheet = spritesheet,
                 .top_left_corner = .{
                     .x = @as(f32, @floatFromInt(screen_position_x)),
                     .y = @as(f32, @floatFromInt(screen_position_y)),
@@ -361,7 +361,7 @@ pub const Box = struct {
             width: f32,
             height: f32,
         ) void {
-            const sprite_texcoords = self.sprite_sheet.getSpriteTexcoords(corner);
+            const sprite_texcoords = self.spritesheet.getSpriteTexcoords(corner);
             self.out[getIndex(corner)] = .{
                 .position = .{
                     .x = self.top_left_corner.x + offset_from_top_left_x + width / 2,

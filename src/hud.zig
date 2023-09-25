@@ -11,14 +11,14 @@ const ui = @import("ui.zig");
 pub const Hud = struct {
     renderer: BillboardRenderer,
     /// Non-owning pointer.
-    sprite_sheet: *const SpriteSheetTexture,
+    spritesheet: *const SpriteSheetTexture,
     billboard_buffer: []BillboardRenderer.BillboardData,
 
     /// Returned object will keep a reference to the given pointers.
-    pub fn create(sprite_sheet: *const SpriteSheetTexture) !Hud {
+    pub fn create(spritesheet: *const SpriteSheetTexture) !Hud {
         return .{
             .renderer = try BillboardRenderer.create(),
-            .sprite_sheet = sprite_sheet,
+            .spritesheet = spritesheet,
             .billboard_buffer = &.{},
         };
     }
@@ -39,7 +39,7 @@ pub const Hud = struct {
         var gem_info = try GemCountInfo.create(
             allocator,
             game_context.getPlayerGemCount(),
-            self.sprite_sheet,
+            self.spritesheet,
         );
         defer gem_info.destroy(allocator);
         const edit_mode_info = try EditModeInfo.create(edit_mode_state, &edit_mode_buffer);
@@ -59,12 +59,12 @@ pub const Hud = struct {
         start = end;
         end += edit_mode_billboard_count;
         edit_mode_info.populateBillboardData(
-            self.sprite_sheet.*,
+            self.spritesheet.*,
             self.billboard_buffer[start..end],
         );
 
         self.renderer.uploadBillboards(self.billboard_buffer[0..end]);
-        self.renderer.render2d(screen_dimensions, self.sprite_sheet.id);
+        self.renderer.render2d(screen_dimensions, self.spritesheet.id);
     }
 };
 
@@ -79,7 +79,7 @@ const GemCountInfo = struct {
         allocator: std.mem.Allocator,
         gem_count: u64,
         /// Returned object keeps a reference to this sprite sheet.
-        sprite_sheet: *const SpriteSheetTexture,
+        spritesheet: *const SpriteSheetTexture,
     ) !GemCountInfo {
         var buffer = try allocator.alloc(u8, 16);
         errdefer allocator.free(buffer);
@@ -94,8 +94,8 @@ const GemCountInfo = struct {
             .color = Color.fromRgb8(0, 0, 0),
             .text = try std.fmt.bufPrint(buffer, "{}", .{gem_count}),
         };
-        widgets[0] = .{ .sprite = ui.Sprite.create(.gem, sprite_sheet.*, 3) };
-        widgets[1] = .{ .text = ui.Text.wrap(segments, sprite_sheet, 4) };
+        widgets[0] = .{ .sprite = ui.Sprite.create(.gem, spritesheet.*, 3) };
+        widgets[1] = .{ .text = ui.Text.wrap(segments, spritesheet, 4) };
         widgets[2] = .{ .split = ui.Split.wrap(.vertical, widgets[0..2]) };
 
         return .{
@@ -154,7 +154,7 @@ const EditModeInfo = struct {
 
     fn populateBillboardData(
         self: EditModeInfo,
-        sprite_sheet: SpriteSheetTexture,
+        spritesheet: SpriteSheetTexture,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardRenderer.BillboardData,
     ) void {
@@ -162,8 +162,8 @@ const EditModeInfo = struct {
             &self.segments,
             0,
             0,
-            sprite_sheet.getFontSizeMultiple(2),
-            sprite_sheet,
+            spritesheet.getFontSizeMultiple(2),
+            spritesheet,
             out,
         );
     }

@@ -102,7 +102,7 @@ pub const SpriteSheetTexture = struct {
     id: c_uint,
 
     pub fn loadFromDisk() !SpriteSheetTexture {
-        const file_path = "assets/8x8_padded_sprite_sheet.png";
+        const file_path = "assets/8x8_padded_spritesheet.png";
         const image = try loadImageRGBA8(file_path);
         defer sdl.SDL_FreeSurface(image);
 
