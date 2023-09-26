@@ -24,7 +24,7 @@ pub const Context = struct {
     level_geometry: LevelGeometry,
     gem_collection: gems.Collection,
     tileable_textures: textures.TileableArrayTexture,
-    spritesheet: *textures.SpriteSheetTexture,
+    spritesheet: textures.SpriteSheetTexture,
 
     billboard_renderer: rendering.BillboardRenderer,
     billboard_buffer: []rendering.BillboardRenderer.BillboardData,
@@ -53,9 +53,7 @@ pub const Context = struct {
         var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
         errdefer tileable_textures.destroy();
 
-        var spritesheet = try allocator.create(textures.SpriteSheetTexture);
-        errdefer allocator.destroy(spritesheet);
-        spritesheet.* = try textures.SpriteSheetTexture.loadFromDisk();
+        var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
         errdefer spritesheet.destroy();
 
         var billboard_renderer = try rendering.BillboardRenderer.create();
@@ -93,7 +91,6 @@ pub const Context = struct {
         allocator.free(self.billboard_buffer);
         self.billboard_renderer.destroy();
         self.spritesheet.destroy();
-        allocator.destroy(self.spritesheet);
         self.tileable_textures.destroy();
         self.gem_collection.destroy();
         self.level_geometry.destroy();
@@ -133,7 +130,7 @@ pub const Context = struct {
         allocator: std.mem.Allocator,
         screen_dimensions: ScreenDimensions,
     ) !void {
-        try self.level_geometry.prepareRender(allocator, self.spritesheet.*);
+        try self.level_geometry.prepareRender(allocator, self.spritesheet);
 
         const billboards_to_render = self.gem_collection.getBillboardCount();
         if (self.billboard_buffer.len < billboards_to_render) {
@@ -142,7 +139,7 @@ pub const Context = struct {
         }
         self.gem_collection.populateBillboardData(
             self.billboard_buffer,
-            self.spritesheet.*,
+            self.spritesheet,
             &[_]gems.CollisionObject{self.main_character
                 .getLerpedCollisionObject(self.interval_between_previous_and_current_tick)},
             self.interval_between_previous_and_current_tick,
@@ -160,7 +157,7 @@ pub const Context = struct {
             screen_dimensions,
             camera.getDirectionToTarget(),
             self.tileable_textures,
-            self.spritesheet.*,
+            self.spritesheet,
         );
         self.billboard_renderer.render(
             vp_matrix,
@@ -171,7 +168,7 @@ pub const Context = struct {
 
         const player_billboard_data = [_]rendering.BillboardRenderer.BillboardData{
             self.main_character.getBillboardData(
-                self.spritesheet.*,
+                self.spritesheet,
                 self.interval_between_previous_and_current_tick,
             ),
         };
@@ -192,7 +189,7 @@ pub const Context = struct {
         try self.hud.render(
             allocator,
             screen_dimensions,
-            self.spritesheet.*,
+            self.spritesheet,
             self.main_character.gem_count,
         );
     }
