@@ -1,5 +1,6 @@
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
+const dialog = @import("dialog.zig");
 const gems = @import("gems.zig");
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
@@ -30,6 +31,7 @@ pub const Context = struct {
     billboard_buffer: []rendering.BillboardRenderer.BillboardData,
 
     hud: Hud,
+    dialog_controller: dialog.Controller,
 
     pub fn create(allocator: std.mem.Allocator, map_file_path: []const u8) !Context {
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);
@@ -62,6 +64,9 @@ pub const Context = struct {
         var hud = try Hud.create();
         errdefer hud.destroy(allocator);
 
+        var dialog_controller = try dialog.Controller.create(allocator);
+        errdefer dialog_controller.destroy();
+
         return .{
             .tick_timer = try TickTimer.start(60),
             .interval_between_previous_and_current_tick = 1,
@@ -83,10 +88,12 @@ pub const Context = struct {
             .billboard_buffer = &.{},
 
             .hud = hud,
+            .dialog_controller = dialog_controller,
         };
     }
 
     pub fn destroy(self: *Context, allocator: std.mem.Allocator) void {
+        self.dialog_controller.destroy();
         self.hud.destroy(allocator);
         allocator.free(self.billboard_buffer);
         self.billboard_renderer.destroy();
@@ -192,6 +199,11 @@ pub const Context = struct {
             self.spritesheet,
             self.main_character.gem_count,
         );
+        try self.dialog_controller.render(screen_dimensions);
+    }
+
+    pub fn hasOpenDialogs(self: Context) bool {
+        return self.dialog_controller.hasOpenDialogs();
     }
 
     pub fn getMutableLevelGeometry(self: *Context) *LevelGeometry {
