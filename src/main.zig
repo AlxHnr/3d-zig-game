@@ -1,6 +1,7 @@
-const Error = @import("error.zig").Error;
 const BillboardRenderer = @import("rendering.zig").BillboardRenderer;
+const Error = @import("error.zig").Error;
 const GameContext = @import("game_context.zig").Context;
+const InputButton = @import("game_context.zig").InputButton;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const edit_mode = @import("edit_mode.zig");
 const gl = @import("gl");
@@ -108,15 +109,13 @@ const ProgramContext = struct {
             if (!keep_running) {
                 break;
             }
-            self.processTicks();
+            self.game_context.handleElapsedFrame();
             try self.render();
         }
     }
 
     /// Returns true if the program should keep running.
     fn processInputs(self: *ProgramContext) !bool {
-        self.game_context.processKeyboardState(sdl.SDL_GetKeyboardState(null));
-
         const mouse_position = self.getMousePosition();
         const ray = self.game_context.castRay(
             mouse_position.x,
@@ -182,14 +181,28 @@ const ProgramContext = struct {
                     try self.game_context.reloadMapFromDisk(self.allocator);
                 } else if (event.key.keysym.sym == sdl.SDLK_DELETE) {
                     self.edit_mode_state.cycleMode(self.game_context.getMutableLevelGeometry());
+                } else if (keyToInputButton(event.key.keysym.sym)) |keycode| {
+                    self.game_context.markButtonAsPressed(keycode);
+                }
+            } else if (event.type == sdl.SDL_KEYUP) {
+                if (keyToInputButton(event.key.keysym.sym)) |keycode| {
+                    self.game_context.markButtonAsReleased(keycode);
                 }
             }
         }
         return true;
     }
 
-    fn processTicks(self: *ProgramContext) void {
-        self.game_context.processTicks();
+    pub fn keyToInputButton(keycode: sdl.SDL_Keycode) ?InputButton {
+        return switch (keycode) {
+            sdl.SDLK_UP => .forwards,
+            sdl.SDLK_DOWN => .backwards,
+            sdl.SDLK_LEFT => .left,
+            sdl.SDLK_RIGHT => .right,
+            sdl.SDLK_SPACE => .strafe,
+            sdl.SDLK_RCTRL => .slow_turning,
+            else => null,
+        };
     }
 
     fn render(self: *ProgramContext) !void {

@@ -4,7 +4,6 @@ const dialog = @import("dialog.zig");
 const gems = @import("gems.zig");
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
-const sdl = @import("sdl.zig");
 const std = @import("std");
 const textures = @import("textures.zig");
 
@@ -13,6 +12,15 @@ const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const TickTimer = @import("util.zig").TickTimer;
+
+pub const InputButton = enum {
+    forwards,
+    backwards,
+    left,
+    right,
+    strafe,
+    slow_turning,
+};
 
 pub const Context = struct {
     tick_timer: TickTimer,
@@ -104,14 +112,17 @@ pub const Context = struct {
         allocator.free(self.map_file_path);
     }
 
-    pub fn processKeyboardState(self: *Context, sdl_keyboard_state: [*c]const u8) void {
-        self.main_character.processKeyboardState(
-            sdl_keyboard_state,
-            self.interval_between_previous_and_current_tick,
-        );
+    pub fn markButtonAsPressed(self: *Context, button: InputButton) void {
+        self.main_character.markButtonAsPressed(button);
     }
 
-    pub fn processTicks(self: *Context) void {
+    pub fn markButtonAsReleased(self: *Context, button: InputButton) void {
+        self.main_character.markButtonAsReleased(button);
+    }
+
+    pub fn handleElapsedFrame(self: *Context) void {
+        self.main_character.applyCurrentInput(self.interval_between_previous_and_current_tick);
+
         const lap_result = self.tick_timer.lap();
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
@@ -264,6 +275,7 @@ const Player = struct {
     state_at_next_tick: State,
     state_at_previous_tick: State,
     gem_count: u64,
+    input_state: std.EnumArray(InputButton, bool),
 
     fn create(
         id: u64,
@@ -290,12 +302,24 @@ const Player = struct {
             .state_at_next_tick = state,
             .state_at_previous_tick = state,
             .gem_count = 0,
+            .input_state = std.EnumArray(InputButton, bool).initFill(false),
         };
     }
 
-    fn processKeyboardState(
+    fn markButtonAsPressed(self: *Player, button: InputButton) void {
+        self.input_state.set(button, true);
+    }
+
+    fn markButtonAsReleased(self: *Player, button: InputButton) void {
+        self.input_state.set(button, false);
+    }
+
+    fn markAllButtonsAsReleased(self: *Player) void {
+        self.input_state = std.EnumArray(InputButton, bool).initFill(false);
+    }
+
+    fn applyCurrentInput(
         self: *Player,
-        sdl_keyboard_state: [*c]const u8,
         interval_between_previous_and_current_tick: f32,
     ) void {
         // Input is relative to the state currently on screen.
@@ -309,38 +333,32 @@ const Player = struct {
 
         var acceleration_direction = math.FlatVector{ .x = 0, .z = 0 };
         var turning_direction: f32 = 0;
-        if (sdl_keyboard_state[sdl.SDL_SCANCODE_LEFT] == 1) {
-            if (sdl_keyboard_state[sdl.SDL_SCANCODE_SPACE] == 1) {
+        if (self.input_state.get(.left)) {
+            if (self.input_state.get(.strafe)) {
                 acceleration_direction = acceleration_direction.subtract(right_direction);
-            } else if (sdl_keyboard_state[sdl.SDL_SCANCODE_RCTRL] == 1) {
+            } else if (self.input_state.get(.slow_turning)) {
                 turning_direction -= 0.05;
             } else {
                 turning_direction -= 1;
             }
         }
-        if (sdl_keyboard_state[sdl.SDL_SCANCODE_RIGHT] == 1) {
-            if (sdl_keyboard_state[sdl.SDL_SCANCODE_SPACE] == 1) {
+        if (self.input_state.get(.right)) {
+            if (self.input_state.get(.strafe)) {
                 acceleration_direction = acceleration_direction.add(right_direction);
-            } else if (sdl_keyboard_state[sdl.SDL_SCANCODE_RCTRL] == 1) {
+            } else if (self.input_state.get(.slow_turning)) {
                 turning_direction += 0.05;
             } else {
                 turning_direction += 1;
             }
         }
-        if (sdl_keyboard_state[sdl.SDL_SCANCODE_UP] == 1) {
+        if (self.input_state.get(.forwards)) {
             acceleration_direction = acceleration_direction.add(forward_direction);
         }
-        if (sdl_keyboard_state[sdl.SDL_SCANCODE_DOWN] == 1) {
+        if (self.input_state.get(.backwards)) {
             acceleration_direction = acceleration_direction.subtract(forward_direction);
         }
         self.state_at_next_tick.character.setAcceleration(acceleration_direction);
         self.state_at_next_tick.character.setTurningDirection(turning_direction);
-    }
-
-    /// Behaves like letting go of all buttons/keys for this player.
-    fn resetInputs(self: *Player) void {
-        self.state_at_next_tick.character.setAcceleration(.{ .x = 0, .z = 0 });
-        self.state_at_next_tick.character.setTurningDirection(0);
     }
 
     fn processElapsedTick(
