@@ -1,7 +1,17 @@
 const BillboardData = @import("rendering.zig").BillboardRenderer.BillboardData;
+const Color = @import("util.zig").Color;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const text_rendering = @import("text_rendering.zig");
+
+pub const Highlight = struct {
+    pub fn normal(text: []const u8) text_rendering.TextSegment {
+        return .{ .color = Color.fromRgb8(193, 193, 193), .text = text };
+    }
+    pub fn npcName(text: []const u8) text_rendering.TextSegment {
+        return .{ .color = Color.fromRgb8(114, 173, 206), .text = text };
+    }
+};
 
 /// Polymorphic dispatcher serving as an interface.
 pub const Widget = union(enum) {
