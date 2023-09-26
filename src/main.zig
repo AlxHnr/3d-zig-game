@@ -201,6 +201,8 @@ const ProgramContext = struct {
             sdl.SDLK_RIGHT => .right,
             sdl.SDLK_SPACE => .strafe,
             sdl.SDLK_RCTRL => .slow_turning,
+            sdl.SDLK_RETURN => .confirm,
+            sdl.SDLK_ESCAPE => .abort,
             else => null,
         };
     }

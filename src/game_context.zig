@@ -20,6 +20,8 @@ pub const InputButton = enum {
     right,
     strafe,
     slow_turning,
+    confirm,
+    abort,
 };
 
 pub const Context = struct {
@@ -114,6 +116,12 @@ pub const Context = struct {
 
     pub fn markButtonAsPressed(self: *Context, button: InputButton) void {
         self.main_character.markButtonAsPressed(button);
+
+        switch (button) {
+            .confirm => self.dialog_controller.sendCommandToCurrentDialog(.confirm),
+            .abort => self.dialog_controller.sendCommandToCurrentDialog(.abort),
+            else => {},
+        }
     }
 
     pub fn markButtonAsReleased(self: *Context, button: InputButton) void {
@@ -121,6 +129,9 @@ pub const Context = struct {
     }
 
     pub fn handleElapsedFrame(self: *Context) void {
+        if (self.dialog_controller.hasOpenDialogs()) {
+            self.main_character.markAllButtonsAsReleased();
+        }
         self.main_character.applyCurrentInput(self.interval_between_previous_and_current_tick);
 
         const lap_result = self.tick_timer.lap();
