@@ -14,8 +14,8 @@ pub const TextSegment = struct {
 };
 
 /// Returns the amount of billboards required to render the given text segments.
-pub fn getBillboardCount(text_segments: []const TextSegment) usize {
-    return getInfo(text_segments).required_billboard_count;
+pub fn getBillboardCount(segments: []const TextSegment) usize {
+    return getInfo(segments).required_billboard_count;
 }
 
 pub const Dimensions = struct {
@@ -24,11 +24,11 @@ pub const Dimensions = struct {
 };
 
 pub fn getTextBlockDimensions(
-    text_segments: []const TextSegment,
+    segments: []const TextSegment,
     character_size: f32,
     spritesheet: SpriteSheetTexture,
 ) Dimensions {
-    const info = getInfo(text_segments);
+    const info = getInfo(segments);
     const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
     const longest_line = @as(f32, @floatFromInt(info.codepoint_count_in_longest_line));
     const line_count = @as(f32, @floatFromInt(1 + info.newline_count));
@@ -42,7 +42,7 @@ pub fn getTextBlockDimensions(
 }
 
 pub fn populateBillboardData(
-    text_segments: []const TextSegment,
+    segments: []const TextSegment,
     center_position: Vector3d,
     /// Size is specified in game-world units.
     character_size: f32,
@@ -51,9 +51,9 @@ pub fn populateBillboardData(
     out: []BillboardData,
 ) void {
     populateBillboardDataRaw(
-        text_segments,
+        segments,
         center_position,
-        getOffsetToTopLeftCorner(text_segments, character_size, spritesheet),
+        getOffsetToTopLeftCorner(segments, character_size, spritesheet),
         character_size,
         false,
         true,
@@ -65,7 +65,7 @@ pub fn populateBillboardData(
 /// Text size is specified in screen pixels and will preserve its exact size independently from its
 /// distance to the camera.
 pub fn populateBillboardDataExactPixelSize(
-    text_segments: []const TextSegment,
+    segments: []const TextSegment,
     center_position: Vector3d,
     character_size_pixels: u16,
     spritesheet: SpriteSheetTexture,
@@ -73,10 +73,10 @@ pub fn populateBillboardDataExactPixelSize(
     out: []BillboardData,
 ) void {
     populateBillboardDataRaw(
-        text_segments,
+        segments,
         center_position,
         getOffsetToTopLeftCorner(
-            text_segments,
+            segments,
             @floatFromInt(character_size_pixels),
             spritesheet,
         ),
@@ -91,7 +91,7 @@ pub fn populateBillboardDataExactPixelSize(
 /// Fill the given billboard data slice with the data needed to render text with
 /// BillboardRenderer.render2d().
 pub fn populateBillboardData2d(
-    text_segments: []const TextSegment,
+    segments: []const TextSegment,
     /// Top left corner of the first character.
     screen_position_x: u16,
     screen_position_y: u16,
@@ -107,7 +107,7 @@ pub fn populateBillboardData2d(
     };
     const offset_to_top_left_corner = .{ .x = 0, .y = 0, .z = 0 };
     populateBillboardDataRaw(
-        text_segments,
+        segments,
         position,
         offset_to_top_left_corner,
         @floatFromInt(character_size_pixels),
@@ -124,7 +124,7 @@ const TextSegmentInfo = struct {
     codepoint_count_in_longest_line: usize,
 };
 
-fn getInfo(text_segments: []const TextSegment) TextSegmentInfo {
+fn getInfo(segments: []const TextSegment) TextSegmentInfo {
     var result = TextSegmentInfo{
         .newline_count = 0,
         .required_billboard_count = 0,
@@ -132,7 +132,7 @@ fn getInfo(text_segments: []const TextSegment) TextSegmentInfo {
     };
 
     var codepoints_in_current_line: usize = 0;
-    for (text_segments) |segment| {
+    for (segments) |segment| {
         var iterator = std.unicode.Utf8View.initUnchecked(segment.text).iterator();
         while (iterator.nextCodepoint()) |codepoint| {
             if (codepoint == '\n') {
@@ -159,11 +159,11 @@ fn getInfo(text_segments: []const TextSegment) TextSegmentInfo {
 }
 
 fn getOffsetToTopLeftCorner(
-    text_segments: []const TextSegment,
+    segments: []const TextSegment,
     character_size: f32,
     spritesheet: SpriteSheetTexture,
 ) Vector3d {
-    const info = getInfo(text_segments);
+    const info = getInfo(segments);
     const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
     const half_sizes = .{
         .w = (character_size + font_letter_spacing.horizontal) / 2,
@@ -184,7 +184,7 @@ fn flip(value: f32, y_axis_points_upwards: bool) f32 {
 }
 
 fn populateBillboardDataRaw(
-    text_segments: []const TextSegment,
+    segments: []const TextSegment,
     position: Vector3d,
     offset_to_top_left_corner: Vector3d,
     /// Depending on the rendering method, the character size can be either relative to game-world
@@ -218,7 +218,7 @@ fn populateBillboardDataRaw(
     });
 
     var index: usize = 0;
-    for (text_segments) |segment| {
+    for (segments) |segment| {
         var codepoint_iterator = std.unicode.Utf8View.initUnchecked(segment.text).iterator();
         while (codepoint_iterator.nextCodepoint()) |codepoint| {
             if (codepoint == ' ') {
