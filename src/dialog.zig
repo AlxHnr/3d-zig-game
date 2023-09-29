@@ -136,6 +136,7 @@ const Prompt = struct {
     ;
     const max_lines = std.mem.count(u8, sample_content, "\n");
     const max_line_length = std.mem.indexOfScalar(u8, sample_content, '\n').?;
+    const max_dialog_characters = max_lines * max_line_length;
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -183,6 +184,15 @@ const Prompt = struct {
         };
         self.animation_state.at_next_tick =
             @min(self.animation_state.at_next_tick + animation_step, 1);
+
+        // Finish typing animation when all letters are on screen.
+        if (self.state == .opening_letters) {
+            const available_characters = countCharacters(self.reformatted_segments);
+            const letter_animation_interval = self.animation_state.at_next_tick;
+            if (scale(max_dialog_characters, letter_animation_interval) >= available_characters) {
+                self.animation_state.at_next_tick = 1;
+            }
+        }
 
         switch (self.state) {
             .opening, .opening_letters, .closing => {
@@ -277,7 +287,7 @@ const Prompt = struct {
         const segments = try text_rendering.truncateTextSegments(
             allocator,
             self.reformatted_segments,
-            scale(max_lines * max_line_length, letter_animation_interval),
+            scale(max_dialog_characters, letter_animation_interval),
         );
         errdefer text_rendering.freeTextSegments(allocator, segments);
 
@@ -293,5 +303,13 @@ const Prompt = struct {
         text_rendering.freeTextSegments(allocator, self.segments_to_render);
         self.segments_to_render = segments;
         self.widgets = widgets;
+    }
+
+    fn countCharacters(segments: []text_rendering.TextSegment) usize {
+        var result: usize = 0;
+        for (segments) |segment| {
+            result += segment.text.len;
+        }
+        return result;
     }
 };
