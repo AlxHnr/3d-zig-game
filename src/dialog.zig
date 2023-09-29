@@ -1,10 +1,10 @@
 const BillboardRenderer = @import("rendering.zig").BillboardRenderer;
-const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const math = @import("math.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 const ui = @import("ui.zig");
+const util = @import("util.zig");
 
 const dialog_text_scale = 2;
 
@@ -48,11 +48,12 @@ pub const Controller = struct {
 
     pub fn render(
         self: *Controller,
-        screen_dimensions: ScreenDimensions,
+        screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
     ) !void {
         var total_billboards: usize = 0;
-        for (self.dialog_stack.items) |dialog| {
+        for (self.dialog_stack.items) |*dialog| {
+            try dialog.prepareRender(self.allocator, interval_between_previous_and_current_tick);
             total_billboards += dialog.getBillboardCount();
         }
 
@@ -113,13 +114,28 @@ pub const Controller = struct {
 };
 
 const Prompt = struct {
-    segments: []text_rendering.TextSegment,
+    reformatted_segments: []text_rendering.TextSegment,
+    segments_to_render: []text_rendering.TextSegment,
     widgets: []ui.Widget,
+    /// Non-owning pointer.
+    spritesheet: *const SpriteSheetTexture,
     state: State,
     /// Contains values from 0 to 1.
     animation_state: struct { at_previous_tick: f32, at_next_tick: f32 },
 
-    const State = enum { opening, open, closing, closed };
+    const State = enum { opening, opening_letters, open, closing, closed };
+
+    const sample_content =
+        \\,------------------------------------,
+        \\| This is a sample text box which is |
+        \\| used as a template for formatting  |
+        \\| and aligning all dialog prompts.   |
+        \\| The borders here are also valid    |
+        \\| space for potential letters.       |
+        \\|____________________________________|
+    ;
+    const max_lines = std.mem.count(u8, sample_content, "\n");
+    const max_line_length = std.mem.indexOfScalar(u8, sample_content, '\n').?;
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -134,42 +150,44 @@ const Prompt = struct {
             ui.Highlight.normal(message_text),
         };
 
-        var segments = try text_rendering.reflowTextBlock(allocator, &text_block, 38);
-        errdefer text_rendering.freeTextSegments(allocator, segments);
+        var reformatted_segments =
+            try text_rendering.reflowTextBlock(allocator, &text_block, max_line_length);
+        errdefer text_rendering.freeTextSegments(allocator, reformatted_segments);
 
-        var widgets = try allocator.alloc(ui.Widget, 2);
-        errdefer allocator.free(widgets);
-
-        widgets[1] = .{ .text = ui.Text.wrap(segments[0..], spritesheet, dialog_text_scale) };
-        widgets[0] = .{ .box = ui.Box.wrap(&widgets[1], spritesheet) };
-
-        return .{
-            .segments = segments,
-            .widgets = widgets,
+        var result = Prompt{
+            .reformatted_segments = reformatted_segments,
+            .segments_to_render = &[_]text_rendering.TextSegment{},
+            .widgets = &[_]ui.Widget{},
+            .spritesheet = spritesheet,
             .state = .opening,
             .animation_state = .{ .at_previous_tick = 0, .at_next_tick = 0 },
         };
+
+        try result.regenerateSegmentsAndWidgets(allocator, 0);
+        return result;
     }
 
     pub fn destroy(self: *Prompt, allocator: std.mem.Allocator) void {
         allocator.free(self.widgets);
-        text_rendering.freeTextSegments(allocator, self.segments);
+        text_rendering.freeTextSegments(allocator, self.segments_to_render);
+        text_rendering.freeTextSegments(allocator, self.reformatted_segments);
     }
 
     // Returns true if this dialog is still needed.
     pub fn processElapsedTick(self: *Prompt) bool {
         self.animation_state.at_previous_tick = self.animation_state.at_next_tick;
-        self.animation_state.at_next_tick = @min(self.animation_state.at_next_tick + 0.2, 1);
+
+        const animation_step: f32 = switch (self.state) {
+            .opening_letters => 0.01,
+            else => 0.2,
+        };
+        self.animation_state.at_next_tick =
+            @min(self.animation_state.at_next_tick + animation_step, 1);
 
         switch (self.state) {
-            .opening => {
+            .opening, .opening_letters, .closing => {
                 if (math.isEqual(self.animation_state.at_next_tick, 1)) {
-                    self.setState(.open);
-                }
-            },
-            .closing => {
-                if (math.isEqual(self.animation_state.at_next_tick, 1)) {
-                    self.setState(.closed);
+                    self.setState(util.getNextEnumWrapAround(self.state));
                 }
             },
             .open, .closed => {},
@@ -178,39 +196,43 @@ const Prompt = struct {
         return self.state != .closed;
     }
 
+    pub fn prepareRender(
+        self: *Prompt,
+        allocator: std.mem.Allocator,
+        interval_between_previous_and_current_tick: f32,
+    ) !void {
+        const letter_animation_interval = switch (self.state) {
+            .opening => 0,
+            .opening_letters => self.getAnimationState(interval_between_previous_and_current_tick),
+            else => 1,
+        };
+        try self.regenerateSegmentsAndWidgets(allocator, letter_animation_interval);
+    }
+
     pub fn getBillboardCount(self: Prompt) usize {
         return self.widgets[0].getBillboardCount();
     }
 
     pub fn populateBillboardData(
         self: Prompt,
-        screen_dimensions: ScreenDimensions,
+        screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardRenderer.BillboardData,
     ) void {
-        const animation_state = math.lerp(
-            self.animation_state.at_previous_tick,
-            self.animation_state.at_next_tick,
-            interval_between_previous_and_current_tick,
-        );
+        const animation_state = self.getAnimationState(interval_between_previous_and_current_tick);
 
         // Value from 0 (closed) to 1 (fully open).
         const window_open_interval = switch (self.state) {
             .opening => animation_state,
-            .open => 1,
+            .opening_letters, .open => 1,
             .closing => 1 - animation_state,
             .closed => 0,
         };
-
         const dimensions = self.widgets[0].getDimensionsInPixels();
         self.widgets[0].populateBillboardData(
             screen_dimensions.width / 2 - dimensions.width / 2,
-            screen_dimensions.height -
-                @as(
-                u16,
-                @intFromFloat(@as(f32, @floatFromInt(dimensions.height)) * window_open_interval),
-            ),
+            screen_dimensions.height - scale(dimensions.height, window_open_interval),
             out,
         );
     }
@@ -219,7 +241,7 @@ const Prompt = struct {
         _ = command;
         switch (self.state) {
             .open => self.setState(.closing),
-            .opening, .closing, .closed => {},
+            else => {},
         }
     }
 
@@ -227,5 +249,49 @@ const Prompt = struct {
         self.state = new_state;
         self.animation_state.at_previous_tick = 0;
         self.animation_state.at_next_tick = 0;
+    }
+
+    fn scale(value: u16, factor: f32) u16 {
+        return @as(u16, @intFromFloat(@as(f32, @floatFromInt(value)) * factor));
+    }
+
+    fn getAnimationState(self: Prompt, interval_between_previous_and_current_tick: f32) f32 {
+        return math.lerp(
+            self.animation_state.at_previous_tick,
+            self.animation_state.at_next_tick,
+            interval_between_previous_and_current_tick,
+        );
+    }
+
+    fn regenerateSegmentsAndWidgets(
+        self: *Prompt,
+        allocator: std.mem.Allocator,
+        letter_animation_interval: f32,
+    ) !void {
+        const minimum = ui.Text.wrap(
+            &[_]text_rendering.TextSegment{ui.Highlight.normal(sample_content)},
+            self.spritesheet,
+            dialog_text_scale,
+        ).getDimensionsInPixels();
+
+        const segments = try text_rendering.truncateTextSegments(
+            allocator,
+            self.reformatted_segments,
+            scale(max_lines * max_line_length, letter_animation_interval),
+        );
+        errdefer text_rendering.freeTextSegments(allocator, segments);
+
+        var widgets = try allocator.alloc(ui.Widget, 3);
+        errdefer allocator.free(widgets);
+        widgets[2] = .{ .text = ui.Text.wrap(segments[0..], self.spritesheet, dialog_text_scale) };
+        widgets[1] = .{
+            .minimum_size = ui.MinimumSize.wrap(&widgets[2], minimum.width, minimum.height),
+        };
+        widgets[0] = .{ .box = ui.Box.wrap(&widgets[1], self.spritesheet) };
+
+        allocator.free(self.widgets);
+        text_rendering.freeTextSegments(allocator, self.segments_to_render);
+        self.segments_to_render = segments;
+        self.widgets = widgets;
     }
 };
