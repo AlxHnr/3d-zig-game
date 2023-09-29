@@ -211,3 +211,143 @@ test "Text rendering: utility functions" {
     };
     try expect(getCount(&text_block) == 40);
 }
+
+fn expectSegments(
+    segments: []const text_rendering.TextSegment,
+    expected_texts: []const []const u8,
+) !void {
+    try expect(segments.len == expected_texts.len);
+    for (segments, 0..) |segment, index| {
+        try expect(std.mem.eql(u8, segment.text, expected_texts[index]));
+    }
+}
+
+test "Text rendering: reflow text segments" {
+    const allocator = std.testing.allocator;
+    const TextSegment = text_rendering.TextSegment;
+    const reflow = text_rendering.reflowTextBlock;
+    const white = util.Color.white;
+
+    // Empty text block.
+    {
+        const segments = try reflow(allocator, &[_]TextSegment{}, 30);
+        defer text_rendering.freeTextSegments(allocator, segments); // Test no-op.
+        try expect(segments.len == 0);
+    }
+
+    // Empty lines
+    {
+        const text_block = [_]TextSegment{
+            .{ .color = white, .text = "  \n \n" },
+            .{ .color = white, .text = "" },
+            .{ .color = white, .text = "  " },
+        };
+        const segments = try reflow(allocator, &text_block, 0);
+        defer text_rendering.freeTextSegments(allocator, segments); // Test no-op.
+        try expect(segments.len == 0);
+    }
+
+    // Zero line length.
+    {
+        const text_block = [_]TextSegment{
+            .{ .color = white, .text = "This is a long" },
+            .{ .color = white, .text = " example text" },
+            .{ .color = white, .text = " with words." },
+        };
+        const segments = try reflow(allocator, &text_block, 0);
+        defer text_rendering.freeTextSegments(allocator, segments);
+        try expectSegments(segments, &[_][]const u8{
+            "This",   "\n",      "is", "\n",   "a",  "\n",   "long",
+            "\n",     "example", "\n", "text", "\n", "with", "\n",
+            "words.",
+        });
+    }
+
+    // Line length == 10.
+    {
+        const text_block = [_]TextSegment{
+            .{ .color = white, .text = "This is a long" },
+            .{ .color = white, .text = " example text" },
+            .{ .color = white, .text = " with words." },
+        };
+        const segments = try reflow(allocator, &text_block, 10);
+        defer text_rendering.freeTextSegments(allocator, segments);
+        try expectSegments(segments, &[_][]const u8{
+            "This",   " ",       "is", " ",    "a", "\n",   "long",
+            "\n",     "example", "\n", "text", " ", "with", "\n",
+            "words.",
+        });
+    }
+
+    // Joining newlines.
+    {
+        const text_block = [_]TextSegment{
+            .{ .color = white, .text = "This is a\nlong\n" },
+            .{ .color = white, .text = "example\ntext " },
+            .{ .color = white, .text = "with words." },
+        };
+        const segments = try reflow(allocator, &text_block, 12);
+        defer text_rendering.freeTextSegments(allocator, segments);
+        try expectSegments(segments, &[_][]const u8{
+            "This",   " ",       "is", " ",    "a", "\n",   "long",
+            " ",      "example", "\n", "text", " ", "with", "\n",
+            "words.",
+        });
+    }
+
+    // Special treatment for "\n\n" and "\\n".
+    {
+        const text_block = [_]TextSegment{
+            .{ .color = white, .text = "This is a long\n\n" },
+            .{ .color = white, .text = "example\\ntext." },
+        };
+        const segments = try reflow(allocator, &text_block, 100);
+        defer text_rendering.freeTextSegments(allocator, segments);
+        try expectSegments(segments, &[_][]const u8{
+            "This", " ", "is", " ", "a", " ", "long", "\n", "\n", "example", "\n", "\n", "text.",
+        });
+    }
+
+    // Don't treat consecutive words as a single token. This test is only here to preserve this
+    // simplified behaviour.
+    {
+        const text_block = [_]TextSegment{
+            .{ .color = white, .text = "Progr" },
+            .{ .color = white, .text = "amming langu" },
+            .{ .color = white, .text = "age progr" },
+            .{ .color = white, .text = "amming" },
+        };
+        const segments = try reflow(allocator, &text_block, 3);
+        defer text_rendering.freeTextSegments(allocator, segments);
+        try expectSegments(segments, &[_][]const u8{
+            "Progr", "\n", "amming", "\n", "langu",  "\n",
+            "age",   "\n", "progr",  "\n", "amming",
+        });
+    }
+
+    // Preserving colors.
+    {
+        const green = util.Color.fromRgb8(0, 255, 0);
+        const red = util.Color.fromRgb8(255, 0, 0);
+        const text_block = [_]TextSegment{
+            .{ .color = white, .text = "This is a long" },
+            .{ .color = green, .text = " example text" },
+            .{ .color = red, .text = " with words." },
+        };
+        const segments = try reflow(allocator, &text_block, 12);
+        defer text_rendering.freeTextSegments(allocator, segments);
+        try expectSegments(segments, &[_][]const u8{
+            "This",   " ",       "is", " ",    "a", "\n",   "long",
+            " ",      "example", "\n", "text", " ", "with", "\n",
+            "words.",
+        });
+        const expected_colors = [_]util.Color{
+            white, white, white, white, white, white, white, green,
+            green, green, green, red,   red,   red,   red,
+        };
+        try expect(segments.len == expected_colors.len);
+        for (segments, 0..) |segment, index| {
+            try expect(segment.color.isEqual(expected_colors[index]));
+        }
+    }
+}

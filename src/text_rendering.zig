@@ -118,6 +118,57 @@ pub fn populateBillboardData2d(
     );
 }
 
+/// Retokenize the given text segments to ensure that lines approximate the specified length. Empty
+/// lines can be specified explicitly by either "\n\n" or "\\n". The returned segments must be freed
+/// with freeTextSegments().
+pub fn reflowTextBlock(
+    allocator: std.mem.Allocator,
+    segments: []const TextSegment,
+    new_line_length: usize,
+) ![]TextSegment {
+    var result: []TextSegment = &.{};
+    errdefer freeTextSegments(allocator, result);
+
+    var current_line_length: usize = 0;
+    for (segments) |segment| {
+        const patched_segment = try injectNewlineTokens(segment.text, allocator);
+        defer allocator.free(patched_segment);
+
+        var token_iterator = std.mem.tokenizeAny(u8, patched_segment, "\n ");
+        while (token_iterator.next()) |token| {
+            const token_length = try std.unicode.utf8CountCodepoints(token);
+            const whitespace = " ";
+
+            if (std.mem.eql(u8, token, "\\n")) {
+                result = try appendTextSegment(result, allocator, "\n", segment.color);
+                result = try appendTextSegment(result, allocator, "\n", segment.color);
+                current_line_length = 0;
+            } else if (current_line_length == 0) {
+                result = try appendTextSegment(result, allocator, token, segment.color);
+                current_line_length = token_length;
+            } else if (current_line_length + whitespace.len + token_length > new_line_length) {
+                result = try appendTextSegment(result, allocator, "\n", segment.color);
+                result = try appendTextSegment(result, allocator, token, segment.color);
+                current_line_length = token_length;
+            } else {
+                result = try appendTextSegment(result, allocator, whitespace, segment.color);
+                result = try appendTextSegment(result, allocator, token, segment.color);
+                current_line_length += whitespace.len + token_length;
+            }
+        }
+    }
+
+    return result;
+}
+
+/// Release all text segments and free the given slice.
+pub fn freeTextSegments(allocator: std.mem.Allocator, segments: []TextSegment) void {
+    for (segments) |segment| {
+        allocator.free(segment.text);
+    }
+    allocator.free(segments);
+}
+
 const TextSegmentInfo = struct {
     newline_count: usize,
     required_billboard_count: usize,
@@ -241,4 +292,31 @@ fn populateBillboardDataRaw(
             }
         }
     }
+}
+
+/// Reallocates the given text segments and appends a copy of the specified colored text.
+fn appendTextSegment(
+    segments: []TextSegment,
+    allocator: std.mem.Allocator,
+    text: []const u8,
+    color: Color,
+) ![]TextSegment {
+    const text_copy = try allocator.dupe(u8, text);
+    errdefer allocator.free(text_copy);
+
+    var result = try allocator.realloc(segments, segments.len + 1);
+    result[result.len - 1].text = text_copy;
+    result[result.len - 1].color = color;
+    return result;
+}
+
+/// Replaces all occurrences of "\n\n" and "\\n" in the given string with " \\n ".
+fn injectNewlineTokens(segment: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    var step1 = try allocator.alloc(u8, std.mem.replacementSize(u8, segment, "\n\n", "\\n"));
+    defer allocator.free(step1);
+    _ = std.mem.replace(u8, segment, "\n\n", "\\n", step1);
+
+    var step2 = try allocator.alloc(u8, std.mem.replacementSize(u8, step1, "\\n", " \\n "));
+    _ = std.mem.replace(u8, step1, "\\n", " \\n ", step2);
+    return step2;
 }
