@@ -169,29 +169,44 @@ pub fn freeTextSegments(allocator: std.mem.Allocator, segments: []TextSegment) v
     allocator.free(segments);
 }
 
-/// Return enough subsegments to contain not more than the given amount of characters. Returned copy
-/// must be freed with freeTextSegments().
+/// Return enough subsegments to contain not more than the given amount of codepoints. Returned copy
+/// must be freed with freeTextSegments(). Newlines count as 1 codepoint.
 pub fn truncateTextSegments(
     allocator: std.mem.Allocator,
     segments: []const TextSegment,
-    max_total_characters: usize,
+    max_total_codepoints: usize,
 ) ![]TextSegment {
     var result: []TextSegment = &.{};
     errdefer freeTextSegments(allocator, result);
 
-    var remaining_characters = max_total_characters;
+    var remaining_codepoints = max_total_codepoints;
     for (segments) |segment| {
-        if (remaining_characters == 0) {
+        if (remaining_codepoints == 0) {
             break;
         }
-        const current_segment_length = @min(remaining_characters, segment.text.len);
+        const codepoints_max = @min(
+            remaining_codepoints,
+            try std.unicode.utf8CountCodepoints(segment.text),
+        );
+
+        var current_segment_bytes: usize = 0;
+        var current_segment_codepoints: usize = 0;
+        var codepoint_iterator = std.unicode.Utf8View.initUnchecked(segment.text).iterator();
+        while (codepoint_iterator.nextCodepointSlice()) |slice| {
+            if (current_segment_codepoints == codepoints_max) {
+                break;
+            }
+            current_segment_codepoints += 1;
+            current_segment_bytes += slice.len;
+        }
+
         result = try appendTextSegment(
             allocator,
             result,
-            segment.text[0..current_segment_length],
+            segment.text[0..current_segment_bytes],
             segment.color,
         );
-        remaining_characters -= current_segment_length;
+        remaining_codepoints -= current_segment_codepoints;
     }
 
     return result;

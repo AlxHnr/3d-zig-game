@@ -365,8 +365,8 @@ test "Text rendering: truncate text segments" {
     const red = util.Color.fromRgb8(255, 0, 0);
     const allocator = std.testing.allocator;
     const text_block = [_]text_rendering.TextSegment{
-        .{ .color = white, .text = "This is a long" },
-        .{ .color = green, .text = " example text" },
+        .{ .color = white, .text = "This is a löñg" },
+        .{ .color = green, .text = " example\ntext" },
         .{ .color = red, .text = " with words." },
     };
 
@@ -381,7 +381,7 @@ test "Text rendering: truncate text segments" {
     {
         const segments = try text_rendering.truncateTextSegments(allocator, &text_block, 20);
         defer text_rendering.freeTextSegments(allocator, segments);
-        try expectSegments(segments, &[_][]const u8{ "This is a long", " examp" });
+        try expectSegments(segments, &[_][]const u8{ "This is a löñg", " examp" });
         try expectSegmentColors(segments, &[_]util.Color{ white, green });
     }
 
@@ -391,7 +391,7 @@ test "Text rendering: truncate text segments" {
         defer text_rendering.freeTextSegments(allocator, segments);
         try expectSegments(
             segments,
-            &[_][]const u8{ "This is a long", " example text", " with" },
+            &[_][]const u8{ "This is a löñg", " example\ntext", " with" },
         );
         try expectSegmentColors(segments, &[_]util.Color{ white, green, red });
     }
@@ -402,7 +402,7 @@ test "Text rendering: truncate text segments" {
         defer text_rendering.freeTextSegments(allocator, segments);
         try expectSegments(
             segments,
-            &[_][]const u8{ "This is a long", " example text", " with words." },
+            &[_][]const u8{ "This is a löñg", " example\ntext", " with words." },
         );
         try expectSegmentColors(segments, &[_]util.Color{ white, green, red });
     }
