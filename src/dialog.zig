@@ -115,15 +115,9 @@ pub const Controller = struct {
 
 const Prompt = struct {
     reformatted_segments: []text_rendering.TextSegment,
-    segments_to_render: []text_rendering.TextSegment,
-    widgets: []ui.Widget,
-    /// Non-owning pointer.
-    spritesheet: *const SpriteSheetTexture,
-    state: State,
-    /// Contains values from 0 to 1.
-    animation_state: struct { at_previous_tick: f32, at_next_tick: f32 },
-
-    const State = enum { opening, opening_letters, open, closing, closed };
+    animated_text_block: AnimatedTextBlock,
+    minimum_size_widget: *ui.Widget,
+    slide_in_animation_box: SlideInAnimationBox,
 
     const sample_content =
         \\,------------------------------------,
@@ -155,55 +149,46 @@ const Prompt = struct {
             try text_rendering.reflowTextBlock(allocator, &text_block, max_line_length);
         errdefer text_rendering.freeTextSegments(allocator, reformatted_segments);
 
-        var result = Prompt{
-            .reformatted_segments = reformatted_segments,
-            .segments_to_render = &[_]text_rendering.TextSegment{},
-            .widgets = &[_]ui.Widget{},
-            .spritesheet = spritesheet,
-            .state = .opening,
-            .animation_state = .{ .at_previous_tick = 0, .at_next_tick = 0 },
-        };
+        var animated_text_block =
+            try AnimatedTextBlock.wrap(allocator, reformatted_segments, spritesheet);
+        errdefer animated_text_block.destroy(allocator);
 
-        try result.regenerateSegmentsAndWidgets(allocator, 0);
-        return result;
+        const minimum = ui.Text.wrap(
+            &[_]text_rendering.TextSegment{ui.Highlight.normal(sample_content)},
+            spritesheet,
+            dialog_text_scale,
+        ).getDimensionsInPixels();
+
+        var minimum_size_widget = try allocator.create(ui.Widget);
+        errdefer allocator.destroy(minimum_size_widget);
+        minimum_size_widget.* = .{ .minimum_size = ui.MinimumSize.wrap(
+            animated_text_block.getWidgetPointer(),
+            minimum.width,
+            minimum.height,
+        ) };
+
+        return .{
+            .reformatted_segments = reformatted_segments,
+            .animated_text_block = animated_text_block,
+            .minimum_size_widget = minimum_size_widget,
+            .slide_in_animation_box = SlideInAnimationBox.wrap(minimum_size_widget, spritesheet),
+        };
     }
 
     pub fn destroy(self: *Prompt, allocator: std.mem.Allocator) void {
-        allocator.free(self.widgets);
-        text_rendering.freeTextSegments(allocator, self.segments_to_render);
+        allocator.destroy(self.minimum_size_widget);
+        self.animated_text_block.destroy(allocator);
         text_rendering.freeTextSegments(allocator, self.reformatted_segments);
     }
 
     // Returns true if this dialog is still needed.
     pub fn processElapsedTick(self: *Prompt) bool {
-        self.animation_state.at_previous_tick = self.animation_state.at_next_tick;
-
-        const animation_step: f32 = switch (self.state) {
-            .opening_letters => 0.01,
-            else => 0.2,
-        };
-        self.animation_state.at_next_tick =
-            @min(self.animation_state.at_next_tick + animation_step, 1);
-
-        // Finish typing animation when all letters are on screen.
-        if (self.state == .opening_letters) {
-            const available_characters = countCharacters(self.reformatted_segments);
-            const letter_animation_interval = self.animation_state.at_next_tick;
-            if (scale(max_dialog_characters, letter_animation_interval) >= available_characters) {
-                self.animation_state.at_next_tick = 1;
-            }
+        self.slide_in_animation_box.processElapsedTick();
+        if (!self.slide_in_animation_box.isStillOpening()) {
+            self.animated_text_block.processElapsedTick();
         }
 
-        switch (self.state) {
-            .opening, .opening_letters, .closing => {
-                if (math.isEqual(self.animation_state.at_next_tick, 1)) {
-                    self.setState(util.getNextEnumWrapAround(self.state));
-                }
-            },
-            .open, .closed => {},
-        }
-
-        return self.state != .closed;
+        return !self.slide_in_animation_box.hasClosed();
     }
 
     pub fn prepareRender(
@@ -211,16 +196,14 @@ const Prompt = struct {
         allocator: std.mem.Allocator,
         interval_between_previous_and_current_tick: f32,
     ) !void {
-        const letter_animation_interval = switch (self.state) {
-            .opening => 0,
-            .opening_letters => self.getAnimationState(interval_between_previous_and_current_tick),
-            else => 1,
-        };
-        try self.regenerateSegmentsAndWidgets(allocator, letter_animation_interval);
+        try self.animated_text_block.prepareRender(
+            allocator,
+            interval_between_previous_and_current_tick,
+        );
     }
 
     pub fn getBillboardCount(self: Prompt) usize {
-        return self.widgets[0].getBillboardCount();
+        return self.slide_in_animation_box.getBillboardCount();
     }
 
     pub fn populateBillboardData(
@@ -230,86 +213,238 @@ const Prompt = struct {
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardRenderer.BillboardData,
     ) void {
-        const animation_state = self.getAnimationState(interval_between_previous_and_current_tick);
-
-        // Value from 0 (closed) to 1 (fully open).
-        const window_open_interval = switch (self.state) {
-            .opening => animation_state,
-            .opening_letters, .open => 1,
-            .closing => 1 - animation_state,
-            .closed => 0,
-        };
-        const dimensions = self.widgets[0].getDimensionsInPixels();
-        self.widgets[0].populateBillboardData(
-            screen_dimensions.width / 2 - dimensions.width / 2,
-            screen_dimensions.height - scale(dimensions.height, window_open_interval),
+        self.slide_in_animation_box.populateBillboardData(
+            screen_dimensions,
+            interval_between_previous_and_current_tick,
             out,
         );
     }
 
     pub fn processCommand(self: *Prompt, command: Controller.Command) void {
         _ = command;
+        if (self.animated_text_block.hasFinished()) {
+            self.slide_in_animation_box.startClosingIfOpen();
+        }
+    }
+};
+
+/// UI box which slides in from the bottom.
+const SlideInAnimationBox = struct {
+    widget: ui.Widget,
+    state: State,
+    movement_animation: AnimationState,
+
+    pub const State = enum { opening, open, closing, closed };
+
+    /// Returned object will keep a reference to the given pointers.
+    pub fn wrap(
+        widget_to_wrap: *const ui.Widget,
+        spritesheet: *const SpriteSheetTexture,
+    ) SlideInAnimationBox {
+        return .{
+            .widget = .{ .box = ui.Box.wrap(widget_to_wrap, spritesheet) },
+            .state = .opening,
+            .movement_animation = AnimationState.create(0, 1),
+        };
+    }
+
+    pub fn processElapsedTick(self: *SlideInAnimationBox) void {
+        self.movement_animation.processElapsedTick(0.2);
+
         switch (self.state) {
-            .open => self.setState(.closing),
-            else => {},
+            .opening, .closing => {
+                if (self.movement_animation.hasFinished()) {
+                    self.state = util.getNextEnumWrapAround(self.state);
+                }
+            },
+            .open, .closed => {},
         }
     }
 
-    fn setState(self: *Prompt, new_state: State) void {
-        self.state = new_state;
-        self.animation_state.at_previous_tick = 0;
-        self.animation_state.at_next_tick = 0;
+    pub fn isStillOpening(self: SlideInAnimationBox) bool {
+        return self.state == .opening;
     }
 
-    fn scale(value: u16, factor: f32) u16 {
-        return @as(u16, @intFromFloat(@as(f32, @floatFromInt(value)) * factor));
+    pub fn hasClosed(self: SlideInAnimationBox) bool {
+        return self.state == .closed;
     }
 
-    fn getAnimationState(self: Prompt, interval_between_previous_and_current_tick: f32) f32 {
-        return math.lerp(
-            self.animation_state.at_previous_tick,
-            self.animation_state.at_next_tick,
-            interval_between_previous_and_current_tick,
-        );
+    pub fn startClosingIfOpen(self: *SlideInAnimationBox) void {
+        if (self.state == .open) {
+            self.state = .closing;
+            self.movement_animation.reset();
+        }
     }
 
-    fn regenerateSegmentsAndWidgets(
-        self: *Prompt,
-        allocator: std.mem.Allocator,
-        letter_animation_interval: f32,
-    ) !void {
-        const minimum = ui.Text.wrap(
-            &[_]text_rendering.TextSegment{ui.Highlight.normal(sample_content)},
-            self.spritesheet,
-            dialog_text_scale,
-        ).getDimensionsInPixels();
+    pub fn getBillboardCount(self: SlideInAnimationBox) usize {
+        return self.widget.getBillboardCount();
+    }
 
-        const segments = try text_rendering.truncateTextSegments(
-            allocator,
-            self.reformatted_segments,
-            scale(max_dialog_characters, letter_animation_interval),
-        );
-        errdefer text_rendering.freeTextSegments(allocator, segments);
-
-        var widgets = try allocator.alloc(ui.Widget, 3);
-        errdefer allocator.free(widgets);
-        widgets[2] = .{ .text = ui.Text.wrap(segments[0..], self.spritesheet, dialog_text_scale) };
-        widgets[1] = .{
-            .minimum_size = ui.MinimumSize.wrap(&widgets[2], minimum.width, minimum.height),
+    pub fn populateBillboardData(
+        self: SlideInAnimationBox,
+        screen_dimensions: util.ScreenDimensions,
+        interval_between_previous_and_current_tick: f32,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardRenderer.BillboardData,
+    ) void {
+        const raw_interval =
+            self.movement_animation.getInterval(interval_between_previous_and_current_tick);
+        // Value from 0 (closed) to 1 (fully open).
+        const window_open_interval = switch (self.state) {
+            .open => raw_interval,
+            .opening => raw_interval,
+            .closing => 1 - raw_interval,
+            .closed => 1 - raw_interval,
         };
-        widgets[0] = .{ .box = ui.Box.wrap(&widgets[1], self.spritesheet) };
+        const dimensions = self.widget.getDimensionsInPixels();
+        self.widget.populateBillboardData(
+            screen_dimensions.width / 2 - dimensions.width / 2,
+            screen_dimensions.height - scale(dimensions.height, window_open_interval),
+            out,
+        );
+    }
+};
 
-        allocator.free(self.widgets);
-        text_rendering.freeTextSegments(allocator, self.segments_to_render);
-        self.segments_to_render = segments;
-        self.widgets = widgets;
+/// Reveals a text block character by character.
+const AnimatedTextBlock = struct {
+    /// Non-owning slice.
+    original_segments: []const text_rendering.TextSegment,
+    segments_in_current_frame: []text_rendering.TextSegment,
+    spritesheet: *const SpriteSheetTexture,
+    codepoint_progress: AnimationState,
+    widget: *ui.Widget,
+
+    /// Returned object will keep a reference to the given slices and pointers.
+    pub fn wrap(
+        allocator: std.mem.Allocator,
+        segments: []const text_rendering.TextSegment,
+        spritesheet: *const SpriteSheetTexture,
+    ) !AnimatedTextBlock {
+        var widget = try allocator.create(ui.Widget);
+        errdefer allocator.destroy(widget);
+        widget.* = .{
+            .text = ui.Text.wrap(&[_]text_rendering.TextSegment{}, spritesheet, dialog_text_scale),
+        };
+
+        return .{
+            .original_segments = segments,
+            .segments_in_current_frame = &[_]text_rendering.TextSegment{},
+            .spritesheet = spritesheet,
+            .codepoint_progress = AnimationState.create(
+                0,
+                @as(f32, @floatFromInt(try countCodepoints(segments))),
+            ),
+            .widget = widget,
+        };
     }
 
-    fn countCharacters(segments: []text_rendering.TextSegment) usize {
+    pub fn destroy(self: *AnimatedTextBlock, allocator: std.mem.Allocator) void {
+        allocator.destroy(self.widget);
+        text_rendering.freeTextSegments(allocator, self.segments_in_current_frame);
+    }
+
+    /// Returned widget will be invalidated when destroy() is being called on the given text block.
+    pub fn getWidgetPointer(self: AnimatedTextBlock) *ui.Widget {
+        return self.widget;
+    }
+
+    pub fn processElapsedTick(self: *AnimatedTextBlock) void {
+        const reveal_codepoints_per_tick = 2;
+        self.codepoint_progress.processElapsedTick(reveal_codepoints_per_tick);
+    }
+
+    pub fn hasFinished(self: AnimatedTextBlock) bool {
+        return self.codepoint_progress.hasFinished();
+    }
+
+    pub fn prepareRender(
+        self: *AnimatedTextBlock,
+        allocator: std.mem.Allocator,
+        interval_between_previous_and_current_tick: f32,
+    ) !void {
+        const codepoints_to_reveal = @as(usize, @intFromFloat(
+            self.codepoint_progress.getInterval(interval_between_previous_and_current_tick),
+        ));
+
+        const segments_in_current_frame = try text_rendering.truncateTextSegments(
+            allocator,
+            self.original_segments,
+            codepoints_to_reveal,
+        );
+        errdefer text_rendering.freeTextSegments(allocator, segments_in_current_frame);
+
+        self.widget.* = .{
+            .text = ui.Text.wrap(segments_in_current_frame, self.spritesheet, dialog_text_scale),
+        };
+        text_rendering.freeTextSegments(allocator, self.segments_in_current_frame);
+        self.segments_in_current_frame = segments_in_current_frame;
+    }
+
+    pub fn getBillboardCount(self: AnimatedTextBlock) usize {
+        return self.widget.getBillboardCount();
+    }
+
+    pub fn populateBillboardData(
+        self: AnimatedTextBlock,
+        /// Top left corner.
+        screen_position_x: u16,
+        screen_position_y: u16,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardRenderer.BillboardData,
+    ) void {
+        self.widget.populateBillboardData(screen_position_x, screen_position_y, out);
+    }
+
+    fn countCodepoints(segments: []const text_rendering.TextSegment) !usize {
         var result: usize = 0;
         for (segments) |segment| {
-            result += segment.text.len;
+            result += try std.unicode.utf8CountCodepoints(segment.text);
         }
         return result;
     }
 };
+
+const AnimationState = struct {
+    at_previous_tick: f32,
+    at_next_tick: f32,
+    start_value: f32,
+    end_value: f32,
+
+    pub fn create(start_value: f32, end_value: f32) AnimationState {
+        return .{
+            .at_previous_tick = start_value,
+            .at_next_tick = start_value,
+            .start_value = start_value,
+            .end_value = end_value,
+        };
+    }
+
+    pub fn processElapsedTick(self: *AnimationState, step: f32) void {
+        self.at_previous_tick = self.at_next_tick;
+        self.at_next_tick = std.math.clamp(
+            self.at_next_tick + step,
+            self.start_value,
+            self.end_value,
+        );
+    }
+
+    pub fn reset(self: *AnimationState) void {
+        self.* = AnimationState.create(self.start_value, self.end_value);
+    }
+
+    pub fn hasFinished(self: AnimationState) bool {
+        return math.isEqual(self.at_previous_tick, self.end_value);
+    }
+
+    pub fn getInterval(self: AnimationState, interval_between_previous_and_current_tick: f32) f32 {
+        return math.lerp(
+            self.at_previous_tick,
+            self.at_next_tick,
+            interval_between_previous_and_current_tick,
+        );
+    }
+};
+
+fn scale(value: u16, factor: f32) u16 {
+    return @as(u16, @intFromFloat(@as(f32, @floatFromInt(value)) * factor));
+}
