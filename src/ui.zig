@@ -263,12 +263,12 @@ pub const MinimumSize = struct {
 
     /// Returned object will keep a reference to the given widget.
     pub fn wrap(
-        wrapped_widget: *const Widget,
+        widget_to_wrap: *const Widget,
         minimum_width: u16,
         minimum_height: u16,
     ) MinimumSize {
         return .{
-            .wrapped_widget = wrapped_widget,
+            .wrapped_widget = widget_to_wrap,
             .minimum = .{ .width = minimum_width, .height = minimum_height },
         };
     }
@@ -309,10 +309,10 @@ pub const Box = struct {
     const dialog_sprite_scale = 4;
 
     /// Returned object will keep a reference to the given pointers.
-    pub fn wrap(wrapped_widget: *const Widget, spritesheet: *const SpriteSheetTexture) Box {
+    pub fn wrap(widget_to_wrap: *const Widget, spritesheet: *const SpriteSheetTexture) Box {
         const dimensions = spritesheet.getSpriteDimensionsInPixels(.dialog_box_top_left);
         return .{
-            .wrapped_widget = wrapped_widget,
+            .wrapped_widget = widget_to_wrap,
             .spritesheet = spritesheet,
             .scaled_sprite = .{
                 .width = @as(f32, @floatFromInt(dimensions.w)) * dialog_sprite_scale,
