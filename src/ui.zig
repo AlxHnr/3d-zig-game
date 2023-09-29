@@ -16,6 +16,7 @@ pub const Highlight = struct {
 /// Polymorphic dispatcher serving as an interface.
 pub const Widget = union(enum) {
     box: Box,
+    minimum_size: MinimumSize,
     split: Split,
     sprite: Sprite,
     text: Text,
@@ -252,6 +253,47 @@ pub const Split = struct {
                 },
             }
         }
+    }
+};
+
+/// Wraps a widget to give it a minimum size.
+pub const MinimumSize = struct {
+    wrapped_widget: *const Widget,
+    minimum: ScreenDimensions,
+
+    /// Returned object will keep a reference to the given widget.
+    pub fn wrap(
+        wrapped_widget: *const Widget,
+        minimum_width: u16,
+        minimum_height: u16,
+    ) MinimumSize {
+        return .{
+            .wrapped_widget = wrapped_widget,
+            .minimum = .{ .width = minimum_width, .height = minimum_height },
+        };
+    }
+
+    pub fn getDimensionsInPixels(self: MinimumSize) ScreenDimensions {
+        const dimensions = self.wrapped_widget.getDimensionsInPixels();
+        return .{
+            .width = @max(self.minimum.width, dimensions.width),
+            .height = @max(self.minimum.height, dimensions.height),
+        };
+    }
+
+    pub fn getBillboardCount(self: MinimumSize) usize {
+        return self.wrapped_widget.getBillboardCount();
+    }
+
+    pub fn populateBillboardData(
+        self: MinimumSize,
+        /// Top left corner.
+        screen_position_x: u16,
+        screen_position_y: u16,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardData,
+    ) void {
+        self.wrapped_widget.populateBillboardData(screen_position_x, screen_position_y, out);
     }
 };
 
