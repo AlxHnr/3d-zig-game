@@ -20,8 +20,8 @@ pub const InputButton = enum {
     right,
     strafe,
     slow_turning,
+    cancel,
     confirm,
-    abort,
 };
 
 pub const Context = struct {
@@ -118,8 +118,8 @@ pub const Context = struct {
         self.main_character.markButtonAsPressed(button);
 
         switch (button) {
+            .cancel => self.dialog_controller.sendCommandToCurrentDialog(.cancel),
             .confirm => self.dialog_controller.sendCommandToCurrentDialog(.confirm),
-            .abort => self.dialog_controller.sendCommandToCurrentDialog(.abort),
             else => {},
         }
     }

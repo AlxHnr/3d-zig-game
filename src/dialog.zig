@@ -92,7 +92,7 @@ pub const Controller = struct {
         }
     }
 
-    pub const Command = enum { abort, confirm };
+    pub const Command = enum { cancel, confirm };
 
     /// Will do nothing if there is no current dialog.
     pub fn sendCommandToCurrentDialog(self: *Controller, command: Command) void {
