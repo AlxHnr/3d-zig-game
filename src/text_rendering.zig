@@ -140,19 +140,19 @@ pub fn reflowTextBlock(
             const whitespace = " ";
 
             if (std.mem.eql(u8, token, "\\n")) {
-                result = try appendTextSegment(result, allocator, "\n", segment.color);
-                result = try appendTextSegment(result, allocator, "\n", segment.color);
+                result = try appendTextSegment(allocator, result, "\n", segment.color);
+                result = try appendTextSegment(allocator, result, "\n", segment.color);
                 current_line_length = 0;
             } else if (current_line_length == 0) {
-                result = try appendTextSegment(result, allocator, token, segment.color);
+                result = try appendTextSegment(allocator, result, token, segment.color);
                 current_line_length = token_length;
             } else if (current_line_length + whitespace.len + token_length > new_line_length) {
-                result = try appendTextSegment(result, allocator, "\n", segment.color);
-                result = try appendTextSegment(result, allocator, token, segment.color);
+                result = try appendTextSegment(allocator, result, "\n", segment.color);
+                result = try appendTextSegment(allocator, result, token, segment.color);
                 current_line_length = token_length;
             } else {
-                result = try appendTextSegment(result, allocator, whitespace, segment.color);
-                result = try appendTextSegment(result, allocator, token, segment.color);
+                result = try appendTextSegment(allocator, result, whitespace, segment.color);
+                result = try appendTextSegment(allocator, result, token, segment.color);
                 current_line_length += whitespace.len + token_length;
             }
         }
@@ -296,8 +296,8 @@ fn populateBillboardDataRaw(
 
 /// Reallocates the given text segments and appends a copy of the specified colored text.
 fn appendTextSegment(
-    segments: []TextSegment,
     allocator: std.mem.Allocator,
+    segments: []TextSegment,
     text: []const u8,
     color: Color,
 ) ![]TextSegment {
