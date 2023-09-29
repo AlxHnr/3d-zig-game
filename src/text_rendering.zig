@@ -169,6 +169,34 @@ pub fn freeTextSegments(allocator: std.mem.Allocator, segments: []TextSegment) v
     allocator.free(segments);
 }
 
+/// Return enough subsegments to contain not more than the given amount of characters. Returned copy
+/// must be freed with freeTextSegments().
+pub fn truncateTextSegments(
+    allocator: std.mem.Allocator,
+    segments: []const TextSegment,
+    max_total_characters: usize,
+) ![]TextSegment {
+    var result: []TextSegment = &.{};
+    errdefer freeTextSegments(allocator, result);
+
+    var remaining_characters = max_total_characters;
+    for (segments) |segment| {
+        if (remaining_characters == 0) {
+            break;
+        }
+        const current_segment_length = @min(remaining_characters, segment.text.len);
+        result = try appendTextSegment(
+            allocator,
+            result,
+            segment.text[0..current_segment_length],
+            segment.color,
+        );
+        remaining_characters -= current_segment_length;
+    }
+
+    return result;
+}
+
 const TextSegmentInfo = struct {
     newline_count: usize,
     required_billboard_count: usize,
