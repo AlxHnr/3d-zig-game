@@ -1,7 +1,7 @@
 const BillboardRenderer = @import("rendering.zig").BillboardRenderer;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
-const TextSegment = @import("text_rendering.zig").TextSegment;
+const text_rendering = @import("text_rendering.zig");
 const std = @import("std");
 const ui = @import("ui.zig");
 
@@ -90,7 +90,7 @@ pub const Controller = struct {
 };
 
 const Prompt = struct {
-    segments: []TextSegment,
+    segments: []text_rendering.TextSegment,
     widgets: []ui.Widget,
 
     pub fn create(
@@ -100,15 +100,14 @@ const Prompt = struct {
         npc_name: []const u8,
         message_text: []const u8,
     ) !Prompt {
-        var segments = try allocator.alloc(TextSegment, 3);
-        errdefer allocator.free(segments);
+        const text_block = [_]text_rendering.TextSegment{
+            ui.Highlight.npcName(npc_name),
+            ui.Highlight.normal("\n\n"),
+            ui.Highlight.normal(message_text),
+        };
 
-        segments[0] = ui.Highlight.npcName(try allocator.dupe(u8, npc_name));
-        errdefer allocator.free(segments[0].text);
-        segments[1] = ui.Highlight.normal(try allocator.dupe(u8, "\n\n"));
-        errdefer allocator.free(segments[1].text);
-        segments[2] = ui.Highlight.normal(try allocator.dupe(u8, message_text));
-        errdefer allocator.free(segments[2].text);
+        var segments = try text_rendering.reflowTextBlock(allocator, &text_block, 38);
+        errdefer text_rendering.freeTextSegments(allocator, segments);
 
         var widgets = try allocator.alloc(ui.Widget, 2);
         errdefer allocator.free(widgets);
@@ -121,10 +120,7 @@ const Prompt = struct {
 
     pub fn destroy(self: *Prompt, allocator: std.mem.Allocator) void {
         allocator.free(self.widgets);
-        for (self.segments) |segment| {
-            allocator.free(segment.text);
-        }
-        allocator.free(self.segments);
+        text_rendering.freeTextSegments(allocator, self.segments);
     }
 
     pub fn getBillboardCount(self: Prompt) usize {
