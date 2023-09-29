@@ -140,6 +140,7 @@ pub const Context = struct {
             self.level_geometry.processElapsedTick();
             self.main_character.processElapsedTick(self.level_geometry, &self.gem_collection);
             self.gem_collection.processElapsedTick();
+            self.dialog_controller.processElapsedTick();
         }
         self.interval_between_previous_and_current_tick = lap_result.next_tick_progress;
 
@@ -221,7 +222,10 @@ pub const Context = struct {
             self.spritesheet,
             self.main_character.gem_count,
         );
-        try self.dialog_controller.render(screen_dimensions);
+        try self.dialog_controller.render(
+            screen_dimensions,
+            self.interval_between_previous_and_current_tick,
+        );
     }
 
     pub fn hasOpenDialogs(self: Context) bool {

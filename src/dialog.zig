@@ -1,8 +1,9 @@
 const BillboardRenderer = @import("rendering.zig").BillboardRenderer;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
-const text_rendering = @import("text_rendering.zig");
+const math = @import("math.zig");
 const std = @import("std");
+const text_rendering = @import("text_rendering.zig");
 const ui = @import("ui.zig");
 
 const dialog_text_scale = 2;
@@ -45,7 +46,11 @@ pub const Controller = struct {
         self.renderer.destroy();
     }
 
-    pub fn render(self: *Controller, screen_dimensions: ScreenDimensions) !void {
+    pub fn render(
+        self: *Controller,
+        screen_dimensions: ScreenDimensions,
+        interval_between_previous_and_current_tick: f32,
+    ) !void {
         var total_billboards: usize = 0;
         for (self.dialog_stack.items) |dialog| {
             total_billboards += dialog.getBillboardCount();
@@ -61,10 +66,20 @@ pub const Controller = struct {
         for (self.dialog_stack.items) |dialog| {
             start = end;
             end += dialog.getBillboardCount();
-            dialog.populateBillboardData(screen_dimensions, self.billboard_buffer[start..end]);
+            dialog.populateBillboardData(
+                screen_dimensions,
+                interval_between_previous_and_current_tick,
+                self.billboard_buffer[start..end],
+            );
         }
         self.renderer.uploadBillboards(self.billboard_buffer[0..end]);
         self.renderer.render2d(screen_dimensions, self.spritesheet.id);
+    }
+
+    pub fn processElapsedTick(self: *Controller) void {
+        for (self.dialog_stack.items) |*dialog| {
+            dialog.processElapsedTick();
+        }
     }
 
     pub const Command = enum { abort, confirm };
@@ -92,6 +107,11 @@ pub const Controller = struct {
 const Prompt = struct {
     segments: []text_rendering.TextSegment,
     widgets: []ui.Widget,
+    /// Contains values from 0 to 1.
+    animation_state: struct {
+        at_previous_tick: f32,
+        at_next_tick: f32,
+    },
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -115,12 +135,21 @@ const Prompt = struct {
         widgets[1] = .{ .text = ui.Text.wrap(segments[0..], spritesheet, dialog_text_scale) };
         widgets[0] = .{ .box = ui.Box.wrap(&widgets[1], spritesheet) };
 
-        return .{ .segments = segments, .widgets = widgets };
+        return .{
+            .segments = segments,
+            .widgets = widgets,
+            .animation_state = .{ .at_previous_tick = 0, .at_next_tick = 0 },
+        };
     }
 
     pub fn destroy(self: *Prompt, allocator: std.mem.Allocator) void {
         allocator.free(self.widgets);
         text_rendering.freeTextSegments(allocator, self.segments);
+    }
+
+    pub fn processElapsedTick(self: *Prompt) void {
+        self.animation_state.at_previous_tick = self.animation_state.at_next_tick;
+        self.animation_state.at_next_tick = @min(self.animation_state.at_next_tick + 0.2, 1);
     }
 
     pub fn getBillboardCount(self: Prompt) usize {
@@ -130,13 +159,24 @@ const Prompt = struct {
     pub fn populateBillboardData(
         self: Prompt,
         screen_dimensions: ScreenDimensions,
+        interval_between_previous_and_current_tick: f32,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardRenderer.BillboardData,
     ) void {
+        const animation_state = math.lerp(
+            self.animation_state.at_previous_tick,
+            self.animation_state.at_next_tick,
+            interval_between_previous_and_current_tick,
+        );
+
         const dimensions = self.widgets[0].getDimensionsInPixels();
         self.widgets[0].populateBillboardData(
             screen_dimensions.width / 2 - dimensions.width / 2,
-            screen_dimensions.height - dimensions.height,
+            screen_dimensions.height -
+                @as(
+                u16,
+                @intFromFloat(@as(f32, @floatFromInt(dimensions.height)) * animation_state),
+            ),
             out,
         );
     }
