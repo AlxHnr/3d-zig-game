@@ -128,9 +128,6 @@ const Prompt = struct {
         \\| space for potential letters.       |
         \\|____________________________________|
     ;
-    const max_lines = std.mem.count(u8, sample_content, "\n");
-    const max_line_length = std.mem.indexOfScalar(u8, sample_content, '\n').?;
-    const max_dialog_characters = max_lines * max_line_length;
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -139,39 +136,21 @@ const Prompt = struct {
         npc_name: []const u8,
         message_text: []const u8,
     ) !Prompt {
-        const text_block = [_]text_rendering.TextSegment{
-            ui.Highlight.npcName(npc_name),
-            ui.Highlight.normal("\n\n"),
-            ui.Highlight.normal(message_text),
-        };
-
-        var reformatted_segments =
-            try text_rendering.reflowTextBlock(allocator, &text_block, max_line_length);
-        errdefer text_rendering.freeTextSegments(allocator, reformatted_segments);
-
-        var animated_text_block =
-            try AnimatedTextBlock.wrap(allocator, reformatted_segments, spritesheet);
-        errdefer animated_text_block.destroy(allocator);
-
-        const minimum = ui.Text.wrap(
-            &[_]text_rendering.TextSegment{ui.Highlight.normal(sample_content)},
+        const npc_header = try makePackagedAnimatedTextBlock(
+            allocator,
             spritesheet,
-            dialog_text_scale,
-        ).getDimensionsInPixels();
-
-        var minimum_size_widget = try allocator.create(ui.Widget);
-        errdefer allocator.destroy(minimum_size_widget);
-        minimum_size_widget.* = .{ .minimum_size = ui.MinimumSize.wrap(
-            animated_text_block.getWidgetPointer(),
-            minimum.width,
-            minimum.height,
-        ) };
-
+            npc_name,
+            message_text,
+            sample_content,
+        );
         return .{
-            .reformatted_segments = reformatted_segments,
-            .animated_text_block = animated_text_block,
-            .minimum_size_widget = minimum_size_widget,
-            .slide_in_animation_box = SlideInAnimationBox.wrap(minimum_size_widget, spritesheet),
+            .reformatted_segments = npc_header.reformatted_segments,
+            .animated_text_block = npc_header.animated_text_block,
+            .minimum_size_widget = npc_header.minimum_size_widget,
+            .slide_in_animation_box = SlideInAnimationBox.wrap(
+                npc_header.minimum_size_widget,
+                spritesheet,
+            ),
         };
     }
 
@@ -447,4 +426,55 @@ const AnimationState = struct {
 
 fn scale(value: u16, factor: f32) u16 {
     return @as(u16, @intFromFloat(@as(f32, @floatFromInt(value)) * factor));
+}
+
+const PackagedAnimatedTextBlock = struct {
+    reformatted_segments: []text_rendering.TextSegment,
+    animated_text_block: AnimatedTextBlock,
+    minimum_size_widget: *ui.Widget,
+};
+
+fn makePackagedAnimatedTextBlock(
+    allocator: std.mem.Allocator,
+    /// Returned object will keep a reference to this spritesheet.
+    spritesheet: *const SpriteSheetTexture,
+    npc_name: []const u8,
+    message_text: []const u8,
+    sample_content: []const u8,
+) !PackagedAnimatedTextBlock {
+    const max_line_length = std.mem.indexOfScalar(u8, sample_content, '\n').?;
+
+    const text_block = [_]text_rendering.TextSegment{
+        ui.Highlight.npcName(npc_name),
+        ui.Highlight.normal("\n\n"),
+        ui.Highlight.normal(message_text),
+    };
+
+    var reformatted_segments =
+        try text_rendering.reflowTextBlock(allocator, &text_block, max_line_length);
+    errdefer text_rendering.freeTextSegments(allocator, reformatted_segments);
+
+    var animated_text_block =
+        try AnimatedTextBlock.wrap(allocator, reformatted_segments, spritesheet);
+    errdefer animated_text_block.destroy(allocator);
+
+    const minimum = ui.Text.wrap(
+        &[_]text_rendering.TextSegment{ui.Highlight.normal(sample_content)},
+        spritesheet,
+        dialog_text_scale,
+    ).getDimensionsInPixels();
+
+    var minimum_size_widget = try allocator.create(ui.Widget);
+    errdefer allocator.destroy(minimum_size_widget);
+    minimum_size_widget.* = .{ .minimum_size = ui.MinimumSize.wrap(
+        animated_text_block.getWidgetPointer(),
+        minimum.width,
+        minimum.height,
+    ) };
+
+    return .{
+        .reformatted_segments = reformatted_segments,
+        .animated_text_block = animated_text_block,
+        .minimum_size_widget = minimum_size_widget,
+    };
 }
