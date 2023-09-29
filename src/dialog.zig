@@ -77,8 +77,17 @@ pub const Controller = struct {
     }
 
     pub fn processElapsedTick(self: *Controller) void {
-        for (self.dialog_stack.items) |*dialog| {
-            dialog.processElapsedTick();
+        var index: usize = 0;
+        var dialogs_total = self.dialog_stack.items.len;
+
+        while (index < dialogs_total) {
+            if (!self.dialog_stack.items[index].processElapsedTick()) {
+                self.dialog_stack.items[index].destroy(self.allocator);
+                _ = self.dialog_stack.orderedRemove(index);
+                dialogs_total -= 1;
+            } else {
+                index += 1;
+            }
         }
     }
 
@@ -86,10 +95,9 @@ pub const Controller = struct {
 
     /// Will do nothing if there is no current dialog.
     pub fn sendCommandToCurrentDialog(self: *Controller, command: Command) void {
-        _ = command;
-        if (self.dialog_stack.popOrNull()) |dialog| {
-            var mutable = dialog;
-            mutable.destroy(self.allocator);
+        if (self.hasOpenDialogs()) {
+            self.dialog_stack.items[self.dialog_stack.items.len - 1]
+                .processCommand(command);
         }
     }
 
@@ -107,11 +115,11 @@ pub const Controller = struct {
 const Prompt = struct {
     segments: []text_rendering.TextSegment,
     widgets: []ui.Widget,
+    state: State,
     /// Contains values from 0 to 1.
-    animation_state: struct {
-        at_previous_tick: f32,
-        at_next_tick: f32,
-    },
+    animation_state: struct { at_previous_tick: f32, at_next_tick: f32 },
+
+    const State = enum { opening, open, closing, closed };
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -138,6 +146,7 @@ const Prompt = struct {
         return .{
             .segments = segments,
             .widgets = widgets,
+            .state = .opening,
             .animation_state = .{ .at_previous_tick = 0, .at_next_tick = 0 },
         };
     }
@@ -147,9 +156,26 @@ const Prompt = struct {
         text_rendering.freeTextSegments(allocator, self.segments);
     }
 
-    pub fn processElapsedTick(self: *Prompt) void {
+    // Returns true if this dialog is still needed.
+    pub fn processElapsedTick(self: *Prompt) bool {
         self.animation_state.at_previous_tick = self.animation_state.at_next_tick;
         self.animation_state.at_next_tick = @min(self.animation_state.at_next_tick + 0.2, 1);
+
+        switch (self.state) {
+            .opening => {
+                if (math.isEqual(self.animation_state.at_next_tick, 1)) {
+                    self.setState(.open);
+                }
+            },
+            .closing => {
+                if (math.isEqual(self.animation_state.at_next_tick, 1)) {
+                    self.setState(.closed);
+                }
+            },
+            .open, .closed => {},
+        }
+
+        return self.state != .closed;
     }
 
     pub fn getBillboardCount(self: Prompt) usize {
@@ -169,15 +195,37 @@ const Prompt = struct {
             interval_between_previous_and_current_tick,
         );
 
+        // Value from 0 (closed) to 1 (fully open).
+        const window_open_interval = switch (self.state) {
+            .opening => animation_state,
+            .open => 1,
+            .closing => 1 - animation_state,
+            .closed => 0,
+        };
+
         const dimensions = self.widgets[0].getDimensionsInPixels();
         self.widgets[0].populateBillboardData(
             screen_dimensions.width / 2 - dimensions.width / 2,
             screen_dimensions.height -
                 @as(
                 u16,
-                @intFromFloat(@as(f32, @floatFromInt(dimensions.height)) * animation_state),
+                @intFromFloat(@as(f32, @floatFromInt(dimensions.height)) * window_open_interval),
             ),
             out,
         );
+    }
+
+    pub fn processCommand(self: *Prompt, command: Controller.Command) void {
+        _ = command;
+        switch (self.state) {
+            .open => self.setState(.closing),
+            .opening, .closing, .closed => {},
+        }
+    }
+
+    fn setState(self: *Prompt, new_state: State) void {
+        self.state = new_state;
+        self.animation_state.at_previous_tick = 0;
+        self.animation_state.at_next_tick = 0;
     }
 };
