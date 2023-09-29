@@ -349,7 +349,7 @@ const AnimatedTextBlock = struct {
     }
 
     pub fn processElapsedTick(self: *AnimatedTextBlock) void {
-        const reveal_codepoints_per_tick = 2;
+        const reveal_codepoints_per_tick = 3;
         self.codepoint_progress.processElapsedTick(reveal_codepoints_per_tick);
     }
 
