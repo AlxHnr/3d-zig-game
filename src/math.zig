@@ -16,6 +16,10 @@ pub fn isEqual(a: f32, b: f32) bool {
     return std.math.fabs(a - b) < epsilon;
 }
 
+pub fn scaleU16(value: u16, factor: f32) u16 {
+    return @as(u16, @intFromFloat(@as(f32, @floatFromInt(value)) * factor));
+}
+
 /// Vector on a flat plane with no height information.
 pub const FlatVector = struct {
     x: f32,

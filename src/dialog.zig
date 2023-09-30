@@ -554,7 +554,7 @@ const SlideInAnimationBox = struct {
         const dimensions = self.widget.getDimensionsInPixels();
         self.widget.populateBillboardData(
             screen_dimensions.width / 2 - dimensions.width / 2,
-            screen_dimensions.height - scale(dimensions.height, window_open_interval),
+            screen_dimensions.height - math.scaleU16(dimensions.height, window_open_interval),
             out,
         );
     }
@@ -699,10 +699,6 @@ const AnimationState = struct {
         );
     }
 };
-
-fn scale(value: u16, factor: f32) u16 {
-    return @as(u16, @intFromFloat(@as(f32, @floatFromInt(value)) * factor));
-}
 
 fn wrapNpcDialog(npc_name: []const u8, message_text: []const u8) [3]text_rendering.TextSegment {
     return .{
