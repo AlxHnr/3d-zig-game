@@ -605,7 +605,7 @@ const SlideInAnimationBox = struct {
 const AnimatedTextBlock = struct {
     /// Non-owning slice.
     original_segments: []const text_rendering.TextSegment,
-    segments_in_current_frame: []text_rendering.TextSegment,
+    segments_to_render: []text_rendering.TextSegment,
     spritesheet: *const SpriteSheetTexture,
     codepoint_progress: AnimationState,
     widget: *ui.Widget,
@@ -624,7 +624,7 @@ const AnimatedTextBlock = struct {
 
         return .{
             .original_segments = segments,
-            .segments_in_current_frame = &.{},
+            .segments_to_render = &.{},
             .spritesheet = spritesheet,
             .codepoint_progress = AnimationState.create(
                 0,
@@ -636,7 +636,7 @@ const AnimatedTextBlock = struct {
 
     pub fn destroy(self: *AnimatedTextBlock, allocator: std.mem.Allocator) void {
         allocator.destroy(self.widget);
-        text_rendering.freeTextSegments(allocator, self.segments_in_current_frame);
+        text_rendering.freeTextSegments(allocator, self.segments_to_render);
     }
 
     /// Returned widget will be invalidated when destroy() is being called on the given text block.
@@ -662,18 +662,18 @@ const AnimatedTextBlock = struct {
             self.codepoint_progress.getInterval(interval_between_previous_and_current_tick),
         ));
 
-        const segments_in_current_frame = try text_rendering.truncateTextSegments(
+        const segments_to_render = try text_rendering.truncateTextSegments(
             allocator,
             self.original_segments,
             codepoints_to_reveal,
         );
-        errdefer text_rendering.freeTextSegments(allocator, segments_in_current_frame);
+        errdefer text_rendering.freeTextSegments(allocator, segments_to_render);
 
         self.widget.* = .{
-            .text = ui.Text.wrap(segments_in_current_frame, self.spritesheet, dialog_text_scale),
+            .text = ui.Text.wrap(segments_to_render, self.spritesheet, dialog_text_scale),
         };
-        text_rendering.freeTextSegments(allocator, self.segments_in_current_frame);
-        self.segments_in_current_frame = segments_in_current_frame;
+        text_rendering.freeTextSegments(allocator, self.segments_to_render);
+        self.segments_to_render = segments_to_render;
     }
 
     pub fn getBillboardCount(self: AnimatedTextBlock) usize {
