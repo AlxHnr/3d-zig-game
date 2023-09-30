@@ -1,9 +1,10 @@
 //! Helpers for loading all known textures.
 
-const std = @import("std");
-const gl = @import("gl");
 const Error = @import("error.zig").Error;
+const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const gl = @import("gl");
 const sdl = @import("sdl.zig");
+const std = @import("std");
 
 /// Array of tileable/wrapping textures.
 pub const TileableArrayTexture = struct {
@@ -171,11 +172,12 @@ pub const SpriteSheetTexture = struct {
         return sprite_texcoord_map.get(sprite_id);
     }
 
-    pub const PixelDimensions = struct { w: u16, h: u16 };
-
-    pub fn getSpriteDimensionsInPixels(_: SpriteSheetTexture, sprite_id: SpriteId) PixelDimensions {
+    pub fn getSpriteDimensionsInPixels(
+        _: SpriteSheetTexture,
+        sprite_id: SpriteId,
+    ) ScreenDimensions {
         const source = sprite_source_pixel_map[@intFromEnum(sprite_id)];
-        return .{ .w = source.w, .h = source.h };
+        return .{ .width = source.w, .height = source.h };
     }
 
     /// Returns the aspect ratio (height / width) of the specified sprite.

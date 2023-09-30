@@ -109,10 +109,8 @@ pub const Text = struct {
 };
 
 pub const Sprite = struct {
-    sprite_texcoords: SpriteSheetTexture.TextureCoordinates,
-    sprite_on_screen_dimensions: struct { w: f32, h: f32 },
-    /// Has to be applied twice, both for left/right and top/bottom.
-    sprite_on_screen_spacing: struct { horizontal: f32, vertical: f32 },
+    texcoords: SpriteSheetTexture.TextureCoordinates,
+    dimensions: ScreenDimensions,
 
     pub fn create(
         sprite: SpriteSheetTexture.SpriteId,
@@ -122,26 +120,16 @@ pub const Sprite = struct {
     ) Sprite {
         const dimensions = spritesheet.getSpriteDimensionsInPixels(sprite);
         return .{
-            .sprite_texcoords = spritesheet.getSpriteTexcoords(sprite),
-            .sprite_on_screen_dimensions = .{
-                .w = @as(f32, @floatFromInt(dimensions.w * sprite_scale)),
-                .h = @as(f32, @floatFromInt(dimensions.h * sprite_scale)),
-            },
-            .sprite_on_screen_spacing = .{
-                // 2 Has been picked by trial and error to improve padding.
-                .horizontal = 2 * @as(f32, @floatFromInt(sprite_scale)),
-                .vertical = 2 * @as(f32, @floatFromInt(sprite_scale)),
+            .texcoords = spritesheet.getSpriteTexcoords(sprite),
+            .dimensions = .{
+                .width = dimensions.width * sprite_scale,
+                .height = dimensions.height * sprite_scale,
             },
         };
     }
 
     pub fn getDimensionsInPixels(self: Sprite) ScreenDimensions {
-        return .{
-            .width = @as(u16, @intFromFloat(self.sprite_on_screen_dimensions.w +
-                self.sprite_on_screen_spacing.horizontal * 2)),
-            .height = @as(u16, @intFromFloat(self.sprite_on_screen_dimensions.h +
-                self.sprite_on_screen_spacing.vertical * 2)),
-        };
+        return self.dimensions;
     }
 
     pub fn getBillboardCount(_: Sprite) usize {
@@ -156,22 +144,21 @@ pub const Sprite = struct {
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardData,
     ) void {
-        const sprite_dimensions = self.getDimensionsInPixels();
         out[0] = .{
             .position = .{
-                .x = @as(f32, @floatFromInt(screen_position_x + sprite_dimensions.width / 2)),
-                .y = @as(f32, @floatFromInt(screen_position_y + sprite_dimensions.height / 2)),
+                .x = @as(f32, @floatFromInt(screen_position_x + self.dimensions.width / 2)),
+                .y = @as(f32, @floatFromInt(screen_position_y + self.dimensions.height / 2)),
                 .z = 0,
             },
             .size = .{
-                .w = self.sprite_on_screen_dimensions.w,
-                .h = self.sprite_on_screen_dimensions.h,
+                .w = @as(f32, @floatFromInt(self.dimensions.width)),
+                .h = @as(f32, @floatFromInt(self.dimensions.height)),
             },
             .source_rect = .{
-                .x = self.sprite_texcoords.x,
-                .y = self.sprite_texcoords.y,
-                .w = self.sprite_texcoords.w,
-                .h = self.sprite_texcoords.h,
+                .x = self.texcoords.x,
+                .y = self.texcoords.y,
+                .w = self.texcoords.w,
+                .h = self.texcoords.h,
             },
         };
     }
@@ -371,8 +358,8 @@ pub const Box = struct {
             .wrapped_widget = widget_to_wrap,
             .spritesheet = spritesheet,
             .scaled_sprite = .{
-                .width = @as(f32, @floatFromInt(dimensions.w)) * dialog_sprite_scale,
-                .height = @as(f32, @floatFromInt(dimensions.h)) * dialog_sprite_scale,
+                .width = @as(f32, @floatFromInt(dimensions.width)) * dialog_sprite_scale,
+                .height = @as(f32, @floatFromInt(dimensions.height)) * dialog_sprite_scale,
             },
         };
     }
