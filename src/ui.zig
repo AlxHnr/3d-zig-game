@@ -362,7 +362,7 @@ pub const Box = struct {
     scaled_sprite: struct { width: f32, height: f32 },
 
     const dialog_sprite_count = 9;
-    const dialog_sprite_scale = 4;
+    const dialog_sprite_scale = 2;
 
     /// Returned object will keep a reference to the given pointers.
     pub fn wrap(widget_to_wrap: *const Widget, spritesheet: *const SpriteSheetTexture) Box {

@@ -294,7 +294,7 @@ const ChoiceBox = struct {
     /// Non-owning wrapper.
     spritesheet: *const SpriteSheetTexture,
 
-    const sample_selection = "| Fits into Prompt.sample_content |";
+    const sample_selection = "| Fits into Prompt.sample_content  |";
 
     pub fn create(
         allocator: std.mem.Allocator,
