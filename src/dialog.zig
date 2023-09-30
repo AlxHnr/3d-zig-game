@@ -303,27 +303,25 @@ const ChoiceBox = struct {
         message_text: []const u8,
         choice_texts: []const []const u8,
     ) !ChoiceBox {
-        var text_blocks: []PackagedAnimatedTextBlock = &.{};
+        var text_blocks = try createBoxHeaders(allocator, spritesheet, npc_name, message_text);
         errdefer freeAllTextBlocks(allocator, text_blocks);
 
-        {
-            var first_line_iterator = std.mem.tokenizeAny(u8, Prompt.sample_content, "\n");
-            var npc_header = try makePackagedAnimatedTextBlock(
-                allocator,
-                spritesheet,
-                &wrapNpcDialog(npc_name, message_text),
-                // Align only based on first line.
-                first_line_iterator.next().?,
-            );
-            errdefer freePackagedAnimatedTextBlock(allocator, &npc_header);
-
-            text_blocks = try appendTextBlock(allocator, text_blocks, npc_header);
-        }
-
         for (choice_texts) |choice_text| {
-            text_blocks = try appendChoiceText(allocator, text_blocks, choice_text, spritesheet);
+            text_blocks = try appendChoiceText(
+                allocator,
+                text_blocks,
+                choice_text,
+                spritesheet,
+                ui.Highlight.selectableChoice,
+            );
         }
-        text_blocks = try appendChoiceText(allocator, text_blocks, "Cancel", spritesheet);
+        text_blocks = try appendChoiceText(
+            allocator,
+            text_blocks,
+            "Cancel",
+            spritesheet,
+            ui.Highlight.cancelChoice,
+        );
 
         var widget_list = try allocator.alloc(ui.Widget, text_blocks.len);
         errdefer allocator.free(widget_list);
@@ -415,7 +413,7 @@ const ChoiceBox = struct {
                 );
             },
             .previous => {
-                if (self.active_widget_index > 1) { // First block is the NPC header.
+                if (self.active_widget_index > 2) { // First two blocks are dialog.
                     self.active_widget_index -= 1;
                 }
                 putBoxAroundSelection(
@@ -426,6 +424,37 @@ const ChoiceBox = struct {
                 );
             },
         }
+    }
+
+    fn createBoxHeaders(
+        allocator: std.mem.Allocator,
+        spritesheet: *const SpriteSheetTexture,
+        npc_name: []const u8,
+        message_text: []const u8,
+    ) ![]PackagedAnimatedTextBlock {
+        var result: []PackagedAnimatedTextBlock = &.{};
+        errdefer freeAllTextBlocks(allocator, result);
+
+        const separator = "--------------------------------------";
+        var first_line_iterator = std.mem.tokenizeAny(u8, Prompt.sample_content, "\n");
+        std.debug.assert(separator.len == first_line_iterator.next().?.len);
+
+        const box_headers = [_][]const text_rendering.TextSegment{
+            &wrapNpcDialog(npc_name, message_text),
+            &.{ui.Highlight.separatorLine(separator)},
+        };
+        for (box_headers) |box_header| {
+            var npc_header = try makePackagedAnimatedTextBlock(
+                allocator,
+                spritesheet,
+                box_header,
+                separator,
+            );
+            errdefer freePackagedAnimatedTextBlock(allocator, &npc_header);
+
+            result = try appendTextBlock(allocator, result, npc_header);
+        }
+        return result;
     }
 
     fn appendTextBlock(
@@ -443,11 +472,12 @@ const ChoiceBox = struct {
         text_blocks: []PackagedAnimatedTextBlock,
         choice_text: []const u8,
         spritesheet: *const SpriteSheetTexture,
+        highlight_function: *const fn (text: []const u8) text_rendering.TextSegment,
     ) ![]PackagedAnimatedTextBlock {
         var text_block = try makePackagedAnimatedTextBlock(
             allocator,
             spritesheet,
-            &.{ui.Highlight.selectableChoice(choice_text)},
+            &.{highlight_function(choice_text)},
             sample_selection,
         );
         errdefer freePackagedAnimatedTextBlock(allocator, &text_block);
@@ -472,8 +502,8 @@ const ChoiceBox = struct {
     ) void {
         for (text_blocks, 0..) |_, index| {
             const wrapper_box = ui.Box.wrap(text_blocks[index].minimum_size_widget, spritesheet);
-            if (index == 0) {
-                // Preserve NPC dialog header.
+            if (index < 2) {
+                // Preserve fixed dialogs.
                 out_text_block_wrapper_list[index] = text_blocks[index].minimum_size_widget.*;
             } else if (index == selection_index) {
                 out_text_block_wrapper_list[index] = .{ .box = wrapper_box };

@@ -14,7 +14,13 @@ pub const Highlight = struct {
         return .{ .color = Color.fromRgb8(114, 173, 206), .text = text };
     }
     pub fn selectableChoice(text: []const u8) text_rendering.TextSegment {
-        return .{ .color = Color.fromRgb8(193, 193, 100), .text = text };
+        return .{ .color = Color.fromRgb8(193, 193, 130), .text = text };
+    }
+    pub fn cancelChoice(text: []const u8) text_rendering.TextSegment {
+        return .{ .color = Color.fromRgb8(193, 100, 174), .text = text };
+    }
+    pub fn separatorLine(text: []const u8) text_rendering.TextSegment {
+        return .{ .color = Color.fromRgb8(85, 85, 85), .text = text };
     }
 };
 
