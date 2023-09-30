@@ -172,9 +172,7 @@ const Dialog = union(enum) {
 };
 
 const Prompt = struct {
-    reformatted_segments: []text_rendering.TextSegment,
-    animated_text_block: AnimatedTextBlock,
-    minimum_size_widget: *ui.Widget,
+    text_block: PackagedAnimatedTextBlock,
     slide_in_animation_box: SlideInAnimationBox,
 
     pub const sample_content =
@@ -194,31 +192,27 @@ const Prompt = struct {
         npc_name: []const u8,
         message_text: []const u8,
     ) !Prompt {
-        const text_block = wrapNpcHeader(npc_name, message_text);
-        const npc_header =
-            try makePackagedAnimatedTextBlock(allocator, spritesheet, &text_block, sample_content);
+        const npc_header = wrapNpcDialog(npc_name, message_text);
+        const text_block =
+            try makePackagedAnimatedTextBlock(allocator, spritesheet, &npc_header, sample_content);
         return .{
-            .reformatted_segments = npc_header.reformatted_segments,
-            .animated_text_block = npc_header.animated_text_block,
-            .minimum_size_widget = npc_header.minimum_size_widget,
+            .text_block = text_block,
             .slide_in_animation_box = SlideInAnimationBox.wrap(
-                npc_header.minimum_size_widget,
+                text_block.minimum_size_widget,
                 spritesheet,
             ),
         };
     }
 
     pub fn destroy(self: *Prompt, allocator: std.mem.Allocator) void {
-        allocator.destroy(self.minimum_size_widget);
-        self.animated_text_block.destroy(allocator);
-        text_rendering.freeTextSegments(allocator, self.reformatted_segments);
+        freePackagedAnimatedTextBlock(allocator, &self.text_block);
     }
 
     // Returns true if this dialog is still needed.
     pub fn processElapsedTick(self: *Prompt) bool {
         self.slide_in_animation_box.processElapsedTick();
         if (!self.slide_in_animation_box.isStillOpening()) {
-            self.animated_text_block.processElapsedTick();
+            self.text_block.animated_text_block.processElapsedTick();
         }
 
         return !self.slide_in_animation_box.hasClosed();
@@ -229,7 +223,7 @@ const Prompt = struct {
         allocator: std.mem.Allocator,
         interval_between_previous_and_current_tick: f32,
     ) !void {
-        try self.animated_text_block.prepareRender(
+        try self.text_block.animated_text_block.prepareRender(
             allocator,
             interval_between_previous_and_current_tick,
         );
@@ -255,7 +249,7 @@ const Prompt = struct {
 
     pub fn processCommand(self: *Prompt, command: Controller.Command) void {
         _ = command;
-        if (self.animated_text_block.hasFinished()) {
+        if (self.text_block.animated_text_block.hasFinished()) {
             self.slide_in_animation_box.startClosingIfOpen();
         }
     }
@@ -482,7 +476,7 @@ fn scale(value: u16, factor: f32) u16 {
     return @as(u16, @intFromFloat(@as(f32, @floatFromInt(value)) * factor));
 }
 
-fn wrapNpcHeader(npc_name: []const u8, message_text: []const u8) [3]text_rendering.TextSegment {
+fn wrapNpcDialog(npc_name: []const u8, message_text: []const u8) [3]text_rendering.TextSegment {
     return .{
         ui.Highlight.npcName(npc_name),
         ui.Highlight.normal("\n\n"),
@@ -532,4 +526,13 @@ fn makePackagedAnimatedTextBlock(
         .animated_text_block = animated_text_block,
         .minimum_size_widget = minimum_size_widget,
     };
+}
+
+fn freePackagedAnimatedTextBlock(
+    allocator: std.mem.Allocator,
+    text_block: *PackagedAnimatedTextBlock,
+) void {
+    allocator.destroy(text_block.minimum_size_widget);
+    text_block.animated_text_block.destroy(allocator);
+    text_rendering.freeTextSegments(allocator, text_block.reformatted_segments);
 }
