@@ -224,35 +224,20 @@ pub const Split = struct {
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []BillboardData,
     ) void {
-        const total_dimensions = self.getDimensionsInPixels();
         var start: usize = 0;
         var end: usize = 0;
         var screen_x = screen_position_x;
         var screen_y = screen_position_y;
 
         for (self.wrapped_widgets) |widget| {
-            const dimensions = widget.getDimensionsInPixels();
-
             start = end;
             end += widget.getBillboardCount();
+            widget.populateBillboardData(screen_x, screen_y, out[start..end]);
 
+            const dimensions = widget.getDimensionsInPixels();
             switch (self.split_type) {
-                .horizontal => {
-                    widget.populateBillboardData(
-                        screen_x + total_dimensions.width / 2 - dimensions.width / 2,
-                        screen_y,
-                        out[start..end],
-                    );
-                    screen_y += dimensions.height;
-                },
-                .vertical => {
-                    widget.populateBillboardData(
-                        screen_x,
-                        screen_y + total_dimensions.height / 2 - dimensions.height / 2,
-                        out[start..end],
-                    );
-                    screen_x += dimensions.width;
-                },
+                .horizontal => screen_y += dimensions.height,
+                .vertical => screen_x += dimensions.width,
             }
         }
     }
