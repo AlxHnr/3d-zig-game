@@ -111,11 +111,29 @@ pub const Controller = struct {
         errdefer prompt.destroy(self.allocator);
         try self.dialog_stack.append(.{ .prompt = prompt });
     }
+
+    pub fn openNpcChoiceBox(
+        self: *Controller,
+        npc_name: []const u8,
+        message_text: []const u8,
+        choice_texts: []const []const u8,
+    ) !void {
+        var choice_box = try ChoiceBox.create(
+            self.allocator,
+            self.spritesheet,
+            npc_name,
+            message_text,
+            choice_texts,
+        );
+        errdefer choice_box.destroy(self.allocator);
+        try self.dialog_stack.append(.{ .choice_box = choice_box });
+    }
 };
 
 /// Polymorphic dispatcher serving as an interface.
 const Dialog = union(enum) {
     prompt: Prompt,
+    choice_box: ChoiceBox,
 
     pub fn destroy(self: *Dialog, allocator: std.mem.Allocator) void {
         return switch (self.*) {
@@ -251,6 +269,184 @@ const Prompt = struct {
         _ = command;
         if (self.text_block.animated_text_block.hasFinished()) {
             self.slide_in_animation_box.startClosingIfOpen();
+        }
+    }
+};
+
+const ChoiceBox = struct {
+    /// Contains the npc dialog header at index 0 and all the choice text blocks after it, in order.
+    text_blocks: []PackagedAnimatedTextBlock,
+    /// Wrapper around the content in `text_blocks`. Each block in `text_block` will be wrapped in
+    /// either in a ui.Box when currently selected, or contain a copy of the Raw underlying
+    /// ui.MinimumSize widget when not selected.
+    widget_list: []ui.Widget,
+    /// Wrapper around `widget_list`.
+    split_widget: *ui.Widget,
+    /// Wrapper around `split_widget`.
+    slide_in_animation_box: SlideInAnimationBox,
+
+    active_widget_index: usize,
+
+    const sample_selection = "| Fits into Prompt.sample_content  |";
+
+    pub fn create(
+        allocator: std.mem.Allocator,
+        /// Returned object will keep a reference to this spritesheet.
+        spritesheet: *const SpriteSheetTexture,
+        npc_name: []const u8,
+        message_text: []const u8,
+        choice_texts: []const []const u8,
+    ) !ChoiceBox {
+        var text_blocks: []PackagedAnimatedTextBlock = &.{};
+        errdefer freeAllTextBlocks(allocator, text_blocks);
+
+        {
+            var npc_header = try makePackagedAnimatedTextBlock(
+                allocator,
+                spritesheet,
+                &wrapNpcDialog(npc_name, message_text),
+                Prompt.sample_content,
+            );
+            errdefer freePackagedAnimatedTextBlock(allocator, &npc_header);
+
+            text_blocks = try appendTextBlock(allocator, text_blocks, npc_header);
+        }
+
+        for (choice_texts) |choice_text| {
+            text_blocks = try appendChoiceText(allocator, text_blocks, choice_text, spritesheet);
+        }
+        text_blocks = try appendChoiceText(allocator, text_blocks, "Cancel", spritesheet);
+
+        var widget_list = try allocator.alloc(ui.Widget, text_blocks.len);
+        errdefer allocator.free(widget_list);
+
+        const cancel_choice_index = text_blocks.len - 1;
+        putBoxAroundSelection(text_blocks, cancel_choice_index, spritesheet, widget_list);
+
+        var split_widget = try allocator.create(ui.Widget);
+        errdefer allocator.destroy(split_widget);
+        split_widget.* = .{ .split = ui.Split.wrap(.horizontal, widget_list) };
+
+        return .{
+            .text_blocks = text_blocks,
+            .widget_list = widget_list,
+            .split_widget = split_widget,
+            .slide_in_animation_box = SlideInAnimationBox.wrap(split_widget, spritesheet),
+            .active_widget_index = cancel_choice_index,
+        };
+    }
+
+    pub fn destroy(self: *ChoiceBox, allocator: std.mem.Allocator) void {
+        allocator.destroy(self.split_widget);
+        allocator.free(self.widget_list);
+        freeAllTextBlocks(allocator, self.text_blocks[0..]);
+    }
+
+    // Returns true if this dialog is still needed.
+    pub fn processElapsedTick(self: *ChoiceBox) bool {
+        self.slide_in_animation_box.processElapsedTick();
+        if (!self.slide_in_animation_box.isStillOpening()) {
+            for (self.text_blocks) |*text_block| {
+                text_block.animated_text_block.processElapsedTick();
+            }
+        }
+
+        return !self.slide_in_animation_box.hasClosed();
+    }
+
+    pub fn prepareRender(
+        self: *ChoiceBox,
+        allocator: std.mem.Allocator,
+        interval_between_previous_and_current_tick: f32,
+    ) !void {
+        for (self.text_blocks) |*text_block| {
+            try text_block.animated_text_block.prepareRender(
+                allocator,
+                interval_between_previous_and_current_tick,
+            );
+        }
+    }
+
+    pub fn getBillboardCount(self: ChoiceBox) usize {
+        return self.slide_in_animation_box.getBillboardCount();
+    }
+
+    pub fn populateBillboardData(
+        self: ChoiceBox,
+        screen_dimensions: util.ScreenDimensions,
+        interval_between_previous_and_current_tick: f32,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardRenderer.BillboardData,
+    ) void {
+        self.slide_in_animation_box.populateBillboardData(
+            screen_dimensions,
+            interval_between_previous_and_current_tick,
+            out,
+        );
+    }
+
+    pub fn processCommand(self: *ChoiceBox, command: Controller.Command) void {
+        _ = command;
+
+        for (self.text_blocks) |text_block| {
+            if (!text_block.animated_text_block.hasFinished()) {
+                return;
+            }
+        }
+
+        self.slide_in_animation_box.startClosingIfOpen();
+    }
+
+    fn appendTextBlock(
+        allocator: std.mem.Allocator,
+        text_blocks: []PackagedAnimatedTextBlock,
+        text_block: PackagedAnimatedTextBlock,
+    ) ![]PackagedAnimatedTextBlock {
+        var result = try allocator.realloc(text_blocks, text_blocks.len + 1);
+        result[result.len - 1] = text_block;
+        return result;
+    }
+
+    fn appendChoiceText(
+        allocator: std.mem.Allocator,
+        text_blocks: []PackagedAnimatedTextBlock,
+        choice_text: []const u8,
+        spritesheet: *const SpriteSheetTexture,
+    ) ![]PackagedAnimatedTextBlock {
+        var text_block = try makePackagedAnimatedTextBlock(
+            allocator,
+            spritesheet,
+            &.{ui.Highlight.normal(choice_text)},
+            sample_selection,
+        );
+        errdefer freePackagedAnimatedTextBlock(allocator, &text_block);
+        return try appendTextBlock(allocator, text_blocks, text_block);
+    }
+
+    fn freeAllTextBlocks(
+        allocator: std.mem.Allocator,
+        text_blocks: []PackagedAnimatedTextBlock,
+    ) void {
+        for (text_blocks) |*text_block| {
+            freePackagedAnimatedTextBlock(allocator, text_block);
+        }
+        allocator.free(text_blocks);
+    }
+
+    fn putBoxAroundSelection(
+        text_blocks: []const PackagedAnimatedTextBlock,
+        selection_index: usize,
+        spritesheet: *const SpriteSheetTexture,
+        out_text_block_wrapper_list: []ui.Widget,
+    ) void {
+        for (text_blocks, 0..) |_, index| {
+            if (index == selection_index) {
+                out_text_block_wrapper_list[index] = .{
+                    .box = ui.Box.wrap(text_blocks[index].minimum_size_widget, spritesheet),
+                };
+            } else {
+                out_text_block_wrapper_list[index] = text_blocks[index].minimum_size_widget.*;
+            }
         }
     }
 };
@@ -497,7 +693,8 @@ fn makePackagedAnimatedTextBlock(
     text_block: []const text_rendering.TextSegment,
     sample_content: []const u8,
 ) !PackagedAnimatedTextBlock {
-    const max_line_length = std.mem.indexOfScalar(u8, sample_content, '\n').?;
+    const max_line_length =
+        std.mem.indexOfScalar(u8, sample_content, '\n') orelse sample_content.len;
 
     var reformatted_segments =
         try text_rendering.reflowTextBlock(allocator, text_block, max_line_length);
