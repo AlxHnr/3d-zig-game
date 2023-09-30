@@ -120,6 +120,8 @@ pub const Context = struct {
         switch (button) {
             .cancel => self.dialog_controller.sendCommandToCurrentDialog(.cancel),
             .confirm => self.dialog_controller.sendCommandToCurrentDialog(.confirm),
+            .forwards => self.dialog_controller.sendCommandToCurrentDialog(.previous),
+            .backwards => self.dialog_controller.sendCommandToCurrentDialog(.next),
             else => {},
         }
     }

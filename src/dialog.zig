@@ -92,7 +92,7 @@ pub const Controller = struct {
         }
     }
 
-    pub const Command = enum { cancel, confirm };
+    pub const Command = enum { cancel, confirm, next, previous };
 
     /// Will do nothing if there is no current dialog.
     pub fn sendCommandToCurrentDialog(self: *Controller, command: Command) void {
@@ -287,6 +287,9 @@ const ChoiceBox = struct {
 
     active_widget_index: usize,
 
+    /// Non-owning wrapper.
+    spritesheet: *const SpriteSheetTexture,
+
     const sample_selection = "| Fits into Prompt.sample_content  |";
 
     pub fn create(
@@ -333,6 +336,7 @@ const ChoiceBox = struct {
             .split_widget = split_widget,
             .slide_in_animation_box = SlideInAnimationBox.wrap(split_widget, spritesheet),
             .active_widget_index = cancel_choice_index,
+            .spritesheet = spritesheet,
         };
     }
 
@@ -386,15 +390,37 @@ const ChoiceBox = struct {
     }
 
     pub fn processCommand(self: *ChoiceBox, command: Controller.Command) void {
-        _ = command;
-
         for (self.text_blocks) |text_block| {
             if (!text_block.animated_text_block.hasFinished()) {
                 return;
             }
         }
 
-        self.slide_in_animation_box.startClosingIfOpen();
+        switch (command) {
+            .cancel, .confirm => self.slide_in_animation_box.startClosingIfOpen(),
+            .next => {
+                if (self.active_widget_index < self.text_blocks.len - 1) {
+                    self.active_widget_index += 1;
+                }
+                putBoxAroundSelection(
+                    self.text_blocks,
+                    self.active_widget_index,
+                    self.spritesheet,
+                    self.widget_list,
+                );
+            },
+            .previous => {
+                if (self.active_widget_index > 1) { // First block is the NPC header.
+                    self.active_widget_index -= 1;
+                }
+                putBoxAroundSelection(
+                    self.text_blocks,
+                    self.active_widget_index,
+                    self.spritesheet,
+                    self.widget_list,
+                );
+            },
+        }
     }
 
     fn appendTextBlock(
