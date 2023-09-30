@@ -266,10 +266,14 @@ const Prompt = struct {
     }
 
     pub fn processCommand(self: *Prompt, command: Controller.Command) void {
-        _ = command;
-        if (self.text_block.animated_text_block.hasFinished()) {
-            self.slide_in_animation_box.startClosingIfOpen();
+        if (command != .cancel and command != .confirm) {
+            return;
         }
+        if (!self.text_block.animated_text_block.hasFinished()) {
+            return;
+        }
+
+        self.slide_in_animation_box.startClosingIfOpen();
     }
 };
 
