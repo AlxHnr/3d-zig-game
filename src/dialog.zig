@@ -308,11 +308,13 @@ const ChoiceBox = struct {
         errdefer freeAllTextBlocks(allocator, text_blocks);
 
         {
+            var first_line_iterator = std.mem.tokenizeAny(u8, Prompt.sample_content, "\n");
             var npc_header = try makePackagedAnimatedTextBlock(
                 allocator,
                 spritesheet,
                 &wrapNpcDialog(npc_name, message_text),
-                Prompt.sample_content,
+                // Align only based on first line.
+                first_line_iterator.next().?,
             );
             errdefer freePackagedAnimatedTextBlock(allocator, &npc_header);
 
