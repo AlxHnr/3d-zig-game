@@ -546,12 +546,12 @@ const AnimatedTextBlock = struct {
         var widget = try allocator.create(ui.Widget);
         errdefer allocator.destroy(widget);
         widget.* = .{
-            .text = ui.Text.wrap(&[_]text_rendering.TextSegment{}, spritesheet, dialog_text_scale),
+            .text = ui.Text.wrap(&.{}, spritesheet, dialog_text_scale),
         };
 
         return .{
             .original_segments = segments,
-            .segments_in_current_frame = &[_]text_rendering.TextSegment{},
+            .segments_in_current_frame = &.{},
             .spritesheet = spritesheet,
             .codepoint_progress = AnimationState.create(
                 0,
@@ -705,7 +705,7 @@ fn makePackagedAnimatedTextBlock(
     errdefer animated_text_block.destroy(allocator);
 
     const minimum = ui.Text.wrap(
-        &[_]text_rendering.TextSegment{ui.Highlight.normal(sample_content)},
+        &.{ui.Highlight.normal(sample_content)},
         spritesheet,
         dialog_text_scale,
     ).getDimensionsInPixels();
