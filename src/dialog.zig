@@ -281,8 +281,7 @@ const ChoiceBox = struct {
     /// Contains the npc dialog header at index 0 and all the choice text blocks after it, in order.
     text_blocks: []PackagedAnimatedTextBlock,
     /// Wrapper around the content in `text_blocks`. Each block in `text_block` will be wrapped in
-    /// either in a ui.Box when currently selected, or contain a copy of the Raw underlying
-    /// ui.MinimumSize widget when not selected.
+    /// either in a ui.Box when currently selected, or in a ui.Spacing wrapper when not selected.
     widget_list: []ui.Widget,
     /// Wrapper around `widget_list`.
     split_widget: *ui.Widget,
@@ -472,12 +471,21 @@ const ChoiceBox = struct {
         out_text_block_wrapper_list: []ui.Widget,
     ) void {
         for (text_blocks, 0..) |_, index| {
-            if (index == selection_index) {
-                out_text_block_wrapper_list[index] = .{
-                    .box = ui.Box.wrap(text_blocks[index].minimum_size_widget, spritesheet),
-                };
-            } else {
+            const wrapper_box = ui.Box.wrap(text_blocks[index].minimum_size_widget, spritesheet);
+            if (index == 0) {
+                // Preserve NPC dialog header.
                 out_text_block_wrapper_list[index] = text_blocks[index].minimum_size_widget.*;
+            } else if (index == selection_index) {
+                out_text_block_wrapper_list[index] = .{ .box = wrapper_box };
+            } else {
+                const box_frame_dimensions = wrapper_box.getFrameDimensionsWithoutContent();
+                out_text_block_wrapper_list[index] = .{
+                    .spacing = ui.Spacing.wrapFixedPixels(
+                        text_blocks[index].minimum_size_widget,
+                        box_frame_dimensions.width / 2,
+                        box_frame_dimensions.height / 2,
+                    ),
+                };
             }
         }
     }
