@@ -323,9 +323,18 @@ pub const Box = struct {
 
     pub fn getDimensionsInPixels(self: Box) ScreenDimensions {
         const content = self.wrapped_widget.getDimensionsInPixels();
+        const frame_dimensions = self.getFrameDimensionsWithoutContent();
         return .{
-            .width = @as(u16, @intFromFloat(self.scaled_sprite.width)) * 2 + content.width,
-            .height = @as(u16, @intFromFloat(self.scaled_sprite.height)) * 2 + content.height,
+            .width = content.width + frame_dimensions.width,
+            .height = content.height + frame_dimensions.height,
+        };
+    }
+
+    /// Get the boxes frame size in pixels.
+    pub fn getFrameDimensionsWithoutContent(self: Box) ScreenDimensions {
+        return .{
+            .width = @as(u16, @intFromFloat(self.scaled_sprite.width)) * 2,
+            .height = @as(u16, @intFromFloat(self.scaled_sprite.height)) * 2,
         };
     }
 
