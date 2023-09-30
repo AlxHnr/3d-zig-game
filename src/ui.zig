@@ -3,6 +3,7 @@ const Color = @import("util.zig").Color;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const text_rendering = @import("text_rendering.zig");
+const math = @import("math.zig");
 
 pub const Highlight = struct {
     pub fn normal(text: []const u8) text_rendering.TextSegment {
@@ -17,6 +18,7 @@ pub const Highlight = struct {
 pub const Widget = union(enum) {
     box: Box,
     minimum_size: MinimumSize,
+    spacing: Spacing,
     split: Split,
     sprite: Sprite,
     text: Text,
@@ -294,6 +296,75 @@ pub const MinimumSize = struct {
         out: []BillboardData,
     ) void {
         self.wrapped_widget.populateBillboardData(screen_position_x, screen_position_y, out);
+    }
+};
+
+/// Container for adding horizontal and vertical spacing around other widgets.
+pub const Spacing = struct {
+    /// Non-owning pointer.
+    wrapped_widget: *const Widget,
+    /// {25, 0} means adding 25 pixels to both the left and the right of the wrapped widget.
+    fixed_pixels: struct { horizontal: u16, vertical: u16 },
+    /// Values based on the size of the wrapped widget, where {0.5, 0.5} means adding half of
+    /// the wrapped_widget's size both to the left and the right plus the top and bottom.
+    percentual: struct { horizontal: f32, vertical: f32 },
+
+    /// Returned object will keep a reference to the given widget. A horizontal value of 0.5 means
+    /// adding half of the wrapped widgets width to both the left and the right of it.
+    pub fn wrapPercentual(widget_to_wrap: *const Widget, horizontal: f32, vertical: f32) Spacing {
+        return .{
+            .wrapped_widget = widget_to_wrap,
+            .fixed_pixels = .{ .horizontal = 0, .vertical = 0 },
+            .percentual = .{ .horizontal = horizontal, .vertical = vertical },
+        };
+    }
+
+    /// Returned object will keep a reference to the given widget. Each of the given spacings is
+    /// specified in screen pixels and will be applied twice:
+    ///   * horizontal => both to the left and the right
+    ///   * vertical => both to the top and the bottom
+    pub fn wrapFixedPixels(widget_to_wrap: *const Widget, horizontal: u16, vertical: u16) Spacing {
+        return .{
+            .wrapped_widget = widget_to_wrap,
+            .fixed_pixels = .{ .horizontal = horizontal, .vertical = vertical },
+            .percentual = .{ .horizontal = 0, .vertical = 0 },
+        };
+    }
+
+    pub fn getDimensionsInPixels(self: Spacing) ScreenDimensions {
+        const content = self.wrapped_widget.getDimensionsInPixels();
+        return .{
+            .width = math.scaleU16(content.width, self.percentual.horizontal * 2 + 1) +
+                self.fixed_pixels.horizontal * 2,
+            .height = math.scaleU16(content.height, self.percentual.vertical * 2 + 1) +
+                self.fixed_pixels.vertical * 2,
+        };
+    }
+
+    pub fn getBillboardCount(self: Spacing) usize {
+        return self.wrapped_widget.getBillboardCount();
+    }
+
+    pub fn populateBillboardData(
+        self: Spacing,
+        /// Top left corner.
+        screen_position_x: u16,
+        screen_position_y: u16,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardData,
+    ) void {
+        const content = self.wrapped_widget.getDimensionsInPixels();
+        const offset = .{
+            .x = math.scaleU16(content.width, self.percentual.horizontal) +
+                self.fixed_pixels.horizontal,
+            .y = math.scaleU16(content.height, self.percentual.vertical) +
+                self.fixed_pixels.vertical,
+        };
+        self.wrapped_widget.populateBillboardData(
+            screen_position_x + offset.x,
+            screen_position_y + offset.y,
+            out,
+        );
     }
 };
 
