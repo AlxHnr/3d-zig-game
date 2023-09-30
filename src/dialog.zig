@@ -447,7 +447,7 @@ const ChoiceBox = struct {
         var text_block = try makePackagedAnimatedTextBlock(
             allocator,
             spritesheet,
-            &.{ui.Highlight.normal(choice_text)},
+            &.{ui.Highlight.selectableChoice(choice_text)},
             sample_selection,
         );
         errdefer freePackagedAnimatedTextBlock(allocator, &text_block);

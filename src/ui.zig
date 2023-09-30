@@ -5,12 +5,16 @@ const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const text_rendering = @import("text_rendering.zig");
 const math = @import("math.zig");
 
+/// Highlight groups for text inside ui.Box.
 pub const Highlight = struct {
     pub fn normal(text: []const u8) text_rendering.TextSegment {
         return .{ .color = Color.fromRgb8(193, 193, 193), .text = text };
     }
     pub fn npcName(text: []const u8) text_rendering.TextSegment {
         return .{ .color = Color.fromRgb8(114, 173, 206), .text = text };
+    }
+    pub fn selectableChoice(text: []const u8) text_rendering.TextSegment {
+        return .{ .color = Color.fromRgb8(193, 193, 100), .text = text };
     }
 };
 
