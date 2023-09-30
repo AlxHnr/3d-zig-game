@@ -15,7 +15,7 @@ pub const Controller = struct {
     renderer: BillboardRenderer,
     billboard_buffer: []BillboardRenderer.BillboardData,
     spritesheet: *SpriteSheetTexture,
-    dialog_stack: std.ArrayList(Prompt),
+    dialog_stack: std.ArrayList(Dialog),
 
     pub fn create(allocator: std.mem.Allocator) !Controller {
         var renderer = try BillboardRenderer.create();
@@ -31,7 +31,7 @@ pub const Controller = struct {
             .renderer = renderer,
             .billboard_buffer = &.{},
             .spritesheet = spritesheet,
-            .dialog_stack = std.ArrayList(Prompt).init(allocator),
+            .dialog_stack = std.ArrayList(Dialog).init(allocator),
         };
     }
 
@@ -109,7 +109,65 @@ pub const Controller = struct {
     pub fn openNpcDialog(self: *Controller, npc_name: []const u8, message_text: []const u8) !void {
         var prompt = try Prompt.create(self.allocator, self.spritesheet, npc_name, message_text);
         errdefer prompt.destroy(self.allocator);
-        try self.dialog_stack.append(prompt);
+        try self.dialog_stack.append(.{ .prompt = prompt });
+    }
+};
+
+/// Polymorphic dispatcher serving as an interface.
+const Dialog = union(enum) {
+    prompt: Prompt,
+
+    pub fn destroy(self: *Dialog, allocator: std.mem.Allocator) void {
+        return switch (self.*) {
+            inline else => |*subtype| subtype.destroy(allocator),
+        };
+    }
+
+    pub fn processElapsedTick(self: *Dialog) bool {
+        return switch (self.*) {
+            inline else => |*subtype| subtype.processElapsedTick(),
+        };
+    }
+
+    pub fn prepareRender(
+        self: *Dialog,
+        allocator: std.mem.Allocator,
+        interval_between_previous_and_current_tick: f32,
+    ) !void {
+        return switch (self.*) {
+            inline else => |*subtype| subtype.prepareRender(
+                allocator,
+                interval_between_previous_and_current_tick,
+            ),
+        };
+    }
+
+    pub fn getBillboardCount(self: Dialog) usize {
+        return switch (self) {
+            inline else => |subtype| subtype.getBillboardCount(),
+        };
+    }
+
+    pub fn populateBillboardData(
+        self: Dialog,
+        screen_dimensions: util.ScreenDimensions,
+        interval_between_previous_and_current_tick: f32,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []BillboardRenderer.BillboardData,
+    ) void {
+        return switch (self) {
+            inline else => |subtype| subtype.populateBillboardData(
+                screen_dimensions,
+                interval_between_previous_and_current_tick,
+                out,
+            ),
+        };
+    }
+
+    pub fn processCommand(self: *Dialog, command: Controller.Command) void {
+        return switch (self.*) {
+            inline else => |*subtype| subtype.processCommand(command),
+        };
     }
 };
 
@@ -119,7 +177,7 @@ const Prompt = struct {
     minimum_size_widget: *ui.Widget,
     slide_in_animation_box: SlideInAnimationBox,
 
-    const sample_content =
+    pub const sample_content =
         \\,------------------------------------,
         \\| This is a sample text box which is |
         \\| used as a template for formatting  |
@@ -136,13 +194,9 @@ const Prompt = struct {
         npc_name: []const u8,
         message_text: []const u8,
     ) !Prompt {
-        const npc_header = try makePackagedAnimatedTextBlock(
-            allocator,
-            spritesheet,
-            npc_name,
-            message_text,
-            sample_content,
-        );
+        const text_block = wrapNpcHeader(npc_name, message_text);
+        const npc_header =
+            try makePackagedAnimatedTextBlock(allocator, spritesheet, &text_block, sample_content);
         return .{
             .reformatted_segments = npc_header.reformatted_segments,
             .animated_text_block = npc_header.animated_text_block,
@@ -428,6 +482,14 @@ fn scale(value: u16, factor: f32) u16 {
     return @as(u16, @intFromFloat(@as(f32, @floatFromInt(value)) * factor));
 }
 
+fn wrapNpcHeader(npc_name: []const u8, message_text: []const u8) [3]text_rendering.TextSegment {
+    return .{
+        ui.Highlight.npcName(npc_name),
+        ui.Highlight.normal("\n\n"),
+        ui.Highlight.normal(message_text),
+    };
+}
+
 const PackagedAnimatedTextBlock = struct {
     reformatted_segments: []text_rendering.TextSegment,
     animated_text_block: AnimatedTextBlock,
@@ -438,20 +500,13 @@ fn makePackagedAnimatedTextBlock(
     allocator: std.mem.Allocator,
     /// Returned object will keep a reference to this spritesheet.
     spritesheet: *const SpriteSheetTexture,
-    npc_name: []const u8,
-    message_text: []const u8,
+    text_block: []const text_rendering.TextSegment,
     sample_content: []const u8,
 ) !PackagedAnimatedTextBlock {
     const max_line_length = std.mem.indexOfScalar(u8, sample_content, '\n').?;
 
-    const text_block = [_]text_rendering.TextSegment{
-        ui.Highlight.npcName(npc_name),
-        ui.Highlight.normal("\n\n"),
-        ui.Highlight.normal(message_text),
-    };
-
     var reformatted_segments =
-        try text_rendering.reflowTextBlock(allocator, &text_block, max_line_length);
+        try text_rendering.reflowTextBlock(allocator, text_block, max_line_length);
     errdefer text_rendering.freeTextSegments(allocator, reformatted_segments);
 
     var animated_text_block =
