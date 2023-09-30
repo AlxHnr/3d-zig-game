@@ -730,7 +730,9 @@ fn makePackagedAnimatedTextBlock(
         try AnimatedTextBlock.wrap(allocator, reformatted_segments, spritesheet);
     errdefer animated_text_block.destroy(allocator);
 
-    const minimum = ui.Text.wrap(
+    const dimensions = ui.Text.wrap(reformatted_segments, spritesheet, dialog_text_scale)
+        .getDimensionsInPixels();
+    const sample_dimensions = ui.Text.wrap(
         &.{ui.Highlight.normal(sample_content)},
         spritesheet,
         dialog_text_scale,
@@ -740,8 +742,8 @@ fn makePackagedAnimatedTextBlock(
     errdefer allocator.destroy(minimum_size_widget);
     minimum_size_widget.* = .{ .minimum_size = ui.MinimumSize.wrap(
         animated_text_block.getWidgetPointer(),
-        minimum.width,
-        minimum.height,
+        @max(dimensions.width, sample_dimensions.width),
+        @max(dimensions.height, sample_dimensions.height),
     ) };
 
     return .{
