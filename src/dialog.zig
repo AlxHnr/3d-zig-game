@@ -325,9 +325,12 @@ const ChoiceBox = struct {
 
         var widget_list = try allocator.alloc(ui.Widget, text_blocks.len);
         errdefer allocator.free(widget_list);
-
-        const cancel_choice_index = text_blocks.len - 1;
-        putBoxAroundSelection(text_blocks, cancel_choice_index, spritesheet, widget_list);
+        putBoxAroundSelection(
+            text_blocks,
+            text_blocks.len, // This ensures that the box opens without selections.
+            spritesheet,
+            widget_list,
+        );
 
         var split_widget = try allocator.create(ui.Widget);
         errdefer allocator.destroy(split_widget);
@@ -338,7 +341,7 @@ const ChoiceBox = struct {
             .widget_list = widget_list,
             .split_widget = split_widget,
             .slide_in_animation_box = SlideInAnimationBox.wrap(split_widget, spritesheet),
-            .active_widget_index = cancel_choice_index,
+            .active_widget_index = text_blocks.len - 1, // Preselect cancel section.
             .spritesheet = spritesheet,
         };
     }
@@ -352,10 +355,25 @@ const ChoiceBox = struct {
     // Returns true if this dialog is still needed.
     pub fn processElapsedTick(self: *ChoiceBox) bool {
         self.slide_in_animation_box.processElapsedTick();
-        if (!self.slide_in_animation_box.isStillOpening()) {
-            for (self.text_blocks) |*text_block| {
-                text_block.animated_text_block.processElapsedTick();
+        if (self.slide_in_animation_box.isStillOpening()) {
+            return true;
+        }
+
+        var all_text_boxes_are_on_screen = true;
+        for (self.text_blocks) |*text_block| {
+            text_block.animated_text_block.processElapsedTick();
+            if (!text_block.animated_text_block.hasFinished()) {
+                all_text_boxes_are_on_screen = false;
+                break;
             }
+        }
+        if (all_text_boxes_are_on_screen) {
+            putBoxAroundSelection(
+                self.text_blocks,
+                self.active_widget_index,
+                self.spritesheet,
+                self.widget_list,
+            );
         }
 
         return !self.slide_in_animation_box.hasClosed();
@@ -405,23 +423,11 @@ const ChoiceBox = struct {
                 if (self.active_widget_index < self.text_blocks.len - 1) {
                     self.active_widget_index += 1;
                 }
-                putBoxAroundSelection(
-                    self.text_blocks,
-                    self.active_widget_index,
-                    self.spritesheet,
-                    self.widget_list,
-                );
             },
             .previous => {
                 if (self.active_widget_index > 2) { // First two blocks are dialog.
                     self.active_widget_index -= 1;
                 }
-                putBoxAroundSelection(
-                    self.text_blocks,
-                    self.active_widget_index,
-                    self.spritesheet,
-                    self.widget_list,
-                );
             },
         }
     }
@@ -435,20 +441,17 @@ const ChoiceBox = struct {
         var result: []PackagedAnimatedTextBlock = &.{};
         errdefer freeAllTextBlocks(allocator, result);
 
-        const separator = "--------------------------------------";
-        var first_line_iterator = std.mem.tokenizeAny(u8, Prompt.sample_content, "\n");
-        std.debug.assert(separator.len == first_line_iterator.next().?.len);
-
         const box_headers = [_][]const text_rendering.TextSegment{
             &wrapNpcDialog(npc_name, message_text),
-            &.{ui.Highlight.separatorLine(separator)},
+            &.{ui.Highlight.normal("")},
         };
         for (box_headers) |box_header| {
+            var first_line_iterator = std.mem.tokenizeAny(u8, Prompt.sample_content, "\n");
             var npc_header = try makePackagedAnimatedTextBlock(
                 allocator,
                 spritesheet,
                 box_header,
-                separator,
+                first_line_iterator.next().?,
             );
             errdefer freePackagedAnimatedTextBlock(allocator, &npc_header);
 

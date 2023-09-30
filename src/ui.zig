@@ -19,9 +19,6 @@ pub const Highlight = struct {
     pub fn cancelChoice(text: []const u8) text_rendering.TextSegment {
         return .{ .color = Color.fromRgb8(193, 100, 174), .text = text };
     }
-    pub fn separatorLine(text: []const u8) text_rendering.TextSegment {
-        return .{ .color = Color.fromRgb8(85, 85, 85), .text = text };
-    }
 };
 
 /// Polymorphic dispatcher serving as an interface.
