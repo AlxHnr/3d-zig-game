@@ -66,22 +66,27 @@ const GemCountInfo = struct {
         var segments = try allocator.alloc(text_rendering.TextSegment, 1);
         errdefer allocator.free(segments);
 
-        var widgets = try allocator.alloc(ui.Widget, 3);
+        var widgets = try allocator.alloc(ui.Widget, 4);
         errdefer allocator.free(widgets);
+
+        const sprite_scale = 3;
+        widgets[0] = .{ .sprite = ui.Sprite.create(.gem, spritesheet.*, sprite_scale) };
+        widgets[1] = .{
+            .spacing = ui.Spacing.wrapFixedPixels(&widgets[0], sprite_scale * 2, sprite_scale * 2),
+        };
 
         segments[0] = .{
             .color = Color.fromRgb8(0, 0, 0),
             .text = try std.fmt.bufPrint(buffer, "{}", .{gem_count}),
         };
-        widgets[0] = .{ .sprite = ui.Sprite.create(.gem, spritesheet.*, 3) };
-        widgets[1] = .{ .text = ui.Text.wrap(segments, spritesheet, 4) };
-        widgets[2] = .{ .split = ui.Split.wrap(.vertical, widgets[0..2]) };
+        widgets[2] = .{ .text = ui.Text.wrap(segments, spritesheet, 4) };
+        widgets[3] = .{ .split = ui.Split.wrap(.horizontal, widgets[1..3]) };
 
         return .{
             .buffer = buffer,
             .segments = segments,
             .widgets = widgets,
-            .main_widget = &widgets[2],
+            .main_widget = &widgets[widgets.len - 1],
         };
     }
 
