@@ -261,13 +261,59 @@ pub const LevelGeometryAttributes = extern struct {
     tint: extern struct { r: f32, g: f32, b: f32 },
 };
 
+/// Renders 2d sprites in screen space where all sizes are specified in pixels. Screen space starts
+/// at the top-left corner of the screen at (0, 0) and goes to (screen_w, screen_h).
+pub const SpriteRenderer = struct {
+    renderer: BillboardRenderer,
+
+    pub fn create() !SpriteRenderer {
+        var renderer = try BillboardRenderer.create();
+        errdefer renderer.destroy();
+
+        // Invert the Y axis of the wrapped renderers quad mesh.
+        var vertex_data = meshes.StandingQuad.vertex_data;
+        var index: usize = 1;
+        while (index < vertex_data.len) : (index += 4) {
+            vertex_data[index] *= -1;
+        }
+        var size: usize = @sizeOf(@TypeOf(vertex_data));
+        updateVbo(renderer.vertex_vbo_id, &vertex_data, size, &size, gl.STATIC_DRAW);
+
+        return .{ .renderer = renderer };
+    }
+
+    pub fn destroy(self: *SpriteRenderer) void {
+        self.renderer.destroy();
+    }
+
+    /// Sprites are rendered in the same order as specified.
+    pub fn uploadSprites(self: *SpriteRenderer, sprites: []const SpriteData) void {
+        self.renderer.uploadBillboards(sprites);
+    }
+
+    pub fn render(
+        self: SpriteRenderer,
+        screen_dimensions: ScreenDimensions,
+        texture_id: c_uint,
+    ) void {
+        const screen_to_ndc_matrix = .{ .rows = .{
+            .{ 2 / @as(f32, @floatFromInt(screen_dimensions.width)), 0, 0, -1 },
+            .{ 0, -2 / @as(f32, @floatFromInt(screen_dimensions.height)), 0, 1 },
+            .{ 0, 0, 0, 0 },
+            .{ 0, 0, 0, 1 },
+        } };
+        const forward = .{ .x = 0, .y = 0, .z = -1 };
+        self.renderer.render(screen_to_ndc_matrix, screen_dimensions, forward, texture_id);
+    }
+};
+
 /// Renders 2d sprites in 3d space which rotate around the Y axis towards the camera.
 pub const BillboardRenderer = struct {
     vao_id: c_uint,
     vertex_vbo_id: c_uint,
-    billboard_data_vbo_id: c_uint,
-    billboards_uploaded_to_vbo: usize,
-    billboard_capacity_in_vbo: usize,
+    sprite_data_vbo_id: c_uint,
+    sprites_uploaded_to_vbo: usize,
+    sprite_capacity_in_vbo: usize,
     shader: Shader,
     y_rotation_location: c_int,
     screen_dimensions_location: c_int,
@@ -298,7 +344,7 @@ pub const BillboardRenderer = struct {
 
         const vao_id = createAndBindVao();
         const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_position, loc_texture_coords);
-        const billboard_data_vbo_id = createAndBindEmptyVbo();
+        const sprite_data_vbo_id = createAndBindEmptyVbo();
         setupVertexAttribute(loc_billboard_center_position, 3, @offsetOf(
             SpriteData,
             "position",
@@ -338,9 +384,9 @@ pub const BillboardRenderer = struct {
         return BillboardRenderer{
             .vao_id = vao_id,
             .vertex_vbo_id = vertex_vbo_id,
-            .billboard_data_vbo_id = billboard_data_vbo_id,
-            .billboards_uploaded_to_vbo = 0,
-            .billboard_capacity_in_vbo = 0,
+            .sprite_data_vbo_id = sprite_data_vbo_id,
+            .sprites_uploaded_to_vbo = 0,
+            .sprite_capacity_in_vbo = 0,
             .shader = shader,
             .y_rotation_location = loc_y_rotation_towards_camera,
             .screen_dimensions_location = loc_screen_dimensions,
@@ -350,7 +396,7 @@ pub const BillboardRenderer = struct {
 
     pub fn destroy(self: *BillboardRenderer) void {
         self.shader.destroy();
-        gl.deleteBuffers(1, &self.billboard_data_vbo_id);
+        gl.deleteBuffers(1, &self.sprite_data_vbo_id);
         gl.deleteBuffers(1, &self.vertex_vbo_id);
         gl.deleteVertexArrays(1, &self.vao_id);
     }
@@ -358,13 +404,13 @@ pub const BillboardRenderer = struct {
     /// Billboards are rendered in the same order as specified.
     pub fn uploadBillboards(self: *BillboardRenderer, billboards: []const SpriteData) void {
         updateVbo(
-            self.billboard_data_vbo_id,
+            self.sprite_data_vbo_id,
             billboards.ptr,
             billboards.len * @sizeOf(SpriteData),
-            &self.billboard_capacity_in_vbo,
+            &self.sprite_capacity_in_vbo,
             gl.STREAM_DRAW,
         );
-        self.billboards_uploaded_to_vbo = billboards.len;
+        self.sprites_uploaded_to_vbo = billboards.len;
     }
 
     pub fn render(
@@ -391,52 +437,23 @@ pub const BillboardRenderer = struct {
         gl.uniform2fv(self.y_rotation_location, 1, &y_rotation_towards_camera);
         gl.uniform2fv(self.screen_dimensions_location, 1, &screen_dimensions_f32);
         gl.uniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
-        renderStandingQuadInstanced(self.billboards_uploaded_to_vbo);
+        renderStandingQuadInstanced(self.sprites_uploaded_to_vbo);
         gl.bindTexture(gl.TEXTURE_2D, 0);
         gl.bindVertexArray(0);
         gl.useProgram(0);
     }
-
-    /// Render all uploaded billboards without perspective projection. All billboards are assumed to
-    /// contain screen coordinates (x, y), where (0, 0) represents the top left corner of the
-    /// screen. Z will be ignored.
-    pub fn render2d(
-        self: BillboardRenderer,
-        screen_dimensions: ScreenDimensions,
-        texture_id: c_uint,
-    ) void {
-        // Flip V texture coordinate to preserve orientation when inverting Y.
-        var vertex_data = meshes.StandingQuad.vertex_data;
-        var index: usize = 3;
-        while (index < vertex_data.len) : (index += 4) {
-            vertex_data[index] = 1 - vertex_data[index];
-        }
-        var size: usize = @sizeOf(@TypeOf(vertex_data));
-        updateVbo(self.vertex_vbo_id, &vertex_data, size, &size, gl.STATIC_DRAW);
-
-        const screen_to_ndc_matrix = math.Matrix{ .rows = .{
-            .{ 2 / @as(f32, @floatFromInt(screen_dimensions.width)), 0, 0, -1 },
-            .{ 0, -2 / @as(f32, @floatFromInt(screen_dimensions.height)), 0, 1 },
-            .{ 0, 0, 0, 0 },
-            .{ 0, 0, 0, 1 },
-        } };
-
-        const forward = .{ .x = 0, .y = 0, .z = -1 };
-        const culling_is_enabled = gl.isEnabled(gl.CULL_FACE);
-        gl.disable(gl.CULL_FACE);
-        self.render(screen_to_ndc_matrix, screen_dimensions, forward, texture_id);
-        if (culling_is_enabled == 1) {
-            gl.enable(gl.CULL_FACE);
-        }
-
-        updateVbo(self.vertex_vbo_id, &meshes.StandingQuad.vertex_data, size, &size, gl.STATIC_DRAW);
-    }
 };
 
-/// Data laid out for upload to the GPU.
+/// Data laid out for upload to the GPU. The values in this struct depend on whether they are used
+/// for rendering 2d sprites or 3d billboards.
+///
+/// * For 2d sprites the x, y, w and h values are specified in pixels. Screen coordinates start at
+///   the top-left corner of the screen at (0, 0) and go to (screen_w, screen_h). Z coordinates are
+///   ignored.
+/// * For 3d billboards the x, y, z and w, h values are specified in game-units relative to the game
+///   world.
 pub const SpriteData = extern struct {
-    /// Center of the object. Must either contain game-world coordinates when calling render()
-    /// or screen coordinates when calling render2d().
+    /// Center of the object.
     position: extern struct { x: f32, y: f32, z: f32 },
     size: extern struct { w: f32, h: f32 },
     /// Will be applied after scaling but before Z rotation. Can be used to preserve character
@@ -455,7 +472,7 @@ pub const SpriteData = extern struct {
     tint: extern struct { r: f32, g: f32, b: f32 } = .{ .r = 1, .g = 1, .b = 1 },
     /// 0 if the billboard should shrink with increasing camera distance.
     /// 1 if the billboard should have a fixed pixel size independently from its distance to the
-    /// camera.
+    /// camera. Only relevant for `BillboardRenderer`.
     preserve_exact_pixel_size: f32 = 0,
 };
 

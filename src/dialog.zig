@@ -12,13 +12,13 @@ const dialog_text_scale = 2;
 pub const Controller = struct {
     /// Non-owning reference.
     allocator: std.mem.Allocator,
-    renderer: rendering.BillboardRenderer,
-    billboard_buffer: []rendering.SpriteData,
+    renderer: rendering.SpriteRenderer,
+    sprite_buffer: []rendering.SpriteData,
     spritesheet: *SpriteSheetTexture,
     dialog_stack: std.ArrayList(Dialog),
 
     pub fn create(allocator: std.mem.Allocator) !Controller {
-        var renderer = try rendering.BillboardRenderer.create();
+        var renderer = try rendering.SpriteRenderer.create();
         errdefer renderer.destroy();
 
         var spritesheet = try allocator.create(SpriteSheetTexture);
@@ -29,7 +29,7 @@ pub const Controller = struct {
         return .{
             .allocator = allocator,
             .renderer = renderer,
-            .billboard_buffer = &.{},
+            .sprite_buffer = &.{},
             .spritesheet = spritesheet,
             .dialog_stack = std.ArrayList(Dialog).init(allocator),
         };
@@ -42,7 +42,7 @@ pub const Controller = struct {
         self.dialog_stack.deinit();
         self.spritesheet.destroy();
         self.allocator.destroy(self.spritesheet);
-        self.allocator.free(self.billboard_buffer);
+        self.allocator.free(self.sprite_buffer);
         self.renderer.destroy();
     }
 
@@ -51,30 +51,30 @@ pub const Controller = struct {
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
     ) !void {
-        var total_billboards: usize = 0;
+        var total_sprites: usize = 0;
         for (self.dialog_stack.items) |*dialog| {
             try dialog.prepareRender(self.allocator, interval_between_previous_and_current_tick);
-            total_billboards += dialog.getBillboardCount();
+            total_sprites += dialog.getSpriteCount();
         }
 
-        if (self.billboard_buffer.len < total_billboards) {
-            self.billboard_buffer =
-                try self.allocator.realloc(self.billboard_buffer, total_billboards);
+        if (self.sprite_buffer.len < total_sprites) {
+            self.sprite_buffer =
+                try self.allocator.realloc(self.sprite_buffer, total_sprites);
         }
 
         var start: usize = 0;
         var end: usize = 0;
         for (self.dialog_stack.items) |dialog| {
             start = end;
-            end += dialog.getBillboardCount();
-            dialog.populateBillboardData(
+            end += dialog.getSpriteCount();
+            dialog.populateSpriteData(
                 screen_dimensions,
                 interval_between_previous_and_current_tick,
-                self.billboard_buffer[start..end],
+                self.sprite_buffer[start..end],
             );
         }
-        self.renderer.uploadBillboards(self.billboard_buffer[0..end]);
-        self.renderer.render2d(screen_dimensions, self.spritesheet.id);
+        self.renderer.uploadSprites(self.sprite_buffer[0..end]);
+        self.renderer.render(screen_dimensions, self.spritesheet.id);
     }
 
     pub fn processElapsedTick(self: *Controller) void {
@@ -160,21 +160,21 @@ const Dialog = union(enum) {
         };
     }
 
-    pub fn getBillboardCount(self: Dialog) usize {
+    pub fn getSpriteCount(self: Dialog) usize {
         return switch (self) {
-            inline else => |subtype| subtype.getBillboardCount(),
+            inline else => |subtype| subtype.getSpriteCount(),
         };
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: Dialog,
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
     ) void {
         return switch (self) {
-            inline else => |subtype| subtype.populateBillboardData(
+            inline else => |subtype| subtype.populateSpriteData(
                 screen_dimensions,
                 interval_between_previous_and_current_tick,
                 out,
@@ -247,18 +247,18 @@ const Prompt = struct {
         );
     }
 
-    pub fn getBillboardCount(self: Prompt) usize {
-        return self.slide_in_animation_box.getBillboardCount();
+    pub fn getSpriteCount(self: Prompt) usize {
+        return self.slide_in_animation_box.getSpriteCount();
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: Prompt,
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
     ) void {
-        self.slide_in_animation_box.populateBillboardData(
+        self.slide_in_animation_box.populateSpriteData(
             screen_dimensions,
             interval_between_previous_and_current_tick,
             out,
@@ -392,18 +392,18 @@ const ChoiceBox = struct {
         }
     }
 
-    pub fn getBillboardCount(self: ChoiceBox) usize {
-        return self.slide_in_animation_box.getBillboardCount();
+    pub fn getSpriteCount(self: ChoiceBox) usize {
+        return self.slide_in_animation_box.getSpriteCount();
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: ChoiceBox,
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
     ) void {
-        self.slide_in_animation_box.populateBillboardData(
+        self.slide_in_animation_box.populateSpriteData(
             screen_dimensions,
             interval_between_previous_and_current_tick,
             out,
@@ -572,15 +572,15 @@ const SlideInAnimationBox = struct {
         }
     }
 
-    pub fn getBillboardCount(self: SlideInAnimationBox) usize {
-        return self.widget.getBillboardCount();
+    pub fn getSpriteCount(self: SlideInAnimationBox) usize {
+        return self.widget.getSpriteCount();
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: SlideInAnimationBox,
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
     ) void {
         const raw_interval =
@@ -593,7 +593,7 @@ const SlideInAnimationBox = struct {
             .closed => 1 - raw_interval,
         };
         const dimensions = self.widget.getDimensionsInPixels();
-        self.widget.populateBillboardData(
+        self.widget.populateSpriteData(
             screen_dimensions.width / 2 - dimensions.width / 2,
             screen_dimensions.height - math.scaleU16(dimensions.height, window_open_interval),
             out,
@@ -676,19 +676,19 @@ const AnimatedTextBlock = struct {
         self.segments_to_render = segments_to_render;
     }
 
-    pub fn getBillboardCount(self: AnimatedTextBlock) usize {
-        return self.widget.getBillboardCount();
+    pub fn getSpriteCount(self: AnimatedTextBlock) usize {
+        return self.widget.getSpriteCount();
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: AnimatedTextBlock,
         /// Top left corner.
         screen_position_x: u16,
         screen_position_y: u16,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
     ) void {
-        self.widget.populateBillboardData(screen_position_x, screen_position_y, out);
+        self.widget.populateSpriteData(screen_position_x, screen_position_y, out);
     }
 
     fn countCodepoints(segments: []const text_rendering.TextSegment) !usize {

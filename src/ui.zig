@@ -36,22 +36,22 @@ pub const Widget = union(enum) {
         };
     }
 
-    pub fn getBillboardCount(self: Widget) usize {
+    pub fn getSpriteCount(self: Widget) usize {
         return switch (self) {
-            inline else => |subtype| subtype.getBillboardCount(),
+            inline else => |subtype| subtype.getSpriteCount(),
         };
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: Widget,
         /// Top left corner.
         screen_position_x: u16,
         screen_position_y: u16,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []SpriteData,
     ) void {
         switch (self) {
-            inline else => |subtype| subtype.populateBillboardData(
+            inline else => |subtype| subtype.populateSpriteData(
                 screen_position_x,
                 screen_position_y,
                 out,
@@ -92,19 +92,19 @@ pub const Text = struct {
         };
     }
 
-    pub fn getBillboardCount(self: Text) usize {
-        return text_rendering.getBillboardCount(self.wrapped_segments);
+    pub fn getSpriteCount(self: Text) usize {
+        return text_rendering.getSpriteCount(self.wrapped_segments);
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: Text,
         /// Top left corner.
         screen_position_x: u16,
         screen_position_y: u16,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []SpriteData,
     ) void {
-        return text_rendering.populateBillboardData2d(
+        return text_rendering.populateSpriteData(
             self.wrapped_segments,
             screen_position_x,
             screen_position_y,
@@ -139,16 +139,16 @@ pub const Sprite = struct {
         return self.dimensions;
     }
 
-    pub fn getBillboardCount(_: Sprite) usize {
+    pub fn getSpriteCount(_: Sprite) usize {
         return 1;
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: Sprite,
         /// Top left corner.
         screen_position_x: u16,
         screen_position_y: u16,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []SpriteData,
     ) void {
         out[0] = .{
@@ -202,20 +202,20 @@ pub const Split = struct {
         return result;
     }
 
-    pub fn getBillboardCount(self: Split) usize {
+    pub fn getSpriteCount(self: Split) usize {
         var result: usize = 0;
         for (self.wrapped_widgets) |widget| {
-            result += widget.getBillboardCount();
+            result += widget.getSpriteCount();
         }
         return result;
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: Split,
         /// Top left corner.
         screen_position_x: u16,
         screen_position_y: u16,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []SpriteData,
     ) void {
         var start: usize = 0;
@@ -225,8 +225,8 @@ pub const Split = struct {
 
         for (self.wrapped_widgets) |widget| {
             start = end;
-            end += widget.getBillboardCount();
-            widget.populateBillboardData(screen_x, screen_y, out[start..end]);
+            end += widget.getSpriteCount();
+            widget.populateSpriteData(screen_x, screen_y, out[start..end]);
 
             const dimensions = widget.getDimensionsInPixels();
             switch (self.split_type) {
@@ -262,19 +262,19 @@ pub const MinimumSize = struct {
         };
     }
 
-    pub fn getBillboardCount(self: MinimumSize) usize {
-        return self.wrapped_widget.getBillboardCount();
+    pub fn getSpriteCount(self: MinimumSize) usize {
+        return self.wrapped_widget.getSpriteCount();
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: MinimumSize,
         /// Top left corner.
         screen_position_x: u16,
         screen_position_y: u16,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []SpriteData,
     ) void {
-        self.wrapped_widget.populateBillboardData(screen_position_x, screen_position_y, out);
+        self.wrapped_widget.populateSpriteData(screen_position_x, screen_position_y, out);
     }
 };
 
@@ -320,16 +320,16 @@ pub const Spacing = struct {
         };
     }
 
-    pub fn getBillboardCount(self: Spacing) usize {
-        return self.wrapped_widget.getBillboardCount();
+    pub fn getSpriteCount(self: Spacing) usize {
+        return self.wrapped_widget.getSpriteCount();
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: Spacing,
         /// Top left corner.
         screen_position_x: u16,
         screen_position_y: u16,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []SpriteData,
     ) void {
         const content = self.wrapped_widget.getDimensionsInPixels();
@@ -339,7 +339,7 @@ pub const Spacing = struct {
             .y = math.scaleU16(content.height, self.percentual.vertical) +
                 self.fixed_pixels.vertical,
         };
-        self.wrapped_widget.populateBillboardData(
+        self.wrapped_widget.populateSpriteData(
             screen_position_x + offset.x,
             screen_position_y + offset.y,
             out,
@@ -388,16 +388,16 @@ pub const Box = struct {
         };
     }
 
-    pub fn getBillboardCount(self: Box) usize {
-        return dialog_sprite_count + self.wrapped_widget.getBillboardCount();
+    pub fn getSpriteCount(self: Box) usize {
+        return dialog_sprite_count + self.wrapped_widget.getSpriteCount();
     }
 
-    pub fn populateBillboardData(
+    pub fn populateSpriteData(
         self: Box,
         /// Top left corner.
         screen_position_x: u16,
         screen_position_y: u16,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []SpriteData,
     ) void {
         const content_u16 = self.wrapped_widget.getDimensionsInPixels();
@@ -407,7 +407,7 @@ pub const Box = struct {
         };
         const sprite = .{ .w = self.scaled_sprite.width, .h = self.scaled_sprite.height };
 
-        const helper = BillboardDataHelper.create(
+        const helper = SpriteDataHelper.create(
             self.spritesheet,
             screen_position_x,
             screen_position_y,
@@ -426,14 +426,14 @@ pub const Box = struct {
         helper.insert(.dialog_box_bottom_center, sprite.w, sprite.h + content.h, content.w, sprite.h);
         helper.insert(.dialog_box_bottom_right, sprite.w + content.w, sprite.h + content.h, sprite.w, sprite.h);
 
-        self.wrapped_widget.populateBillboardData(
+        self.wrapped_widget.populateSpriteData(
             screen_position_x + @as(u16, @intFromFloat(sprite.w)),
             screen_position_y + @as(u16, @intFromFloat(sprite.h)),
             out[dialog_sprite_count..],
         );
     }
 
-    const BillboardDataHelper = struct {
+    const SpriteDataHelper = struct {
         spritesheet: *const SpriteSheetTexture,
         top_left_corner: struct { x: f32, y: f32 },
         /// Dimensions. Assumed to be the same for all dialog box sprites.
@@ -447,7 +447,7 @@ pub const Box = struct {
             scaled_sprite_width: f32,
             scaled_sprite_height: f32,
             out: []SpriteData,
-        ) BillboardDataHelper {
+        ) SpriteDataHelper {
             return .{
                 .spritesheet = spritesheet,
                 .top_left_corner = .{
@@ -463,7 +463,7 @@ pub const Box = struct {
         }
 
         fn insert(
-            self: BillboardDataHelper,
+            self: SpriteDataHelper,
             corner: SpriteSheetTexture.SpriteId,
             offset_from_top_left_x: f32,
             offset_from_top_left_y: f32,

@@ -244,12 +244,12 @@ const ProgramContext = struct {
 };
 
 const EditModeRenderer = struct {
-    renderer: rendering.BillboardRenderer,
-    billboard_buffer: []rendering.SpriteData,
+    renderer: rendering.SpriteRenderer,
+    sprite_buffer: []rendering.SpriteData,
     spritesheet: SpriteSheetTexture,
 
     fn create() !EditModeRenderer {
-        var renderer = try rendering.BillboardRenderer.create();
+        var renderer = try rendering.SpriteRenderer.create();
         errdefer renderer.destroy();
 
         var spritesheet = try SpriteSheetTexture.loadFromDisk();
@@ -257,14 +257,14 @@ const EditModeRenderer = struct {
 
         return .{
             .renderer = renderer,
-            .billboard_buffer = &.{},
+            .sprite_buffer = &.{},
             .spritesheet = spritesheet,
         };
     }
 
     fn destroy(self: *EditModeRenderer, allocator: std.mem.Allocator) void {
         self.spritesheet.destroy();
-        allocator.free(self.billboard_buffer);
+        allocator.free(self.sprite_buffer);
         self.renderer.destroy();
     }
 
@@ -284,20 +284,20 @@ const EditModeRenderer = struct {
             .{ .color = text_color, .text = description[1] },
         };
 
-        const billboard_count = text_rendering.getBillboardCount(&segments);
-        if (self.billboard_buffer.len < billboard_count) {
-            self.billboard_buffer = try allocator.realloc(self.billboard_buffer, billboard_count);
+        const sprite_count = text_rendering.getSpriteCount(&segments);
+        if (self.sprite_buffer.len < sprite_count) {
+            self.sprite_buffer = try allocator.realloc(self.sprite_buffer, sprite_count);
         }
-        text_rendering.populateBillboardData2d(
+        text_rendering.populateSpriteData(
             &segments,
             0,
             0,
             self.spritesheet.getFontSizeMultiple(2),
             self.spritesheet,
-            self.billboard_buffer[0..billboard_count],
+            self.sprite_buffer[0..sprite_count],
         );
-        self.renderer.uploadBillboards(self.billboard_buffer[0..billboard_count]);
-        self.renderer.render2d(screen_dimensions, self.spritesheet.id);
+        self.renderer.uploadSprites(self.sprite_buffer[0..sprite_count]);
+        self.renderer.render(screen_dimensions, self.spritesheet.id);
     }
 };
 

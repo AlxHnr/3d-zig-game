@@ -7,18 +7,18 @@ const ui = @import("ui.zig");
 const rendering = @import("rendering.zig");
 
 pub const Hud = struct {
-    renderer: rendering.BillboardRenderer,
-    billboard_buffer: []rendering.SpriteData,
+    renderer: rendering.SpriteRenderer,
+    sprite_buffer: []rendering.SpriteData,
 
     pub fn create() !Hud {
         return .{
-            .renderer = try rendering.BillboardRenderer.create(),
-            .billboard_buffer = &.{},
+            .renderer = try rendering.SpriteRenderer.create(),
+            .sprite_buffer = &.{},
         };
     }
 
     pub fn destroy(self: *Hud, allocator: std.mem.Allocator) void {
-        allocator.free(self.billboard_buffer);
+        allocator.free(self.sprite_buffer);
         self.renderer.destroy();
     }
 
@@ -32,18 +32,18 @@ pub const Hud = struct {
         var gem_info = try GemCountInfo.create(allocator, gem_count, &spritesheet);
         defer gem_info.destroy(allocator);
 
-        const total_billboard_count = gem_info.getBillboardCount();
-        if (self.billboard_buffer.len < total_billboard_count) {
-            self.billboard_buffer =
-                try allocator.realloc(self.billboard_buffer, total_billboard_count);
+        const total_sprite_count = gem_info.getSpriteCount();
+        if (self.sprite_buffer.len < total_sprite_count) {
+            self.sprite_buffer =
+                try allocator.realloc(self.sprite_buffer, total_sprite_count);
         }
 
-        gem_info.populateBillboardData(
+        gem_info.populateSpriteData(
             screen_dimensions,
-            self.billboard_buffer[0..total_billboard_count],
+            self.sprite_buffer[0..total_sprite_count],
         );
-        self.renderer.uploadBillboards(self.billboard_buffer[0..total_billboard_count]);
-        self.renderer.render2d(screen_dimensions, spritesheet.id);
+        self.renderer.uploadSprites(self.sprite_buffer[0..total_sprite_count]);
+        self.renderer.render(screen_dimensions, spritesheet.id);
     }
 };
 
@@ -96,18 +96,18 @@ const GemCountInfo = struct {
         allocator.free(self.buffer);
     }
 
-    fn getBillboardCount(self: GemCountInfo) usize {
-        return self.main_widget.getBillboardCount();
+    fn getSpriteCount(self: GemCountInfo) usize {
+        return self.main_widget.getSpriteCount();
     }
 
-    fn populateBillboardData(
+    fn populateSpriteData(
         self: GemCountInfo,
         screen_dimensions: ScreenDimensions,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
     ) void {
         const info_dimensions = self.main_widget.getDimensionsInPixels();
-        self.main_widget.populateBillboardData(
+        self.main_widget.populateSpriteData(
             0,
             screen_dimensions.height - info_dimensions.height,
             out,

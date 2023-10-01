@@ -1,6 +1,6 @@
-//! Contains functions for rendering text. Text characters are rendered as billboards and will
-//! rotate around the Y axis towards the camera. The characters ' ' and '\n' affect the formatting
-//! of the rendered text. All strings passed to these functions are assumed to contain valid UTF-8.
+//! Contains functions for rendering text using individual letter sprites. The characters ' ' and
+//! '\n' affect the formatting of the rendered text. All strings passed to these functions are
+//! assumed to contain valid UTF-8.
 const std = @import("std");
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
@@ -13,9 +13,9 @@ pub const TextSegment = struct {
     text: []const u8,
 };
 
-/// Returns the amount of billboards required to render the given text segments.
-pub fn getBillboardCount(segments: []const TextSegment) usize {
-    return getInfo(segments).required_billboard_count;
+/// Returns the amount of sprites required to render the given text segments.
+pub fn getSpriteCount(segments: []const TextSegment) usize {
+    return getInfo(segments).required_sprite_count;
 }
 
 pub const Dimensions = struct {
@@ -41,16 +41,17 @@ pub fn getTextBlockDimensions(
     };
 }
 
+/// Renders 2d strings in 3d space.
 pub fn populateBillboardData(
     segments: []const TextSegment,
     center_position: Vector3d,
     /// Size is specified in game-world units.
     character_size: f32,
     spritesheet: SpriteSheetTexture,
-    /// Must have enough capacity to store all billboards. See getBillboardCount().
+    /// Must have enough capacity to store all sprites. See getSpriteCount().
     out: []SpriteData,
 ) void {
-    populateBillboardDataRaw(
+    populateSpriteDataRaw(
         segments,
         center_position,
         getOffsetToTopLeftCorner(segments, character_size, spritesheet),
@@ -62,17 +63,17 @@ pub fn populateBillboardData(
     );
 }
 
-/// Text size is specified in screen pixels and will preserve its exact size independently from its
-/// distance to the camera.
+/// Renders 2d strings in 3d space. Text size is specified in screen pixels and will preserve its
+/// exact size independent from its distance to the camera.
 pub fn populateBillboardDataExactPixelSize(
     segments: []const TextSegment,
     center_position: Vector3d,
     character_size_pixels: u16,
     spritesheet: SpriteSheetTexture,
-    /// Must have enough capacity to store all billboards. See getBillboardCount().
+    /// Must have enough capacity to store all sprites. See getSpriteCount().
     out: []SpriteData,
 ) void {
-    populateBillboardDataRaw(
+    populateSpriteDataRaw(
         segments,
         center_position,
         getOffsetToTopLeftCorner(
@@ -88,16 +89,16 @@ pub fn populateBillboardDataExactPixelSize(
     );
 }
 
-/// Fill the given billboard data slice with the data needed to render text with
-/// BillboardRenderer.render2d().
-pub fn populateBillboardData2d(
+/// Fill the given sprite data slice with the data needed to render 2d text in screen space with
+/// `rendering.SpriteRenderer`.
+pub fn populateSpriteData(
     segments: []const TextSegment,
     /// Top left corner of the first character.
     screen_position_x: u16,
     screen_position_y: u16,
     character_size_pixels: u16,
     spritesheet: SpriteSheetTexture,
-    /// Must have enough capacity to store all billboards. See getBillboardCount().
+    /// Must have enough capacity to store all sprites. See getSpriteCount().
     out: []SpriteData,
 ) void {
     const position = .{
@@ -106,7 +107,7 @@ pub fn populateBillboardData2d(
         .z = 0,
     };
     const offset_to_top_left_corner = .{ .x = 0, .y = 0, .z = 0 };
-    populateBillboardDataRaw(
+    populateSpriteDataRaw(
         segments,
         position,
         offset_to_top_left_corner,
@@ -214,14 +215,14 @@ pub fn truncateTextSegments(
 
 const TextSegmentInfo = struct {
     newline_count: usize,
-    required_billboard_count: usize,
+    required_sprite_count: usize,
     codepoint_count_in_longest_line: usize,
 };
 
 fn getInfo(segments: []const TextSegment) TextSegmentInfo {
     var result = TextSegmentInfo{
         .newline_count = 0,
-        .required_billboard_count = 0,
+        .required_sprite_count = 0,
         .codepoint_count_in_longest_line = 0,
     };
 
@@ -240,7 +241,7 @@ fn getInfo(segments: []const TextSegment) TextSegmentInfo {
                 codepoints_in_current_line = codepoints_in_current_line + 1;
             } else {
                 codepoints_in_current_line = codepoints_in_current_line + 1;
-                result.required_billboard_count = result.required_billboard_count + 1;
+                result.required_sprite_count = result.required_sprite_count + 1;
             }
         }
     }
@@ -277,22 +278,22 @@ fn flip(value: f32, y_axis_points_upwards: bool) f32 {
     return value;
 }
 
-fn populateBillboardDataRaw(
+fn populateSpriteDataRaw(
     segments: []const TextSegment,
     position: Vector3d,
     offset_to_top_left_corner: Vector3d,
-    /// Depending on the rendering method, the character size can be either relative to game-world
-    /// units or to screen pixels. See render() and render2d() in BillboardRenderer.
+    /// Depending on the renderer, the character size can be either relative to game-world units or
+    /// to screen pixels. See `SpriteRenderer` and `BillboardRenderer`.
     character_size: f32,
-    /// True if the billboard should have a fixed pixel size independently from its distance.
+    /// True if the sprite should have a fixed pixel size independent from its distance.
     preserve_exact_pixel_size: bool,
     y_axis_points_upwards: bool,
     spritesheet: SpriteSheetTexture,
-    /// Must have enough capacity to store all billboards. See getBillboardCount().
+    /// Must have enough capacity to store all sprites. See getSpriteCount().
     out: []SpriteData,
 ) void {
-    // Billboard positions usually specify their center. Offsets are applied to align the top left
-    // corner of the text block.
+    // Sprite positions specify their center. Offsets are applied to align the top left corner of
+    // the text block.
     const y_offset = flip(character_size, y_axis_points_upwards);
     const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
     const offset_increment = Vector3d{

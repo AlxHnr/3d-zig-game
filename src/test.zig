@@ -195,7 +195,7 @@ test "Matrix inversion" {
 test "Text rendering: utility functions" {
     const white = util.Color.white;
     const Segment = text_rendering.TextSegment;
-    const getCount = text_rendering.getBillboardCount;
+    const getCount = text_rendering.getSpriteCount;
     try expect(getCount(&[_]Segment{.{ .color = white, .text = "" }}) == 0);
     try expect(getCount(&[_]Segment{.{ .color = white, .text = "   " }}) == 0);
     try expect(getCount(&[_]Segment{.{ .color = white, .text = "Hello" }}) == 5);
