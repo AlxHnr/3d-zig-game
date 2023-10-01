@@ -11,6 +11,8 @@ const math = @import("../math.zig");
 const ThirdPersonCamera = @import("../third_person_camera.zig").Camera;
 
 pub const Geometry = struct {
+    allocator: std.mem.Allocator,
+
     /// Gives every object owned by this struct a unique id.
     object_id_counter: u64,
 
@@ -47,6 +49,7 @@ pub const Geometry = struct {
         errdefer billboard_renderer.destroy();
 
         return .{
+            .allocator = allocator,
             .object_id_counter = 0,
             .walls = .{
                 .solid = std.ArrayList(Wall).init(allocator),
@@ -111,21 +114,17 @@ pub const Geometry = struct {
         return geometry;
     }
 
-    pub fn prepareRender(
-        self: *Geometry,
-        allocator: std.mem.Allocator,
-        spritesheet: textures.SpriteSheetTexture,
-    ) !void {
+    pub fn prepareRender(self: *Geometry, spritesheet: textures.SpriteSheetTexture) !void {
         if (self.walls_have_changed) {
-            try self.uploadWallsToRenderer(allocator);
+            try self.uploadWallsToRenderer();
             self.walls_have_changed = false;
         }
         if (self.floors_have_changed) {
-            try self.uploadFloorsToRenderer(allocator);
+            try self.uploadFloorsToRenderer();
             self.floors_have_changed = false;
         }
         if (self.billboards_have_changed) {
-            try self.uploadBillboardsToRenderer(allocator, spritesheet);
+            try self.uploadBillboardsToRenderer(spritesheet);
             self.billboards_have_changed = false;
         }
     }
@@ -208,14 +207,14 @@ pub const Geometry = struct {
         floors: []SerializableData.Floor,
         billboard_objects: []SerializableData.BillboardObject,
 
-        const Wall = struct {
+        pub const Wall = struct {
             /// Type enum as string.
             t: []const u8,
             start: math.FlatVector,
             end: math.FlatVector,
         };
 
-        const Floor = struct {
+        pub const Floor = struct {
             /// Type enum as string.
             t: []const u8,
             side_a_start: math.FlatVector,
@@ -223,7 +222,7 @@ pub const Geometry = struct {
             side_b_length: f32,
         };
 
-        const BillboardObject = struct {
+        pub const BillboardObject = struct {
             /// Type enum as string.
             t: []const u8,
             pos: math.FlatVector,
@@ -557,12 +556,12 @@ pub const Geometry = struct {
         return current_collision;
     }
 
-    fn uploadWallsToRenderer(self: *Geometry, allocator: std.mem.Allocator) !void {
-        var data = try allocator.alloc(
+    fn uploadWallsToRenderer(self: *Geometry) !void {
+        var data = try self.allocator.alloc(
             rendering.WallRenderer.WallData,
             self.walls.solid.items.len + self.walls.translucent.items.len,
         );
-        defer allocator.free(data);
+        defer self.allocator.free(data);
 
         for (self.walls.solid.items, 0..) |wall, index| {
             data[index] = wall.getWallData();
@@ -573,9 +572,10 @@ pub const Geometry = struct {
         self.wall_renderer.uploadWalls(data);
     }
 
-    fn uploadFloorsToRenderer(self: *Geometry, allocator: std.mem.Allocator) !void {
-        var data = try allocator.alloc(rendering.FloorRenderer.FloorData, self.floors.items.len);
-        defer allocator.free(data);
+    fn uploadFloorsToRenderer(self: *Geometry) !void {
+        var data =
+            try self.allocator.alloc(rendering.FloorRenderer.FloorData, self.floors.items.len);
+        defer self.allocator.free(data);
 
         // Upload floors in reverse-order, so they won't be overpainted by floors below them.
         var index: usize = 0;
@@ -598,16 +598,12 @@ pub const Geometry = struct {
         self.floor_renderer.uploadFloors(data);
     }
 
-    fn uploadBillboardsToRenderer(
-        self: *Geometry,
-        allocator: std.mem.Allocator,
-        spritesheet: textures.SpriteSheetTexture,
-    ) !void {
-        var data = try allocator.alloc(
+    fn uploadBillboardsToRenderer(self: *Geometry, spritesheet: textures.SpriteSheetTexture) !void {
+        var data = try self.allocator.alloc(
             rendering.SpriteData,
             self.billboard_objects.items.len,
         );
-        defer allocator.free(data);
+        defer self.allocator.free(data);
 
         for (self.billboard_objects.items, 0..) |billboard, index| {
             data[index] = billboard.getBillboardData(spritesheet);

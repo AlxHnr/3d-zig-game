@@ -1,8 +1,9 @@
-const util = @import("util.zig");
+const Map = @import("map/map.zig").Map;
 const MapGeometry = @import("map/geometry.zig").Geometry;
-const std = @import("std");
-const math = @import("math.zig");
 const collision = @import("collision.zig");
+const math = @import("math.zig");
+const std = @import("std");
+const util = @import("util.zig");
 
 pub const State = struct {
     mode: Mode,
@@ -22,23 +23,19 @@ pub const State = struct {
         };
     }
 
-    pub fn handleActionAtTarget(
-        self: *State,
-        map_geometry: *MapGeometry,
-        mouse_ray: collision.Ray3d,
-    ) !void {
+    pub fn handleActionAtTarget(self: *State, map: *Map, mouse_ray: collision.Ray3d) !void {
         switch (self.mode) {
             .insert_objects => {
                 if (self.currently_edited_object != null) {
-                    self.resetCurrentlyEditedObject(map_geometry);
+                    self.resetCurrentlyEditedObject(map);
                 } else if (cast3DRayToGround(mouse_ray)) |ground_position| {
-                    try self.startPlacingObject(map_geometry, ground_position);
+                    try self.startPlacingObject(map, ground_position);
                 }
             },
             .delete_objects => {
-                self.resetCurrentlyEditedObject(map_geometry);
-                if (cast3DRayToObjects(mouse_ray, map_geometry.*)) |ray_collision| {
-                    map_geometry.removeObject(ray_collision.object_id);
+                self.resetCurrentlyEditedObject(map);
+                if (cast3DRayToObjects(mouse_ray, map.*)) |ray_collision| {
+                    map.geometry.removeObject(ray_collision.object_id);
                 }
             },
         }
@@ -46,20 +43,20 @@ pub const State = struct {
 
     pub fn updateCurrentActionTarget(
         self: *State,
-        map_geometry: *MapGeometry,
+        map: *Map,
         mouse_ray: collision.Ray3d,
         camera_direction: math.FlatVector,
     ) void {
         switch (self.mode) {
             .insert_objects => {
                 if (cast3DRayToGround(mouse_ray)) |ground_position| {
-                    self.updateCurrentlyInsertedObject(map_geometry, ground_position, camera_direction);
+                    self.updateCurrentlyInsertedObject(map, ground_position, camera_direction);
                 }
             },
             .delete_objects => {
-                self.resetCurrentlyEditedObject(map_geometry);
-                if (cast3DRayToObjects(mouse_ray, map_geometry.*)) |ray_collision| {
-                    map_geometry.tintObject(ray_collision.object_id, .{ .r = 1, .g = 0, .b = 0 });
+                self.resetCurrentlyEditedObject(map);
+                if (cast3DRayToObjects(mouse_ray, map.*)) |ray_collision| {
+                    map.geometry.tintObject(ray_collision.object_id, .{ .r = 1, .g = 0, .b = 0 });
                     self.currently_edited_object = CurrentlyEditedObject{
                         .object_id = ray_collision.object_id,
                         .start_position = undefined,
@@ -70,14 +67,14 @@ pub const State = struct {
     }
 
     // Cycles between the states various edit modes, e.g. insert, delete.
-    pub fn cycleMode(self: *State, map_geometry: *MapGeometry) void {
-        self.resetCurrentlyEditedObject(map_geometry);
+    pub fn cycleMode(self: *State, map: *Map) void {
+        self.resetCurrentlyEditedObject(map);
         self.mode = util.getNextEnumWrapAround(self.mode);
     }
 
     // Cycles between the types of objects to insert, e.g. walls, floors.
-    pub fn cycleInsertedObjectType(self: *State, map_geometry: *MapGeometry) void {
-        self.resetCurrentlyEditedObject(map_geometry);
+    pub fn cycleInsertedObjectType(self: *State, map: *Map) void {
+        self.resetCurrentlyEditedObject(map);
         self.object_type_to_insert.used_field =
             util.getNextEnumWrapAround(self.object_type_to_insert.used_field);
     }
@@ -144,26 +141,22 @@ pub const State = struct {
         start_position: math.FlatVector,
     };
 
-    fn resetCurrentlyEditedObject(self: *State, map_geometry: *MapGeometry) void {
+    fn resetCurrentlyEditedObject(self: *State, map: *Map) void {
         if (self.currently_edited_object) |object| {
-            map_geometry.untintObject(object.object_id);
+            map.geometry.untintObject(object.object_id);
         }
         self.currently_edited_object = null;
     }
 
-    fn startPlacingObject(
-        self: *State,
-        map_geometry: *MapGeometry,
-        position: math.FlatVector,
-    ) !void {
+    fn startPlacingObject(self: *State, map: *Map, position: math.FlatVector) !void {
         const object_type = &self.object_type_to_insert;
         const object_id = try switch (object_type.used_field) {
-            .wall => map_geometry.addWall(position, position, object_type.wall),
-            .floor => map_geometry.addFloor(position, position, 0, object_type.floor),
-            .billboard => map_geometry.addBillboardObject(object_type.billboard, position),
+            .wall => map.geometry.addWall(position, position, object_type.wall),
+            .floor => map.geometry.addFloor(position, position, 0, object_type.floor),
+            .billboard => map.geometry.addBillboardObject(object_type.billboard, position),
         };
         if (object_type.used_field != .billboard) {
-            map_geometry.tintObject(object_id, .{ .r = 0, .g = 1, .b = 0 });
+            map.geometry.tintObject(object_id, .{ .r = 0, .g = 1, .b = 0 });
             self.currently_edited_object =
                 CurrentlyEditedObject{ .object_id = object_id, .start_position = position };
         }
@@ -171,14 +164,14 @@ pub const State = struct {
 
     fn updateCurrentlyInsertedObject(
         self: *State,
-        map_geometry: *MapGeometry,
+        map: *Map,
         object_end_position: math.FlatVector,
         camera_direction: math.FlatVector,
     ) void {
         if (self.currently_edited_object) |object| {
             switch (self.object_type_to_insert.used_field) {
                 .wall => {
-                    map_geometry
+                    map.geometry
                         .updateWall(object.object_id, object.start_position, object_end_position);
                 },
                 .floor => {
@@ -198,7 +191,12 @@ pub const State = struct {
                         std.mem.swap(math.FlatVector, &side_a_start, &side_a_end);
                     }
 
-                    map_geometry.updateFloor(object.object_id, side_a_start, side_a_end, side_b_length);
+                    map.geometry.updateFloor(
+                        object.object_id,
+                        side_a_start,
+                        side_a_end,
+                        side_b_length,
+                    );
                 },
                 .billboard => {},
             }
@@ -218,11 +216,8 @@ fn cast3DRayToGround(ray: collision.Ray3d) ?math.FlatVector {
     return null;
 }
 
-fn cast3DRayToObjects(
-    ray: collision.Ray3d,
-    map_geometry: MapGeometry,
-) ?MapGeometry.RayCollision {
-    if (map_geometry.cast3DRayToObjects(ray)) |ray_collision| {
+fn cast3DRayToObjects(ray: collision.Ray3d, map: Map) ?MapGeometry.RayCollision {
+    if (map.geometry.cast3DRayToObjects(ray)) |ray_collision| {
         if (ray_collision.impact_point.distance_from_start_position < max_raycast_distance) {
             return ray_collision;
         }
