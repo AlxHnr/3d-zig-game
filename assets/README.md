@@ -24,8 +24,8 @@
 * **Author**: Hyptosis
 * **License**: CC0
 
-### [Water animation frames](https://opengameart.org/content/dungeon-crawl-32x32-tiles)
-* **Author**: Chris Hamons
+### [Dungeon Crawl 32x32 tiles supplemental (modified)](https://opengameart.org/content/dungeon-crawl-32x32-tiles-supplemental)
+* **Author**: See linked page
 * **License**: CC0
 
 ### [Torus Sans (modified)](https://opengameart.org/content/the-collection-of-8-bit-fonts-for-grafx2-r2)

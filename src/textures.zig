@@ -146,6 +146,9 @@ pub const SpriteSheetTexture = struct {
     }
 
     pub const SpriteId = enum(u8) {
+        black_magician_with_book,
+        blue_frozen_statue,
+        blue_grey_dragon,
         dialog_box_bottom_center,
         dialog_box_bottom_left,
         dialog_box_bottom_right,
@@ -156,13 +159,16 @@ pub const SpriteSheetTexture = struct {
         dialog_box_top_left,
         dialog_box_top_right,
         gem,
+        green_ghost_warrior,
         player_back_frame_0,
         player_back_frame_1,
         player_back_frame_2,
         player_front_frame_0,
         player_front_frame_1,
         player_front_frame_2,
+        red_lava_worm,
         small_bush,
+        yellow_floating_eye,
     };
 
     /// Values range from 0 to 1, where (0, 0) is the top left of the sprite sheet.
@@ -224,6 +230,9 @@ pub const SpriteSheetTexture = struct {
         TextureSourceRectangle,
         @typeInfo(SpriteId).Enum.fields.len,
         .{
+            .black_magician_with_book = .{ .x = 72, .y = 112, .w = 23, .h = 32 },
+            .blue_frozen_statue = .{ .x = 0, .y = 168, .w = 32, .h = 31 },
+            .blue_grey_dragon = .{ .x = 32, .y = 128, .w = 32, .h = 32 },
             .dialog_box_bottom_center = .{ .x = 120, .y = 80, .w = 8, .h = 8 },
             .dialog_box_bottom_left = .{ .x = 104, .y = 80, .w = 8, .h = 8 },
             .dialog_box_bottom_right = .{ .x = 136, .y = 80, .w = 8, .h = 8 },
@@ -234,13 +243,16 @@ pub const SpriteSheetTexture = struct {
             .dialog_box_top_left = .{ .x = 104, .y = 48, .w = 8, .h = 8 },
             .dialog_box_top_right = .{ .x = 136, .y = 48, .w = 8, .h = 8 },
             .gem = .{ .x = 72, .y = 88, .w = 14, .h = 13 },
+            .green_ghost_warrior = .{ .x = 0, .y = 128, .w = 24, .h = 31 },
             .player_back_frame_0 = .{ .x = 0, .y = 48, .w = 16, .h = 32 },
             .player_back_frame_1 = .{ .x = 24, .y = 48, .w = 16, .h = 32 },
             .player_back_frame_2 = .{ .x = 48, .y = 48, .w = 16, .h = 32 },
             .player_front_frame_0 = .{ .x = 0, .y = 88, .w = 16, .h = 32 },
             .player_front_frame_1 = .{ .x = 24, .y = 88, .w = 16, .h = 32 },
             .player_front_frame_2 = .{ .x = 48, .y = 88, .w = 16, .h = 32 },
+            .red_lava_worm = .{ .x = 0, .y = 208, .w = 29, .h = 31 },
             .small_bush = .{ .x = 72, .y = 48, .w = 24, .h = 26 },
+            .yellow_floating_eye = .{ .x = 40, .y = 168, .w = 16, .h = 24 },
         },
     );
     const font_source_pixel_map = computeFontSourcePixelMap();
