@@ -81,7 +81,7 @@ pub const Geometry = struct {
         var geometry = try create(allocator);
         errdefer geometry.destroy();
 
-        const tree = try std.json.parseFromSlice(Json.SerializableData, allocator, json, .{});
+        const tree = try std.json.parseFromSlice(SerializableData, allocator, json, .{});
         defer tree.deinit();
 
         for (tree.value.walls) |wall| {
@@ -159,7 +159,7 @@ pub const Geometry = struct {
 
     pub fn writeAsJson(self: Geometry, allocator: std.mem.Allocator, outstream: anytype) !void {
         var walls = try allocator.alloc(
-            Json.Wall,
+            SerializableData.Wall,
             self.walls.solid.items.len + self.walls.translucent.items.len,
         );
         defer allocator.free(walls);
@@ -178,7 +178,7 @@ pub const Geometry = struct {
             };
         }
 
-        var floors = try allocator.alloc(Json.Floor, self.floors.items.len);
+        var floors = try allocator.alloc(SerializableData.Floor, self.floors.items.len);
         defer allocator.free(floors);
         for (self.floors.items, 0..) |floor, index| {
             floors[index] = .{
@@ -189,7 +189,7 @@ pub const Geometry = struct {
             };
         }
 
-        var billboards = try allocator.alloc(Json.BillboardObject, self.billboard_objects.items.len);
+        var billboards = try allocator.alloc(SerializableData.BillboardObject, self.billboard_objects.items.len);
         defer allocator.free(billboards);
         for (self.billboard_objects.items, 0..) |billboard, index| {
             billboards[index] = .{
@@ -198,13 +198,41 @@ pub const Geometry = struct {
             };
         }
 
-        const data = Json.SerializableData{
+        const data = SerializableData{
             .walls = walls,
             .floors = floors,
             .billboard_objects = billboards,
         };
         try std.json.stringify(data, .{ .whitespace = .indent_1 }, outstream);
     }
+
+    /// Simplified representation of a maps geometry.
+    pub const SerializableData = struct {
+        walls: []SerializableData.Wall,
+        floors: []SerializableData.Floor,
+        billboard_objects: []SerializableData.BillboardObject,
+
+        const Wall = struct {
+            /// Type enum as string.
+            t: []const u8,
+            start: math.FlatVector,
+            end: math.FlatVector,
+        };
+
+        const Floor = struct {
+            /// Type enum as string.
+            t: []const u8,
+            side_a_start: math.FlatVector,
+            side_a_end: math.FlatVector,
+            side_b_length: f32,
+        };
+
+        const BillboardObject = struct {
+            /// Type enum as string.
+            t: []const u8,
+            pos: math.FlatVector,
+        };
+    };
 
     pub const WallType = enum {
         small_wall,
@@ -940,35 +968,6 @@ const BillboardObject = struct {
             else => util.Color.white,
         };
     }
-};
-
-const Json = struct {
-    const SerializableData = struct {
-        walls: []Json.Wall,
-        floors: []Json.Floor,
-        billboard_objects: []Json.BillboardObject,
-    };
-
-    const Wall = struct {
-        /// Type enum as string.
-        t: []const u8,
-        start: math.FlatVector,
-        end: math.FlatVector,
-    };
-
-    const Floor = struct {
-        /// Type enum as string.
-        t: []const u8,
-        side_a_start: math.FlatVector,
-        side_a_end: math.FlatVector,
-        side_b_length: f32,
-    };
-
-    const BillboardObject = struct {
-        /// Type enum as string.
-        t: []const u8,
-        pos: math.FlatVector,
-    };
 };
 
 fn makeRenderingAttributes(
