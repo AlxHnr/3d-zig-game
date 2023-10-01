@@ -3,7 +3,7 @@
 const collision = @import("collision.zig");
 const std = @import("std");
 const math = @import("math.zig");
-const MapGeometry = @import("map_geometry.zig").MapGeometry;
+const MapGeometry = @import("map/geometry.zig").Geometry;
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 

@@ -1,16 +1,16 @@
-const animation = @import("animation.zig");
-const collision = @import("collision.zig");
+const animation = @import("../animation.zig");
+const collision = @import("../collision.zig");
 const std = @import("std");
-const util = @import("util.zig");
-const textures = @import("textures.zig");
+const util = @import("../util.zig");
+const textures = @import("../textures.zig");
 const gl = @import("gl");
-const Error = @import("error.zig").Error;
-const rendering = @import("rendering.zig");
-const meshes = @import("meshes.zig");
-const math = @import("math.zig");
-const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
+const Error = @import("../error.zig").Error;
+const rendering = @import("../rendering.zig");
+const meshes = @import("../meshes.zig");
+const math = @import("../math.zig");
+const ThirdPersonCamera = @import("../third_person_camera.zig").Camera;
 
-pub const MapGeometry = struct {
+pub const Geometry = struct {
     /// Gives every object owned by this struct a unique id.
     object_id_counter: u64,
 
@@ -38,7 +38,7 @@ pub const MapGeometry = struct {
     billboards_have_changed: bool,
 
     /// Stores the given allocator internally for its entire lifetime.
-    pub fn create(allocator: std.mem.Allocator) !MapGeometry {
+    pub fn create(allocator: std.mem.Allocator) !Geometry {
         var wall_renderer = try rendering.WallRenderer.create();
         errdefer wall_renderer.destroy();
         var floor_renderer = try rendering.FloorRenderer.create();
@@ -46,7 +46,7 @@ pub const MapGeometry = struct {
         var billboard_renderer = try rendering.BillboardRenderer.create();
         errdefer billboard_renderer.destroy();
 
-        return MapGeometry{
+        return .{
             .object_id_counter = 0,
             .walls = .{
                 .solid = std.ArrayList(Wall).init(allocator),
@@ -64,7 +64,7 @@ pub const MapGeometry = struct {
         };
     }
 
-    pub fn destroy(self: *MapGeometry) void {
+    pub fn destroy(self: *Geometry) void {
         self.billboard_renderer.destroy();
         self.billboard_objects.deinit();
 
@@ -77,7 +77,7 @@ pub const MapGeometry = struct {
     }
 
     /// Stores the given allocator internally for its entire lifetime.
-    pub fn createFromJson(allocator: std.mem.Allocator, json: []const u8) !MapGeometry {
+    pub fn createFromJson(allocator: std.mem.Allocator, json: []const u8) !Geometry {
         var geometry = try create(allocator);
         errdefer geometry.destroy();
 
@@ -112,7 +112,7 @@ pub const MapGeometry = struct {
     }
 
     pub fn prepareRender(
-        self: *MapGeometry,
+        self: *Geometry,
         allocator: std.mem.Allocator,
         spritesheet: textures.SpriteSheetTexture,
     ) !void {
@@ -131,7 +131,7 @@ pub const MapGeometry = struct {
     }
 
     pub fn render(
-        self: MapGeometry,
+        self: Geometry,
         vp_matrix: math.Matrix,
         screen_dimensions: util.ScreenDimensions,
         camera_direction_to_target: math.Vector3d,
@@ -153,11 +153,11 @@ pub const MapGeometry = struct {
         );
     }
 
-    pub fn processElapsedTick(self: *MapGeometry) void {
+    pub fn processElapsedTick(self: *Geometry) void {
         self.floor_animation_state.processElapsedTick(0.02);
     }
 
-    pub fn writeAsJson(self: MapGeometry, allocator: std.mem.Allocator, outstream: anytype) !void {
+    pub fn writeAsJson(self: Geometry, allocator: std.mem.Allocator, outstream: anytype) !void {
         var walls = try allocator.alloc(
             Json.Wall,
             self.walls.solid.items.len + self.walls.translucent.items.len,
@@ -219,7 +219,7 @@ pub const MapGeometry = struct {
 
     /// Returns the object id of the created wall on success.
     pub fn addWall(
-        self: *MapGeometry,
+        self: *Geometry,
         start_position: math.FlatVector,
         end_position: math.FlatVector,
         wall_type: WallType,
@@ -241,7 +241,7 @@ pub const MapGeometry = struct {
 
     /// If the given object id does not exist, this function will do nothing.
     pub fn updateWall(
-        self: *MapGeometry,
+        self: *Geometry,
         object_id: u64,
         start_position: math.FlatVector,
         end_position: math.FlatVector,
@@ -269,7 +269,7 @@ pub const MapGeometry = struct {
     /// Side a and b can be chosen arbitrarily, but must be adjacent. Returns the object id of the
     /// created floor on success.
     pub fn addFloor(
-        self: *MapGeometry,
+        self: *Geometry,
         side_a_start: math.FlatVector,
         side_a_end: math.FlatVector,
         side_b_length: f32,
@@ -290,7 +290,7 @@ pub const MapGeometry = struct {
 
     /// If the given object id does not exist, this function will do nothing.
     pub fn updateFloor(
-        self: *MapGeometry,
+        self: *Geometry,
         object_id: u64,
         side_a_start: math.FlatVector,
         side_a_end: math.FlatVector,
@@ -317,7 +317,7 @@ pub const MapGeometry = struct {
 
     /// Returns the object id of the created billboard object on success.
     pub fn addBillboardObject(
-        self: *MapGeometry,
+        self: *Geometry,
         object_type: BillboardObjectType,
         position: math.FlatVector,
     ) !u64 {
@@ -329,7 +329,7 @@ pub const MapGeometry = struct {
     }
 
     /// If the given object id does not exist, this function will do nothing.
-    pub fn removeObject(self: *MapGeometry, object_id: u64) void {
+    pub fn removeObject(self: *Geometry, object_id: u64) void {
         for (self.walls.solid.items, 0..) |*wall, index| {
             if (wall.object_id == object_id) {
                 _ = self.walls.solid.orderedRemove(index);
@@ -360,7 +360,7 @@ pub const MapGeometry = struct {
         }
     }
 
-    pub fn tintObject(self: *MapGeometry, object_id: u64, tint: util.Color) void {
+    pub fn tintObject(self: *Geometry, object_id: u64, tint: util.Color) void {
         if (self.findWall(object_id)) |wall| {
             wall.tint = tint;
             self.walls_have_changed = true;
@@ -373,7 +373,7 @@ pub const MapGeometry = struct {
         }
     }
 
-    pub fn untintObject(self: *MapGeometry, object_id: u64) void {
+    pub fn untintObject(self: *Geometry, object_id: u64) void {
         if (self.findWall(object_id)) |wall| {
             wall.tint = Wall.getDefaultTint(wall.wall_type);
             self.walls_have_changed = true;
@@ -393,7 +393,7 @@ pub const MapGeometry = struct {
 
     /// Find the id of the closest wall hit by the given ray, if available.
     pub fn cast3DRayToWalls(
-        self: MapGeometry,
+        self: Geometry,
         ray: collision.Ray3d,
         ignore_fences: bool,
     ) ?RayCollision {
@@ -410,7 +410,7 @@ pub const MapGeometry = struct {
     }
 
     /// Find the id of the closest object hit by the given ray, if available.
-    pub fn cast3DRayToObjects(self: MapGeometry, ray: collision.Ray3d) ?RayCollision {
+    pub fn cast3DRayToObjects(self: Geometry, ray: collision.Ray3d) ?RayCollision {
         var result = self.cast3DRayToWalls(ray, false);
         for (self.billboard_objects.items) |billboard| {
             result = getCloserRayCollision(billboard.cast3DRay(ray), billboard.object_id, result);
@@ -439,7 +439,7 @@ pub const MapGeometry = struct {
     /// If a collision occurs, return a displacement vector for moving the given circle out of the
     /// map geometry. The returned displacement vector must be added to the given circles position
     /// to resolve the collision.
-    pub fn collidesWithCircle(self: MapGeometry, circle: collision.Circle) ?math.FlatVector {
+    pub fn collidesWithCircle(self: Geometry, circle: collision.Circle) ?math.FlatVector {
         var found_collision = false;
         var displaced_circle = circle;
 
@@ -458,7 +458,7 @@ pub const MapGeometry = struct {
     }
 
     /// Check if two points are separated by a solid wall. Fences are not solid.
-    pub fn isSolidWallBetweenPoints(self: MapGeometry, points: [2]math.FlatVector) bool {
+    pub fn isSolidWallBetweenPoints(self: Geometry, points: [2]math.FlatVector) bool {
         for (self.walls.solid.items) |wall| {
             if (wall.boundaries.collidesWithLine(points[0], points[1])) {
                 return true;
@@ -467,7 +467,7 @@ pub const MapGeometry = struct {
         return false;
     }
 
-    fn findWall(self: *MapGeometry, object_id: u64) ?*Wall {
+    fn findWall(self: *Geometry, object_id: u64) ?*Wall {
         for (self.walls.solid.items) |*wall| {
             if (wall.object_id == object_id) {
                 return wall;
@@ -481,7 +481,7 @@ pub const MapGeometry = struct {
         return null;
     }
 
-    fn findFloor(self: *MapGeometry, object_id: u64) ?*Floor {
+    fn findFloor(self: *Geometry, object_id: u64) ?*Floor {
         for (self.floors.items) |*floor| {
             if (floor.object_id == object_id) {
                 return floor;
@@ -490,7 +490,7 @@ pub const MapGeometry = struct {
         return null;
     }
 
-    fn findBillboardObject(self: *MapGeometry, object_id: u64) ?*BillboardObject {
+    fn findBillboardObject(self: *Geometry, object_id: u64) ?*BillboardObject {
         for (self.billboard_objects.items) |*billboard| {
             if (billboard.object_id == object_id) {
                 return billboard;
@@ -527,7 +527,7 @@ pub const MapGeometry = struct {
         return current_collision;
     }
 
-    fn uploadWallsToRenderer(self: *MapGeometry, allocator: std.mem.Allocator) !void {
+    fn uploadWallsToRenderer(self: *Geometry, allocator: std.mem.Allocator) !void {
         var data = try allocator.alloc(
             rendering.WallRenderer.WallData,
             self.walls.solid.items.len + self.walls.translucent.items.len,
@@ -543,7 +543,7 @@ pub const MapGeometry = struct {
         self.wall_renderer.uploadWalls(data);
     }
 
-    fn uploadFloorsToRenderer(self: *MapGeometry, allocator: std.mem.Allocator) !void {
+    fn uploadFloorsToRenderer(self: *Geometry, allocator: std.mem.Allocator) !void {
         var data = try allocator.alloc(rendering.FloorRenderer.FloorData, self.floors.items.len);
         defer allocator.free(data);
 
@@ -569,7 +569,7 @@ pub const MapGeometry = struct {
     }
 
     fn uploadBillboardsToRenderer(
-        self: *MapGeometry,
+        self: *Geometry,
         allocator: std.mem.Allocator,
         spritesheet: textures.SpriteSheetTexture,
     ) !void {
@@ -588,7 +588,7 @@ pub const MapGeometry = struct {
 
 const Floor = struct {
     object_id: u64,
-    floor_type: MapGeometry.FloorType,
+    floor_type: Geometry.FloorType,
     model_matrix: math.Matrix,
     boundaries: collision.Rectangle,
     tint: util.Color,
@@ -601,7 +601,7 @@ const Floor = struct {
     /// Side a and b can be chosen arbitrarily, but must be adjacent.
     fn create(
         object_id: u64,
-        floor_type: MapGeometry.FloorType,
+        floor_type: Geometry.FloorType,
         side_a_start: math.FlatVector,
         side_a_end: math.FlatVector,
         side_b_length: f32,
@@ -635,7 +635,7 @@ const Floor = struct {
         };
     }
 
-    fn getDefaultTint(floor_type: MapGeometry.FloorType) util.Color {
+    fn getDefaultTint(floor_type: Geometry.FloorType) util.Color {
         return switch (floor_type) {
             else => util.Color.white,
         };
@@ -656,7 +656,7 @@ const Floor = struct {
 
 const Wall = struct {
     object_id: u64,
-    wall_type: MapGeometry.WallType,
+    wall_type: Geometry.WallType,
     model_matrix: math.Matrix,
     boundaries: collision.Rectangle,
     tint: util.Color,
@@ -667,7 +667,7 @@ const Wall = struct {
 
     fn create(
         object_id: u64,
-        wall_type: MapGeometry.WallType,
+        wall_type: Geometry.WallType,
         start_position: math.FlatVector,
         end_position: math.FlatVector,
     ) Wall {
@@ -770,7 +770,7 @@ const Wall = struct {
     fn getWallTypeProperties(
         start_position: math.FlatVector,
         end_position: math.FlatVector,
-        wall_type: MapGeometry.WallType,
+        wall_type: Geometry.WallType,
     ) WallTypeProperties {
         const fence_thickness = 0.25; // Only needed for collision boundaries, fences are flat.
         var properties = WallTypeProperties{
@@ -820,7 +820,7 @@ const Wall = struct {
         return properties;
     }
 
-    fn getWallTypeHeight(wall_type: MapGeometry.WallType) f32 {
+    fn getWallTypeHeight(wall_type: Geometry.WallType) f32 {
         return switch (wall_type) {
             .small_wall => 5.0,
             .medium_wall => 10.0,
@@ -833,14 +833,14 @@ const Wall = struct {
         };
     }
 
-    fn isFence(wall_type: MapGeometry.WallType) bool {
+    fn isFence(wall_type: Geometry.WallType) bool {
         return switch (wall_type) {
             else => false,
             .metal_fence, .short_metal_fence => true,
         };
     }
 
-    fn getDefaultTint(wall_type: MapGeometry.WallType) util.Color {
+    fn getDefaultTint(wall_type: Geometry.WallType) util.Color {
         return switch (wall_type) {
             .castle_tower => util.Color.fromRgb8(248, 248, 248),
             .giga_wall => util.Color.fromRgb8(170, 170, 170),
@@ -878,13 +878,13 @@ const Wall = struct {
 
 const BillboardObject = struct {
     object_id: u64,
-    object_type: MapGeometry.BillboardObjectType,
+    object_type: Geometry.BillboardObjectType,
     boundaries: collision.Circle,
     tint: util.Color,
 
     fn create(
         object_id: u64,
-        object_type: MapGeometry.BillboardObjectType,
+        object_type: Geometry.BillboardObjectType,
         position: math.FlatVector,
     ) BillboardObject {
         const width: f32 = switch (object_type) {
@@ -935,7 +935,7 @@ const BillboardObject = struct {
         };
     }
 
-    fn getDefaultTint(object_type: MapGeometry.BillboardObjectType) util.Color {
+    fn getDefaultTint(object_type: Geometry.BillboardObjectType) util.Color {
         return switch (object_type) {
             else => util.Color.white,
         };

@@ -1,5 +1,5 @@
 const util = @import("util.zig");
-const MapGeometry = @import("map_geometry.zig").MapGeometry;
+const MapGeometry = @import("map/geometry.zig").Geometry;
 const std = @import("std");
 const math = @import("math.zig");
 const collision = @import("collision.zig");

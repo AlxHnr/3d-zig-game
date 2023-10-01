@@ -8,7 +8,7 @@ const std = @import("std");
 const textures = @import("textures.zig");
 
 const Hud = @import("hud.zig").Hud;
-const MapGeometry = @import("map_geometry.zig").MapGeometry;
+const MapGeometry = @import("map/geometry.zig").Geometry;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const TickTimer = @import("util.zig").TickTimer;
