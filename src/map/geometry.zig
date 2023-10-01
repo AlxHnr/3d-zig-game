@@ -77,20 +77,20 @@ pub const Geometry = struct {
     }
 
     /// Stores the given allocator internally for its entire lifetime.
-    pub fn createFromJson(allocator: std.mem.Allocator, json: []const u8) !Geometry {
+    pub fn createFromSerializableData(
+        allocator: std.mem.Allocator,
+        data: SerializableData,
+    ) !Geometry {
         var geometry = try create(allocator);
         errdefer geometry.destroy();
 
-        const tree = try std.json.parseFromSlice(SerializableData, allocator, json, .{});
-        defer tree.deinit();
-
-        for (tree.value.walls) |wall| {
+        for (data.walls) |wall| {
             const wall_type = std.meta.stringToEnum(WallType, wall.t) orelse {
                 return Error.FailedToDeserializeMapGeometry;
             };
             _ = try geometry.addWall(wall.start, wall.end, wall_type);
         }
-        for (tree.value.floors) |floor| {
+        for (data.floors) |floor| {
             const floor_type = std.meta.stringToEnum(FloorType, floor.t) orelse {
                 return Error.FailedToDeserializeMapGeometry;
             };
@@ -101,7 +101,7 @@ pub const Geometry = struct {
                 floor_type,
             );
         }
-        for (tree.value.billboard_objects) |billboard| {
+        for (data.billboard_objects) |billboard| {
             const object_type = std.meta.stringToEnum(BillboardObjectType, billboard.t) orelse {
                 return Error.FailedToDeserializeMapGeometry;
             };
@@ -157,12 +157,12 @@ pub const Geometry = struct {
         self.floor_animation_state.processElapsedTick(0.02);
     }
 
-    pub fn writeAsJson(self: Geometry, allocator: std.mem.Allocator, outstream: anytype) !void {
+    pub fn toSerializableData(self: Geometry, allocator: std.mem.Allocator) !SerializableData {
         var walls = try allocator.alloc(
             SerializableData.Wall,
             self.walls.solid.items.len + self.walls.translucent.items.len,
         );
-        defer allocator.free(walls);
+        errdefer allocator.free(walls);
         for (self.walls.solid.items, 0..) |wall, index| {
             walls[index] = .{
                 .t = @tagName(wall.wall_type),
@@ -179,7 +179,7 @@ pub const Geometry = struct {
         }
 
         var floors = try allocator.alloc(SerializableData.Floor, self.floors.items.len);
-        defer allocator.free(floors);
+        errdefer allocator.free(floors);
         for (self.floors.items, 0..) |floor, index| {
             floors[index] = .{
                 .t = @tagName(floor.floor_type),
@@ -190,7 +190,7 @@ pub const Geometry = struct {
         }
 
         var billboards = try allocator.alloc(SerializableData.BillboardObject, self.billboard_objects.items.len);
-        defer allocator.free(billboards);
+        errdefer allocator.free(billboards);
         for (self.billboard_objects.items, 0..) |billboard, index| {
             billboards[index] = .{
                 .t = @tagName(billboard.object_type),
@@ -198,12 +198,7 @@ pub const Geometry = struct {
             };
         }
 
-        const data = SerializableData{
-            .walls = walls,
-            .floors = floors,
-            .billboard_objects = billboards,
-        };
-        try std.json.stringify(data, .{ .whitespace = .indent_1 }, outstream);
+        return .{ .walls = walls, .floors = floors, .billboard_objects = billboards };
     }
 
     /// Simplified representation of a maps geometry.
@@ -211,6 +206,12 @@ pub const Geometry = struct {
         walls: []SerializableData.Wall,
         floors: []SerializableData.Floor,
         billboard_objects: []SerializableData.BillboardObject,
+
+        pub fn destroy(self: *SerializableData, allocator: std.mem.Allocator) void {
+            allocator.free(self.billboard_objects);
+            allocator.free(self.floors);
+            allocator.free(self.walls);
+        }
 
         const Wall = struct {
             /// Type enum as string.

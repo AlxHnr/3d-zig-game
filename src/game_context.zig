@@ -245,9 +245,13 @@ pub const Context = struct {
     }
 
     pub fn writeMapToDisk(self: Context, allocator: std.mem.Allocator) !void {
+        var data = try self.map_geometry.toSerializableData(allocator);
+        defer data.destroy(allocator);
+
         var file = try std.fs.cwd().createFile(self.map_file_path, .{});
         defer file.close();
-        return self.map_geometry.writeAsJson(allocator, file.writer());
+
+        try std.json.stringify(data, .{ .whitespace = .indent_1 }, file.writer());
     }
 
     pub fn castRay(
@@ -280,9 +284,14 @@ pub const Context = struct {
     }
 
     fn loadMapGeometry(allocator: std.mem.Allocator, file_path: []const u8) !MapGeometry {
-        var json = try std.fs.cwd().readFileAlloc(allocator, file_path, 20 * 1024 * 1024);
-        defer allocator.free(json);
-        return MapGeometry.createFromJson(allocator, json);
+        var json_string = try std.fs.cwd().readFileAlloc(allocator, file_path, 20 * 1024 * 1024);
+        defer allocator.free(json_string);
+
+        const serializable_data =
+            try std.json.parseFromSlice(MapGeometry.SerializableData, allocator, json_string, .{});
+        defer serializable_data.deinit();
+
+        return MapGeometry.createFromSerializableData(allocator, serializable_data.value);
     }
 };
 
