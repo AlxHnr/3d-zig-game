@@ -550,7 +550,8 @@ const MovingCharacter = struct {
     }
 
     fn setAcceleration(self: *MovingCharacter, direction: math.FlatVector) void {
-        self.acceleration_direction = direction.normalize();
+        std.debug.assert(direction.lengthSquared() < 1 + math.epsilon);
+        self.acceleration_direction = direction;
     }
 
     fn resolveCollision(self: *MovingCharacter, displacement_vector: math.FlatVector) void {
