@@ -310,16 +310,20 @@ const Player = struct {
         spritesheet_frame_ratio: f32,
     ) Player {
         const in_game_heigth = 1.8;
-        const character = Character.create(
+        const character = MovingCharacter.create(
             .{ .x = starting_position_x, .z = starting_position_z },
             in_game_heigth / spritesheet_frame_ratio / 2.0,
-            in_game_heigth,
+            0.15,
         );
-        const state = State{
+        const orientation = 0;
+        const state = .{
             .character = character,
+            .orientation = orientation,
+            .turning_direction = 0,
+            .height = in_game_heigth,
             .camera = ThirdPersonCamera.create(
                 character.boundaries.position,
-                character.getLookingDirection(),
+                State.getLookingDirection(orientation),
             ),
             .animation_cycle = animation.FourStepCycle.create(),
         };
@@ -383,8 +387,8 @@ const Player = struct {
         if (self.input_state.get(.backwards)) {
             acceleration_direction = acceleration_direction.subtract(forward_direction);
         }
-        self.state_at_next_tick.character.setAcceleration(acceleration_direction);
-        self.state_at_next_tick.character.setTurningDirection(turning_direction);
+        self.state_at_next_tick.character.setAcceleration(acceleration_direction.normalize());
+        self.state_at_next_tick.setTurningDirection(turning_direction);
     }
 
     fn processElapsedTick(self: *Player, map: Map, gem_collection: *gems.Collection) void {
@@ -405,7 +409,7 @@ const Player = struct {
 
         const min_velocity_for_animation = 0.02;
         const animation_frame =
-            if (state_to_render.character.velocity.length() < min_velocity_for_animation)
+            if (state_to_render.character.current_velocity.length() < min_velocity_for_animation)
             1
         else
             state_to_render.animation_cycle.getFrame();
@@ -419,12 +423,12 @@ const Player = struct {
         return .{
             .position = .{
                 .x = state_to_render.character.boundaries.position.x,
-                .y = state_to_render.character.height / 2,
+                .y = state_to_render.height / 2,
                 .z = state_to_render.character.boundaries.position.z,
             },
             .size = .{
                 .w = state_to_render.character.boundaries.radius * 2,
-                .h = state_to_render.character.height,
+                .h = state_to_render.height,
             },
             .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
         };
@@ -441,25 +445,33 @@ const Player = struct {
         self: Player,
         interval_between_previous_and_current_tick: f32,
     ) gems.CollisionObject {
-        const character = self.state_at_previous_tick.lerp(
+        const state = self.state_at_previous_tick.lerp(
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
-        ).character;
+        );
         return gems.CollisionObject{
             .id = self.id,
-            .boundaries = character.boundaries,
-            .height = character.height,
+            .boundaries = state.character.boundaries,
+            .height = state.height,
         };
     }
 
     const State = struct {
-        character: Character,
+        character: MovingCharacter,
+        orientation: f32,
+        /// Values from -1 (turning left) to 1 (turning right).
+        turning_direction: f32,
+        height: f32,
+
         camera: ThirdPersonCamera,
         animation_cycle: animation.FourStepCycle,
 
         fn lerp(self: State, other: State, t: f32) State {
             return State{
                 .character = self.character.lerp(other.character, t),
+                .orientation = math.lerp(self.orientation, other.orientation, t),
+                .turning_direction = math.lerp(self.turning_direction, other.turning_direction, t),
+                .height = math.lerp(self.height, other.height, t),
                 .camera = self.camera.lerp(other.camera, t),
                 .animation_cycle = self.animation_cycle.lerp(other.animation_cycle, t),
             };
@@ -473,119 +485,129 @@ const Player = struct {
             gem_collection: *gems.Collection,
         ) u64 {
             var gems_collected: u64 = 0;
-            var character = &self.character;
 
-            // Determined by trial and error to prevent an object with a radius of 0.05 from passing
-            // trough a fence with a thickness of 0.15.
-            const max_velocity_substep = 0.1;
-
-            const velocity_direction = character.velocity.normalize();
-            var velocity_remaining = character.velocity.length();
-            while (velocity_remaining > math.epsilon) {
-                const velocity_to_apply = @min(velocity_remaining, max_velocity_substep);
-                character.processVelocitySubstep(velocity_direction.scale(velocity_to_apply));
-                velocity_remaining -= velocity_to_apply;
-
-                if (map.geometry.collidesWithCircle(character.boundaries)) |displacement_vector| {
-                    character.resolveCollision(displacement_vector);
-                }
+            var remaining_velocity = self.character.processElapsedTickInit();
+            while (self.character.processElapsedTickConsume(&remaining_velocity, map)) {
                 gems_collected += gem_collection.processCollision(.{
                     .id = player_id,
-                    .boundaries = character.boundaries,
-                    .height = character.height,
+                    .boundaries = self.character.boundaries,
+                    .height = self.height,
                 }, map.geometry);
             }
 
-            character.processElapsedTick();
-            self.camera.processElapsedTick(
-                character.boundaries.position,
-                character.getLookingDirection(),
+            const max_rotation_per_tick = std.math.degreesToRadians(f32, 3.5);
+            const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
+            self.orientation = @mod(
+                self.orientation + rotation_angle,
+                std.math.degreesToRadians(f32, 360),
             );
-            self.animation_cycle.processElapsedTick(character.velocity.length() * 0.75);
+
+            self.camera.processElapsedTick(
+                self.character.boundaries.position,
+                getLookingDirection(self.orientation),
+            );
+            self.animation_cycle
+                .processElapsedTick(self.character.current_velocity.length() * 0.75);
 
             return gems_collected;
+        }
+
+        fn setTurningDirection(self: *State, turning_direction: f32) void {
+            self.turning_direction = std.math.clamp(turning_direction, -1, 1);
+        }
+
+        fn getLookingDirection(orientation: f32) math.FlatVector {
+            return .{ .x = std.math.sin(orientation), .z = std.math.cos(orientation) };
         }
     };
 };
 
-const Character = struct {
+const MovingCharacter = struct {
     boundaries: collision.Circle,
-    orientation: f32,
-    /// Values from -1 (turning left) to 1 (turning right).
-    turning_direction: f32,
+    movement_speed: f32,
     acceleration_direction: math.FlatVector,
-    velocity: math.FlatVector,
-    height: f32,
+    current_velocity: math.FlatVector,
 
-    fn create(position: math.FlatVector, radius: f32, height: f32) Character {
-        return Character{
-            .boundaries = collision.Circle{ .position = position, .radius = radius },
-            .orientation = 0,
-            .turning_direction = 0,
+    fn create(position: math.FlatVector, radius: f32, movement_speed: f32) MovingCharacter {
+        return .{
+            .boundaries = .{ .position = position, .radius = radius },
+            .movement_speed = movement_speed,
             .acceleration_direction = .{ .x = 0, .z = 0 },
-            .velocity = .{ .x = 0, .z = 0 },
-            .height = height,
+            .current_velocity = .{ .x = 0, .z = 0 },
         };
     }
 
-    fn lerp(self: Character, other: Character, t: f32) Character {
-        return Character{
+    fn lerp(self: MovingCharacter, other: MovingCharacter, t: f32) MovingCharacter {
+        return MovingCharacter{
             .boundaries = self.boundaries.lerp(other.boundaries, t),
-            .orientation = math.lerp(self.orientation, other.orientation, t),
-            .turning_direction = math.lerp(self.turning_direction, other.turning_direction, t),
-            .acceleration_direction = self.acceleration_direction.lerp(other.acceleration_direction, t),
-            .velocity = self.velocity.lerp(other.velocity, t),
-            .height = math.lerp(self.height, other.height, t),
+            .movement_speed = math.lerp(self.movement_speed, other.movement_speed, t),
+            .acceleration_direction = self.acceleration_direction.lerp(
+                other.acceleration_direction,
+                t,
+            ),
+            .current_velocity = self.current_velocity.lerp(other.current_velocity, t),
         };
     }
 
-    fn getLookingDirection(self: Character) math.FlatVector {
-        return .{ .x = std.math.sin(self.orientation), .z = std.math.cos(self.orientation) };
-    }
-
-    /// Given direction values will be normalized.
-    fn setAcceleration(self: *Character, direction: math.FlatVector) void {
+    fn setAcceleration(self: *MovingCharacter, direction: math.FlatVector) void {
         self.acceleration_direction = direction.normalize();
     }
 
-    /// Value from -1 (left) to 1 (right). Will be clamped into this range.
-    fn setTurningDirection(self: *Character, turning_direction: f32) void {
-        self.turning_direction = std.math.clamp(turning_direction, -1, 1);
-    }
-
-    fn resolveCollision(self: *Character, displacement_vector: math.FlatVector) void {
+    fn resolveCollision(self: *MovingCharacter, displacement_vector: math.FlatVector) void {
         self.boundaries.position = self.boundaries.position.add(displacement_vector);
-        const dot_product = std.math.clamp(self.velocity.normalize()
+        const dot_product = std.math.clamp(self.current_velocity.normalize()
             .dotProduct(displacement_vector.normalize()), -1, 1);
         const moving_against_displacement_vector =
-            self.velocity.dotProduct(displacement_vector) < 0;
+            self.current_velocity.dotProduct(displacement_vector) < 0;
         if (moving_against_displacement_vector) {
-            self.velocity = self.velocity.scale(1 + dot_product);
+            self.current_velocity = self.current_velocity.scale(1 + dot_product);
         }
     }
 
-    fn processVelocitySubstep(self: *Character, velocity_step: math.FlatVector) void {
-        self.boundaries.position = self.boundaries.position.add(velocity_step);
+    pub const RemainingTickVelocity = struct { direction: math.FlatVector, magnitude: f32 };
+
+    /// Returns an object which has to be consumed with processElapsedTickConsume().
+    pub fn processElapsedTickInit(self: MovingCharacter) RemainingTickVelocity {
+        return .{
+            .direction = self.current_velocity.normalize(),
+            .magnitude = self.current_velocity.length(),
+        };
     }
 
-    fn processElapsedTick(self: *Character) void {
+    /// Returns true if this function needs to be called again. False if there is no velocity left
+    /// to consume and the tick has been processed completely.
+    pub fn processElapsedTickConsume(
+        self: *MovingCharacter,
+        remaining_velocity: *RemainingTickVelocity,
+        map: Map,
+    ) bool {
+        if (remaining_velocity.magnitude > math.epsilon) {
+            // Determined by trial and error to prevent an object with a radius of 0.05 from passing
+            // trough a fence with a thickness of 0.15.
+            const max_velocity_substep = 0.1;
+
+            const velocity_step_length = @min(remaining_velocity.magnitude, max_velocity_substep);
+            const velocity_step = remaining_velocity.direction.scale(velocity_step_length);
+            self.boundaries.position = self.boundaries.position.add(velocity_step);
+            remaining_velocity.magnitude -= velocity_step_length;
+            if (map.geometry.collidesWithCircle(self.boundaries)) |displacement_vector| {
+                self.resolveCollision(displacement_vector);
+            }
+            return true;
+        }
+
         const is_accelerating = self.acceleration_direction.length() > math.epsilon;
         if (is_accelerating) {
-            const max_velocity = 0.15;
-            const acceleration = max_velocity / 5.0;
-            self.velocity = self.velocity.add(self.acceleration_direction.scale(acceleration));
-            if (self.velocity.length() > max_velocity) {
-                self.velocity = self.velocity.normalize().scale(max_velocity);
+            const acceleration = self.movement_speed / 5.0;
+            self.current_velocity =
+                self.current_velocity.add(self.acceleration_direction.scale(acceleration));
+            if (self.current_velocity.length() > self.movement_speed) {
+                self.current_velocity =
+                    self.current_velocity.normalize().scale(self.movement_speed);
             }
         } else {
-            self.velocity = self.velocity.scale(0.7);
+            self.current_velocity = self.current_velocity.scale(0.7);
         }
-
-        const max_rotation_per_tick = std.math.degreesToRadians(f32, 3.5);
-        const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
-        self.orientation = @mod(
-            self.orientation + rotation_angle,
-            std.math.degreesToRadians(f32, 360),
-        );
+        return false;
     }
 };
