@@ -309,10 +309,10 @@ const Player = struct {
         starting_position_z: f32,
         spritesheet_frame_ratio: f32,
     ) Player {
-        const in_game_heigth = 1.8;
+        const in_game_height = 1.8;
         const character = MovingCharacter.create(
             .{ .x = starting_position_x, .z = starting_position_z },
-            in_game_heigth / spritesheet_frame_ratio / 2.0,
+            in_game_height / spritesheet_frame_ratio / 2.0,
             0.15,
         );
         const orientation = 0;
@@ -320,7 +320,7 @@ const Player = struct {
             .character = character,
             .orientation = orientation,
             .turning_direction = 0,
-            .height = in_game_heigth,
+            .height = in_game_height,
             .camera = ThirdPersonCamera.create(
                 character.boundaries.position,
                 State.getLookingDirection(orientation),

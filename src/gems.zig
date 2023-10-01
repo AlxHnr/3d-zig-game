@@ -164,10 +164,10 @@ const Gem = struct {
             .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
         };
         if (self.spawn_animation_progress < 1) {
-            const jump_heigth = 1.5;
+            const jump_height = 1.5;
             const length = self.width * self.spawn_animation_progress;
             const t = (self.spawn_animation_progress - 0.5) * 2;
-            const y = (1 - t * t + length / 2) * jump_heigth;
+            const y = (1 - t * t + length / 2) * jump_height;
             billboard_data.position = .{
                 .x = self.boundaries.position.x,
                 .y = y,

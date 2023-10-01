@@ -33,8 +33,8 @@ pub const Camera = struct {
             .scale(default_distance_from_object);
 
         return Camera{
-            .position = add3dHeigth(target_object_position).add(offset_from_object),
-            .target_position = add3dHeigth(target_object_position),
+            .position = add3dHeight(target_object_position).add(offset_from_object),
+            .target_position = add3dHeight(target_object_position),
             .distance_from_object = default_distance_from_object,
             .target_distance_from_object = default_distance_from_object,
             .angle_from_ground = default_angle_from_ground,
@@ -141,7 +141,7 @@ pub const Camera = struct {
         const y_rotated_camera_offset =
             self.computeYRotatedCameraOffset(target_object_looking_direction);
         self.target_position = self.target_position.lerp(
-            add3dHeigth(target_object_position),
+            add3dHeight(target_object_position),
             target_follow_speed,
         );
         self.position = self.target_position.add(y_rotated_camera_offset);
@@ -197,7 +197,7 @@ pub const Camera = struct {
     }
 
     /// Add a Y offset to the specified target so it is rendered in the bottom part of the screen.
-    fn add3dHeigth(target_object_position: math.FlatVector) math.Vector3d {
+    fn add3dHeight(target_object_position: math.FlatVector) math.Vector3d {
         return target_object_position.toVector3d().add(math.Vector3d.y_axis.scale(3));
     }
 
