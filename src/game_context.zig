@@ -8,7 +8,7 @@ const std = @import("std");
 const textures = @import("textures.zig");
 
 const Hud = @import("hud.zig").Hud;
-const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
+const MapGeometry = @import("map_geometry.zig").MapGeometry;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const TickTimer = @import("util.zig").TickTimer;
@@ -32,7 +32,7 @@ pub const Context = struct {
     max_camera_distance: ?f32,
 
     map_file_path: []const u8,
-    level_geometry: LevelGeometry,
+    map_geometry: MapGeometry,
     gem_collection: gems.Collection,
     tileable_textures: textures.TileableArrayTexture,
     spritesheet: textures.SpriteSheetTexture,
@@ -47,8 +47,8 @@ pub const Context = struct {
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);
         errdefer allocator.free(map_file_path_buffer);
 
-        var level_geometry = try loadLevelGeometry(allocator, map_file_path);
-        errdefer level_geometry.destroy();
+        var map_geometry = try loadMapGeometry(allocator, map_file_path);
+        errdefer map_geometry.destroy();
 
         var gem_collection = gems.Collection.create(allocator);
         errdefer gem_collection.destroy();
@@ -89,7 +89,7 @@ pub const Context = struct {
             .max_camera_distance = null,
 
             .map_file_path = map_file_path_buffer,
-            .level_geometry = level_geometry,
+            .map_geometry = map_geometry,
             .gem_collection = gem_collection,
             .tileable_textures = tileable_textures,
             .spritesheet = spritesheet,
@@ -110,7 +110,7 @@ pub const Context = struct {
         self.spritesheet.destroy();
         self.tileable_textures.destroy();
         self.gem_collection.destroy();
-        self.level_geometry.destroy();
+        self.map_geometry.destroy();
         allocator.free(self.map_file_path);
     }
 
@@ -139,14 +139,14 @@ pub const Context = struct {
         const lap_result = self.tick_timer.lap();
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
-            self.level_geometry.processElapsedTick();
-            self.main_character.processElapsedTick(self.level_geometry, &self.gem_collection);
+            self.map_geometry.processElapsedTick();
+            self.main_character.processElapsedTick(self.map_geometry, &self.gem_collection);
             self.gem_collection.processElapsedTick();
             self.dialog_controller.processElapsedTick();
         }
         self.interval_between_previous_and_current_tick = lap_result.next_tick_progress;
 
-        const ray_wall_collision = self.level_geometry.cast3DRayToWalls(
+        const ray_wall_collision = self.map_geometry.cast3DRayToWalls(
             self.main_character.getCamera(self.interval_between_previous_and_current_tick)
                 .get3DRayFromTargetToSelf(),
             true,
@@ -162,7 +162,7 @@ pub const Context = struct {
         allocator: std.mem.Allocator,
         screen_dimensions: ScreenDimensions,
     ) !void {
-        try self.level_geometry.prepareRender(allocator, self.spritesheet);
+        try self.map_geometry.prepareRender(allocator, self.spritesheet);
 
         const billboards_to_render = self.gem_collection.getBillboardCount();
         if (self.billboard_buffer.len < billboards_to_render) {
@@ -184,7 +184,7 @@ pub const Context = struct {
             screen_dimensions,
             self.max_camera_distance,
         );
-        self.level_geometry.render(
+        self.map_geometry.render(
             vp_matrix,
             screen_dimensions,
             camera.getDirectionToTarget(),
@@ -234,20 +234,20 @@ pub const Context = struct {
         return self.dialog_controller.hasOpenDialogs();
     }
 
-    pub fn getMutableLevelGeometry(self: *Context) *LevelGeometry {
-        return &self.level_geometry;
+    pub fn getMutableMapGeometry(self: *Context) *MapGeometry {
+        return &self.map_geometry;
     }
 
     pub fn reloadMapFromDisk(self: *Context, allocator: std.mem.Allocator) !void {
-        const level_geometry = try loadLevelGeometry(allocator, self.map_file_path);
-        self.level_geometry.destroy();
-        self.level_geometry = level_geometry;
+        const map_geometry = try loadMapGeometry(allocator, self.map_file_path);
+        self.map_geometry.destroy();
+        self.map_geometry = map_geometry;
     }
 
     pub fn writeMapToDisk(self: Context, allocator: std.mem.Allocator) !void {
         var file = try std.fs.cwd().createFile(self.map_file_path, .{});
         defer file.close();
-        return self.level_geometry.writeAsJson(allocator, file.writer());
+        return self.map_geometry.writeAsJson(allocator, file.writer());
     }
 
     pub fn castRay(
@@ -279,10 +279,10 @@ pub const Context = struct {
             .getDirectionToTarget();
     }
 
-    fn loadLevelGeometry(allocator: std.mem.Allocator, file_path: []const u8) !LevelGeometry {
+    fn loadMapGeometry(allocator: std.mem.Allocator, file_path: []const u8) !MapGeometry {
         var json = try std.fs.cwd().readFileAlloc(allocator, file_path, 20 * 1024 * 1024);
         defer allocator.free(json);
-        return LevelGeometry.createFromJson(allocator, json);
+        return MapGeometry.createFromJson(allocator, json);
     }
 };
 
@@ -380,12 +380,12 @@ const Player = struct {
 
     fn processElapsedTick(
         self: *Player,
-        level_geometry: LevelGeometry,
+        map_geometry: MapGeometry,
         gem_collection: *gems.Collection,
     ) void {
         self.state_at_previous_tick = self.state_at_next_tick;
         self.gem_count +=
-            self.state_at_next_tick.processElapsedTick(self.id, level_geometry, gem_collection);
+            self.state_at_next_tick.processElapsedTick(self.id, map_geometry, gem_collection);
     }
 
     fn getBillboardData(
@@ -464,7 +464,7 @@ const Player = struct {
         fn processElapsedTick(
             self: *State,
             player_id: u64,
-            level_geometry: LevelGeometry,
+            map_geometry: MapGeometry,
             gem_collection: *gems.Collection,
         ) u64 {
             var gems_collected: u64 = 0;
@@ -481,14 +481,14 @@ const Player = struct {
                 character.processVelocitySubstep(velocity_direction.scale(velocity_to_apply));
                 velocity_remaining -= velocity_to_apply;
 
-                if (level_geometry.collidesWithCircle(character.boundaries)) |displacement_vector| {
+                if (map_geometry.collidesWithCircle(character.boundaries)) |displacement_vector| {
                     character.resolveCollision(displacement_vector);
                 }
                 gems_collected += gem_collection.processCollision(.{
                     .id = player_id,
                     .boundaries = character.boundaries,
                     .height = character.height,
-                }, level_geometry);
+                }, map_geometry);
             }
 
             character.processElapsedTick();

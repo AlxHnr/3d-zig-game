@@ -22,7 +22,7 @@ pub const WallRenderer = struct {
     pub fn create() !WallRenderer {
         var shader = try Shader.create(
             @embedFile("./shader/wall.vert"),
-            @embedFile("./shader/level_geometry.frag"),
+            @embedFile("./shader/map_geometry.frag"),
         );
         errdefer shader.destroy();
         const loc_position = try shader.getAttributeLocation("position");
@@ -50,7 +50,7 @@ pub const WallRenderer = struct {
         gl.enableVertexAttribArray(loc_texcoord_scale);
 
         const wall_data_vbo_id = createAndBindEmptyVbo();
-        setupLevelGeometryPropertyAttributes(
+        setupMapGeometryPropertyAttributes(
             loc_model_matrix,
             loc_texture_layer_id,
             loc_tint,
@@ -121,7 +121,7 @@ pub const WallRenderer = struct {
     }
 
     pub const WallData = extern struct {
-        properties: LevelGeometryAttributes,
+        properties: MapGeometryAttributes,
         // How often the texture should repeat along each axis.
         texture_repeat_dimensions: extern struct {
             x: f32,
@@ -144,7 +144,7 @@ pub const FloorRenderer = struct {
     pub fn create() !FloorRenderer {
         var shader = try Shader.create(
             @embedFile("./shader/floor.vert"),
-            @embedFile("./shader/level_geometry.frag"),
+            @embedFile("./shader/map_geometry.frag"),
         );
         errdefer shader.destroy();
         const loc_position = try shader.getAttributeLocation("position");
@@ -165,7 +165,7 @@ pub const FloorRenderer = struct {
         const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_position, loc_texture_coords);
 
         const floor_data_vbo_id = createAndBindEmptyVbo();
-        setupLevelGeometryPropertyAttributes(
+        setupMapGeometryPropertyAttributes(
             loc_model_matrix,
             loc_texture_layer_id,
             loc_tint,
@@ -241,7 +241,7 @@ pub const FloorRenderer = struct {
     }
 
     pub const FloorData = extern struct {
-        properties: LevelGeometryAttributes,
+        properties: MapGeometryAttributes,
         /// Either 1 or 0. Animations work by adding 0, 1 or 2 to `.properties.texture_layer_id`.
         affected_by_animation_cycle: f32,
         /// How often the texture should repeat along the floors width and height.
@@ -253,7 +253,7 @@ pub const FloorRenderer = struct {
 };
 
 /// Basic geometry data to be uploaded as vertex attributes to the GPU.
-pub const LevelGeometryAttributes = extern struct {
+pub const MapGeometryAttributes = extern struct {
     model_matrix: [16]f32,
     /// Index of the layer in the array texture passed to render(). Will be rounded.
     texture_layer_id: f32,
@@ -548,8 +548,8 @@ fn setupVertexAttribute(
     gl.vertexAttribDivisor(attribute_location, 1);
 }
 
-/// Configures LevelGeometryAttributes as vertex attributes at offset 0.
-fn setupLevelGeometryPropertyAttributes(
+/// Configures MapGeometryAttributes as vertex attributes at offset 0.
+fn setupMapGeometryPropertyAttributes(
     loc_model_matrix: c_uint,
     loc_texture_layer_id: c_uint,
     loc_tint: c_uint,
@@ -561,15 +561,15 @@ fn setupLevelGeometryPropertyAttributes(
     setupVertexAttribute(loc_model_matrix + 2, 4, @sizeOf([8]f32), stride);
     setupVertexAttribute(loc_model_matrix + 3, 4, @sizeOf([12]f32), stride);
     setupVertexAttribute(loc_texture_layer_id, 1, @offsetOf(
-        LevelGeometryAttributes,
+        MapGeometryAttributes,
         "texture_layer_id",
     ), stride);
-    setupVertexAttribute(loc_tint, 3, @offsetOf(LevelGeometryAttributes, "tint"), stride);
+    setupVertexAttribute(loc_tint, 3, @offsetOf(MapGeometryAttributes, "tint"), stride);
     comptime {
-        assert(@offsetOf(LevelGeometryAttributes, "model_matrix") == 0);
-        assert(@offsetOf(LevelGeometryAttributes, "texture_layer_id") == 64);
-        assert(@offsetOf(LevelGeometryAttributes, "tint") == 68);
-        assert(@sizeOf(LevelGeometryAttributes) == 80);
+        assert(@offsetOf(MapGeometryAttributes, "model_matrix") == 0);
+        assert(@offsetOf(MapGeometryAttributes, "texture_layer_id") == 64);
+        assert(@offsetOf(MapGeometryAttributes, "tint") == 68);
+        assert(@sizeOf(MapGeometryAttributes) == 80);
     }
 }
 

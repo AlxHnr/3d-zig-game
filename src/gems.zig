@@ -3,7 +3,7 @@
 const collision = @import("collision.zig");
 const std = @import("std");
 const math = @import("math.zig");
-const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
+const MapGeometry = @import("map_geometry.zig").MapGeometry;
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 
@@ -82,11 +82,11 @@ pub const Collection = struct {
     pub fn processCollision(
         self: *Collection,
         collision_object: CollisionObject,
-        level_geometry: LevelGeometry,
+        map_geometry: MapGeometry,
     ) usize {
         var gems_collected: usize = 0;
         for (self.gems.items) |*gem| {
-            if (gem.state_at_next_tick.processCollision(collision_object, level_geometry)) {
+            if (gem.state_at_next_tick.processCollision(collision_object, map_geometry)) {
                 gems_collected = gems_collected + 1;
             }
         }
@@ -208,7 +208,7 @@ const Gem = struct {
     }
 
     /// If a collision was found it will return true and start the pickup animation.
-    fn processCollision(self: *Gem, collision_object: CollisionObject, level_geometry: LevelGeometry) bool {
+    fn processCollision(self: *Gem, collision_object: CollisionObject, map_geometry: MapGeometry) bool {
         if (self.spawn_animation_progress < 1) {
             return false;
         }
@@ -216,7 +216,7 @@ const Gem = struct {
         const collision_object_position = collision_object.boundaries.position;
         if (self.pickup_animation_progress == null and
             self.boundaries.collidesWithCircle(collision_object.boundaries) != null and
-            !level_geometry.isSolidWallBetweenPoints(
+            !map_geometry.isSolidWallBetweenPoints(
             .{ self.boundaries.position, collision_object_position },
         )) {
             self.pickup_animation_progress = 0;

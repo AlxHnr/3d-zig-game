@@ -123,7 +123,7 @@ const ProgramContext = struct {
             self.screen_dimensions,
         );
         self.edit_mode_state.updateCurrentActionTarget(
-            self.game_context.getMutableLevelGeometry(),
+            self.game_context.getMutableMapGeometry(),
             ray,
             self.game_context.getCameraDirection().toFlatVector(),
         );
@@ -145,12 +145,12 @@ const ProgramContext = struct {
             } else if (event.type == sdl.SDL_MOUSEBUTTONDOWN) {
                 if (event.button.button == sdl.SDL_BUTTON_LEFT) {
                     try self.edit_mode_state.handleActionAtTarget(
-                        self.game_context.getMutableLevelGeometry(),
+                        self.game_context.getMutableMapGeometry(),
                         ray,
                     );
                 } else if (event.button.button == sdl.SDL_BUTTON_MIDDLE) {
                     self.edit_mode_state.cycleInsertedObjectType(
-                        self.game_context.getMutableLevelGeometry(),
+                        self.game_context.getMutableMapGeometry(),
                     );
                 }
             } else if (event.type == sdl.SDL_MOUSEWHEEL) {
@@ -180,7 +180,7 @@ const ProgramContext = struct {
                 } else if (event.key.keysym.sym == sdl.SDLK_F5) {
                     try self.game_context.reloadMapFromDisk(self.allocator);
                 } else if (event.key.keysym.sym == sdl.SDLK_DELETE) {
-                    self.edit_mode_state.cycleMode(self.game_context.getMutableLevelGeometry());
+                    self.edit_mode_state.cycleMode(self.game_context.getMutableMapGeometry());
                 } else if (keyToInputButton(event.key.keysym.sym)) |keycode| {
                     self.game_context.markButtonAsPressed(keycode);
                 }
