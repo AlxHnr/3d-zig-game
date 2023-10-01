@@ -312,7 +312,7 @@ const Player = struct {
         const in_game_height = 1.8;
         const character = MovingCharacter.create(
             .{ .x = starting_position_x, .z = starting_position_z },
-            in_game_height / spritesheet_frame_ratio / 2.0,
+            in_game_height / spritesheet_frame_ratio,
             0.15,
         );
         const orientation = 0;
@@ -528,9 +528,9 @@ const MovingCharacter = struct {
     acceleration_direction: math.FlatVector,
     current_velocity: math.FlatVector,
 
-    fn create(position: math.FlatVector, radius: f32, movement_speed: f32) MovingCharacter {
+    fn create(position: math.FlatVector, width: f32, movement_speed: f32) MovingCharacter {
         return .{
-            .boundaries = .{ .position = position, .radius = radius },
+            .boundaries = .{ .position = position, .radius = width / 2 },
             .movement_speed = movement_speed,
             .acceleration_direction = .{ .x = 0, .z = 0 },
             .current_velocity = .{ .x = 0, .z = 0 },
