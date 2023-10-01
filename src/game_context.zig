@@ -38,7 +38,7 @@ pub const Context = struct {
     spritesheet: textures.SpriteSheetTexture,
 
     billboard_renderer: rendering.BillboardRenderer,
-    billboard_buffer: []rendering.BillboardRenderer.BillboardData,
+    billboard_buffer: []rendering.BillboardData,
 
     hud: Hud,
     dialog_controller: dialog.Controller,
@@ -198,7 +198,7 @@ pub const Context = struct {
             self.spritesheet.id,
         );
 
-        const player_billboard_data = [_]rendering.BillboardRenderer.BillboardData{
+        const player_billboard_data = [_]rendering.BillboardData{
             self.main_character.getBillboardData(
                 self.spritesheet,
                 self.interval_between_previous_and_current_tick,
@@ -392,7 +392,7 @@ const Player = struct {
         self: Player,
         spritesheet: textures.SpriteSheetTexture,
         interval_between_previous_and_current_tick: f32,
-    ) rendering.BillboardRenderer.BillboardData {
+    ) rendering.BillboardData {
         const state_to_render = self.state_at_previous_tick.lerp(
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,

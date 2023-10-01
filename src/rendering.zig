@@ -431,31 +431,32 @@ pub const BillboardRenderer = struct {
 
         updateVbo(self.vertex_vbo_id, &meshes.StandingQuad.vertex_data, size, &size, gl.STATIC_DRAW);
     }
+};
 
-    pub const BillboardData = extern struct {
-        /// Center of the object. Must either contain game-world coordinates when calling render()
-        /// or screen coordinates when calling render2d().
-        position: extern struct { x: f32, y: f32, z: f32 },
-        size: extern struct { w: f32, h: f32 },
-        /// Will be applied after scaling but before Z rotation. Can be used to preserve character
-        /// order when rendering text.
-        offset_from_origin: extern struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
-        /// Precomputed angle at which the billboard should be rotated around the Z axis. Defaults
-        /// to no rotation.
-        z_rotation: extern struct { sine: f32, cosine: f32 } = .{
-            .sine = std.math.sin(@as(f32, 0)),
-            .cosine = std.math.cos(@as(f32, 0)),
-        },
-        /// Specifies the part of the currently bound texture which should be stretched onto the
-        /// billboard. Values range from 0 to 1, where (0, 0) is the top left corner of the texture.
-        source_rect: extern struct { x: f32, y: f32, w: f32, h: f32 },
-        /// Color values from 0 to 1. Defaults to white (no tint).
-        tint: extern struct { r: f32, g: f32, b: f32 } = .{ .r = 1, .g = 1, .b = 1 },
-        /// 0 if the billboard should shrink with increasing camera distance.
-        /// 1 if the billboard should have a fixed pixel size independently from its distance to the
-        /// camera.
-        preserve_exact_pixel_size: f32 = 0,
-    };
+/// Data laid out for upload to the GPU.
+pub const BillboardData = extern struct {
+    /// Center of the object. Must either contain game-world coordinates when calling render()
+    /// or screen coordinates when calling render2d().
+    position: extern struct { x: f32, y: f32, z: f32 },
+    size: extern struct { w: f32, h: f32 },
+    /// Will be applied after scaling but before Z rotation. Can be used to preserve character
+    /// order when rendering text.
+    offset_from_origin: extern struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
+    /// Precomputed angle at which the billboard should be rotated around the Z axis. Defaults
+    /// to no rotation.
+    z_rotation: extern struct { sine: f32, cosine: f32 } = .{
+        .sine = std.math.sin(@as(f32, 0)),
+        .cosine = std.math.cos(@as(f32, 0)),
+    },
+    /// Specifies the part of the currently bound texture which should be stretched onto the
+    /// billboard. Values range from 0 to 1, where (0, 0) is the top left corner of the texture.
+    source_rect: extern struct { x: f32, y: f32, w: f32, h: f32 },
+    /// Color values from 0 to 1. Defaults to white (no tint).
+    tint: extern struct { r: f32, g: f32, b: f32 } = .{ .r = 1, .g = 1, .b = 1 },
+    /// 0 if the billboard should shrink with increasing camera distance.
+    /// 1 if the billboard should have a fixed pixel size independently from its distance to the
+    /// camera.
+    preserve_exact_pixel_size: f32 = 0,
 };
 
 fn createAndBindVao() c_uint {

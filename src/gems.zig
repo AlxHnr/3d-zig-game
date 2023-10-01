@@ -4,7 +4,7 @@ const collision = @import("collision.zig");
 const std = @import("std");
 const math = @import("math.zig");
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
-const BillboardData = @import("rendering.zig").BillboardRenderer.BillboardData;
+const BillboardData = @import("rendering.zig").BillboardData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 
 pub const CollisionObject = struct {

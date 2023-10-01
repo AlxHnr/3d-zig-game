@@ -1,4 +1,4 @@
-const BillboardData = @import("rendering.zig").BillboardRenderer.BillboardData;
+const BillboardData = @import("rendering.zig").BillboardData;
 const Color = @import("util.zig").Color;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;

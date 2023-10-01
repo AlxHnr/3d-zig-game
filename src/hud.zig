@@ -1,18 +1,18 @@
 const std = @import("std");
-const BillboardRenderer = @import("rendering.zig").BillboardRenderer;
 const Color = @import("util.zig").Color;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const text_rendering = @import("text_rendering.zig");
 const ui = @import("ui.zig");
+const rendering = @import("rendering.zig");
 
 pub const Hud = struct {
-    renderer: BillboardRenderer,
-    billboard_buffer: []BillboardRenderer.BillboardData,
+    renderer: rendering.BillboardRenderer,
+    billboard_buffer: []rendering.BillboardData,
 
     pub fn create() !Hud {
         return .{
-            .renderer = try BillboardRenderer.create(),
+            .renderer = try rendering.BillboardRenderer.create(),
             .billboard_buffer = &.{},
         };
     }
@@ -104,7 +104,7 @@ const GemCountInfo = struct {
         self: GemCountInfo,
         screen_dimensions: ScreenDimensions,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardRenderer.BillboardData,
+        out: []rendering.BillboardData,
     ) void {
         const info_dimensions = self.main_widget.getDimensionsInPixels();
         self.main_widget.populateBillboardData(

@@ -2,7 +2,7 @@
 //! rotate around the Y axis towards the camera. The characters ' ' and '\n' affect the formatting
 //! of the rendered text. All strings passed to these functions are assumed to contain valid UTF-8.
 const std = @import("std");
-const BillboardData = @import("rendering.zig").BillboardRenderer.BillboardData;
+const BillboardData = @import("rendering.zig").BillboardData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const Color = @import("util.zig").Color;
 const Vector3d = @import("math.zig").Vector3d;

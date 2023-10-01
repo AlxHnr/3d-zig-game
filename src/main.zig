@@ -1,4 +1,3 @@
-const BillboardRenderer = @import("rendering.zig").BillboardRenderer;
 const Error = @import("error.zig").Error;
 const GameContext = @import("game_context.zig").Context;
 const InputButton = @import("game_context.zig").InputButton;
@@ -10,6 +9,7 @@ const sdl = @import("sdl.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 const util = @import("util.zig");
+const rendering = @import("rendering.zig");
 
 const ProgramContext = struct {
     screen_dimensions: util.ScreenDimensions,
@@ -244,12 +244,12 @@ const ProgramContext = struct {
 };
 
 const EditModeRenderer = struct {
-    renderer: BillboardRenderer,
-    billboard_buffer: []BillboardRenderer.BillboardData,
+    renderer: rendering.BillboardRenderer,
+    billboard_buffer: []rendering.BillboardData,
     spritesheet: SpriteSheetTexture,
 
     fn create() !EditModeRenderer {
-        var renderer = try BillboardRenderer.create();
+        var renderer = try rendering.BillboardRenderer.create();
         errdefer renderer.destroy();
 
         var spritesheet = try SpriteSheetTexture.loadFromDisk();

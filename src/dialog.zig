@@ -1,6 +1,6 @@
-const BillboardRenderer = @import("rendering.zig").BillboardRenderer;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const math = @import("math.zig");
+const rendering = @import("rendering.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 const ui = @import("ui.zig");
@@ -12,13 +12,13 @@ const dialog_text_scale = 2;
 pub const Controller = struct {
     /// Non-owning reference.
     allocator: std.mem.Allocator,
-    renderer: BillboardRenderer,
-    billboard_buffer: []BillboardRenderer.BillboardData,
+    renderer: rendering.BillboardRenderer,
+    billboard_buffer: []rendering.BillboardData,
     spritesheet: *SpriteSheetTexture,
     dialog_stack: std.ArrayList(Dialog),
 
     pub fn create(allocator: std.mem.Allocator) !Controller {
-        var renderer = try BillboardRenderer.create();
+        var renderer = try rendering.BillboardRenderer.create();
         errdefer renderer.destroy();
 
         var spritesheet = try allocator.create(SpriteSheetTexture);
@@ -171,7 +171,7 @@ const Dialog = union(enum) {
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardRenderer.BillboardData,
+        out: []rendering.BillboardData,
     ) void {
         return switch (self) {
             inline else => |subtype| subtype.populateBillboardData(
@@ -256,7 +256,7 @@ const Prompt = struct {
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardRenderer.BillboardData,
+        out: []rendering.BillboardData,
     ) void {
         self.slide_in_animation_box.populateBillboardData(
             screen_dimensions,
@@ -401,7 +401,7 @@ const ChoiceBox = struct {
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardRenderer.BillboardData,
+        out: []rendering.BillboardData,
     ) void {
         self.slide_in_animation_box.populateBillboardData(
             screen_dimensions,
@@ -581,7 +581,7 @@ const SlideInAnimationBox = struct {
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardRenderer.BillboardData,
+        out: []rendering.BillboardData,
     ) void {
         const raw_interval =
             self.movement_animation.getInterval(interval_between_previous_and_current_tick);
@@ -686,7 +686,7 @@ const AnimatedTextBlock = struct {
         screen_position_x: u16,
         screen_position_y: u16,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardRenderer.BillboardData,
+        out: []rendering.BillboardData,
     ) void {
         self.widget.populateBillboardData(screen_position_x, screen_position_y, out);
     }
