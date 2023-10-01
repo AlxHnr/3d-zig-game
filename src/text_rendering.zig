@@ -2,7 +2,7 @@
 //! rotate around the Y axis towards the camera. The characters ' ' and '\n' affect the formatting
 //! of the rendered text. All strings passed to these functions are assumed to contain valid UTF-8.
 const std = @import("std");
-const BillboardData = @import("rendering.zig").BillboardData;
+const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const Color = @import("util.zig").Color;
 const Vector3d = @import("math.zig").Vector3d;
@@ -48,7 +48,7 @@ pub fn populateBillboardData(
     character_size: f32,
     spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all billboards. See getBillboardCount().
-    out: []BillboardData,
+    out: []SpriteData,
 ) void {
     populateBillboardDataRaw(
         segments,
@@ -70,7 +70,7 @@ pub fn populateBillboardDataExactPixelSize(
     character_size_pixels: u16,
     spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all billboards. See getBillboardCount().
-    out: []BillboardData,
+    out: []SpriteData,
 ) void {
     populateBillboardDataRaw(
         segments,
@@ -98,7 +98,7 @@ pub fn populateBillboardData2d(
     character_size_pixels: u16,
     spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all billboards. See getBillboardCount().
-    out: []BillboardData,
+    out: []SpriteData,
 ) void {
     const position = .{
         .x = @as(f32, @floatFromInt(screen_position_x)),
@@ -289,7 +289,7 @@ fn populateBillboardDataRaw(
     y_axis_points_upwards: bool,
     spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all billboards. See getBillboardCount().
-    out: []BillboardData,
+    out: []SpriteData,
 ) void {
     // Billboard positions usually specify their center. Offsets are applied to align the top left
     // corner of the text block.

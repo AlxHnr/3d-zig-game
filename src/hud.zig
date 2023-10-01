@@ -8,7 +8,7 @@ const rendering = @import("rendering.zig");
 
 pub const Hud = struct {
     renderer: rendering.BillboardRenderer,
-    billboard_buffer: []rendering.BillboardData,
+    billboard_buffer: []rendering.SpriteData,
 
     pub fn create() !Hud {
         return .{
@@ -104,7 +104,7 @@ const GemCountInfo = struct {
         self: GemCountInfo,
         screen_dimensions: ScreenDimensions,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []rendering.BillboardData,
+        out: []rendering.SpriteData,
     ) void {
         const info_dimensions = self.main_widget.getDimensionsInPixels();
         self.main_widget.populateBillboardData(

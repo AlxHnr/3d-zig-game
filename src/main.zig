@@ -245,7 +245,7 @@ const ProgramContext = struct {
 
 const EditModeRenderer = struct {
     renderer: rendering.BillboardRenderer,
-    billboard_buffer: []rendering.BillboardData,
+    billboard_buffer: []rendering.SpriteData,
     spritesheet: SpriteSheetTexture,
 
     fn create() !EditModeRenderer {

@@ -261,7 +261,7 @@ pub const LevelGeometryAttributes = extern struct {
     tint: extern struct { r: f32, g: f32, b: f32 },
 };
 
-/// Renders sprites which rotate around the Y axis towards the camera.
+/// Renders 2d sprites in 3d space which rotate around the Y axis towards the camera.
 pub const BillboardRenderer = struct {
     vao_id: c_uint,
     vertex_vbo_id: c_uint,
@@ -300,35 +300,35 @@ pub const BillboardRenderer = struct {
         const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_position, loc_texture_coords);
         const billboard_data_vbo_id = createAndBindEmptyVbo();
         setupVertexAttribute(loc_billboard_center_position, 3, @offsetOf(
-            BillboardData,
+            SpriteData,
             "position",
-        ), @sizeOf(BillboardData));
-        setupVertexAttribute(loc_size, 2, @offsetOf(BillboardData, "size"), @sizeOf(BillboardData));
+        ), @sizeOf(SpriteData));
+        setupVertexAttribute(loc_size, 2, @offsetOf(SpriteData, "size"), @sizeOf(SpriteData));
         setupVertexAttribute(loc_offset_from_origin, 2, @offsetOf(
-            BillboardData,
+            SpriteData,
             "offset_from_origin",
-        ), @sizeOf(BillboardData));
+        ), @sizeOf(SpriteData));
         setupVertexAttribute(loc_z_rotation, 2, @offsetOf(
-            BillboardData,
+            SpriteData,
             "z_rotation",
-        ), @sizeOf(BillboardData));
-        setupVertexAttribute(loc_source_rect, 4, @offsetOf(BillboardData, "source_rect"), @sizeOf(
-            BillboardData,
+        ), @sizeOf(SpriteData));
+        setupVertexAttribute(loc_source_rect, 4, @offsetOf(SpriteData, "source_rect"), @sizeOf(
+            SpriteData,
         ));
-        setupVertexAttribute(loc_tint, 3, @offsetOf(BillboardData, "tint"), @sizeOf(BillboardData));
+        setupVertexAttribute(loc_tint, 3, @offsetOf(SpriteData, "tint"), @sizeOf(SpriteData));
         setupVertexAttribute(loc_preserve_exact_pixel_size, 1, @offsetOf(
-            BillboardData,
+            SpriteData,
             "preserve_exact_pixel_size",
-        ), @sizeOf(BillboardData));
+        ), @sizeOf(SpriteData));
         comptime {
-            assert(@offsetOf(BillboardData, "position") == 0);
-            assert(@offsetOf(BillboardData, "size") == 12);
-            assert(@offsetOf(BillboardData, "offset_from_origin") == 20);
-            assert(@offsetOf(BillboardData, "z_rotation") == 28);
-            assert(@offsetOf(BillboardData, "source_rect") == 36);
-            assert(@offsetOf(BillboardData, "tint") == 52);
-            assert(@offsetOf(BillboardData, "preserve_exact_pixel_size") == 64);
-            assert(@sizeOf(BillboardData) == 68);
+            assert(@offsetOf(SpriteData, "position") == 0);
+            assert(@offsetOf(SpriteData, "size") == 12);
+            assert(@offsetOf(SpriteData, "offset_from_origin") == 20);
+            assert(@offsetOf(SpriteData, "z_rotation") == 28);
+            assert(@offsetOf(SpriteData, "source_rect") == 36);
+            assert(@offsetOf(SpriteData, "tint") == 52);
+            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 64);
+            assert(@sizeOf(SpriteData) == 68);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -356,11 +356,11 @@ pub const BillboardRenderer = struct {
     }
 
     /// Billboards are rendered in the same order as specified.
-    pub fn uploadBillboards(self: *BillboardRenderer, billboards: []const BillboardData) void {
+    pub fn uploadBillboards(self: *BillboardRenderer, billboards: []const SpriteData) void {
         updateVbo(
             self.billboard_data_vbo_id,
             billboards.ptr,
-            billboards.len * @sizeOf(BillboardData),
+            billboards.len * @sizeOf(SpriteData),
             &self.billboard_capacity_in_vbo,
             gl.STREAM_DRAW,
         );
@@ -434,7 +434,7 @@ pub const BillboardRenderer = struct {
 };
 
 /// Data laid out for upload to the GPU.
-pub const BillboardData = extern struct {
+pub const SpriteData = extern struct {
     /// Center of the object. Must either contain game-world coordinates when calling render()
     /// or screen coordinates when calling render2d().
     position: extern struct { x: f32, y: f32, z: f32 },

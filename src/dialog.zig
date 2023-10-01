@@ -13,7 +13,7 @@ pub const Controller = struct {
     /// Non-owning reference.
     allocator: std.mem.Allocator,
     renderer: rendering.BillboardRenderer,
-    billboard_buffer: []rendering.BillboardData,
+    billboard_buffer: []rendering.SpriteData,
     spritesheet: *SpriteSheetTexture,
     dialog_stack: std.ArrayList(Dialog),
 
@@ -171,7 +171,7 @@ const Dialog = union(enum) {
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []rendering.BillboardData,
+        out: []rendering.SpriteData,
     ) void {
         return switch (self) {
             inline else => |subtype| subtype.populateBillboardData(
@@ -256,7 +256,7 @@ const Prompt = struct {
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []rendering.BillboardData,
+        out: []rendering.SpriteData,
     ) void {
         self.slide_in_animation_box.populateBillboardData(
             screen_dimensions,
@@ -401,7 +401,7 @@ const ChoiceBox = struct {
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []rendering.BillboardData,
+        out: []rendering.SpriteData,
     ) void {
         self.slide_in_animation_box.populateBillboardData(
             screen_dimensions,
@@ -581,7 +581,7 @@ const SlideInAnimationBox = struct {
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []rendering.BillboardData,
+        out: []rendering.SpriteData,
     ) void {
         const raw_interval =
             self.movement_animation.getInterval(interval_between_previous_and_current_tick);
@@ -686,7 +686,7 @@ const AnimatedTextBlock = struct {
         screen_position_x: u16,
         screen_position_y: u16,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []rendering.BillboardData,
+        out: []rendering.SpriteData,
     ) void {
         self.widget.populateBillboardData(screen_position_x, screen_position_y, out);
     }

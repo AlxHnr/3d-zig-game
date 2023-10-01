@@ -574,7 +574,7 @@ pub const LevelGeometry = struct {
         spritesheet: textures.SpriteSheetTexture,
     ) !void {
         var data = try allocator.alloc(
-            rendering.BillboardData,
+            rendering.SpriteData,
             self.billboard_objects.items.len,
         );
         defer allocator.free(data);
@@ -913,7 +913,7 @@ const BillboardObject = struct {
     fn getBillboardData(
         self: BillboardObject,
         spritesheet: textures.SpriteSheetTexture,
-    ) rendering.BillboardData {
+    ) rendering.SpriteData {
         const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (self.object_type) {
             .small_bush => .small_bush,
         };

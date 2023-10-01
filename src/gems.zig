@@ -4,7 +4,7 @@ const collision = @import("collision.zig");
 const std = @import("std");
 const math = @import("math.zig");
 const LevelGeometry = @import("level_geometry.zig").LevelGeometry;
-const BillboardData = @import("rendering.zig").BillboardData;
+const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 
 pub const CollisionObject = struct {
@@ -55,7 +55,7 @@ pub const Collection = struct {
     /// the count for the current tick.
     pub fn populateBillboardData(
         self: Collection,
-        data: []BillboardData,
+        data: []SpriteData,
         spritesheet: SpriteSheetTexture,
         collision_objects: []const CollisionObject,
         interval_between_previous_and_current_tick: f32,
@@ -148,10 +148,10 @@ const Gem = struct {
         self: Gem,
         collision_objects: []const CollisionObject,
         spritesheet: SpriteSheetTexture,
-    ) BillboardData {
+    ) SpriteData {
         const source = spritesheet.getSpriteTexcoords(.gem);
         const sprite_aspect_ratio = spritesheet.getSpriteAspectRatio(.gem);
-        var billboard_data = BillboardData{
+        var billboard_data = SpriteData{
             .position = .{
                 .x = self.boundaries.position.x,
                 .y = self.width * sprite_aspect_ratio / 2,

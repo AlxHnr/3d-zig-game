@@ -1,6 +1,6 @@
-const BillboardData = @import("rendering.zig").BillboardData;
 const Color = @import("util.zig").Color;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const text_rendering = @import("text_rendering.zig");
 const math = @import("math.zig");
@@ -48,7 +48,7 @@ pub const Widget = union(enum) {
         screen_position_x: u16,
         screen_position_y: u16,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardData,
+        out: []SpriteData,
     ) void {
         switch (self) {
             inline else => |subtype| subtype.populateBillboardData(
@@ -102,7 +102,7 @@ pub const Text = struct {
         screen_position_x: u16,
         screen_position_y: u16,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardData,
+        out: []SpriteData,
     ) void {
         return text_rendering.populateBillboardData2d(
             self.wrapped_segments,
@@ -149,7 +149,7 @@ pub const Sprite = struct {
         screen_position_x: u16,
         screen_position_y: u16,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardData,
+        out: []SpriteData,
     ) void {
         out[0] = .{
             .position = .{
@@ -216,7 +216,7 @@ pub const Split = struct {
         screen_position_x: u16,
         screen_position_y: u16,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardData,
+        out: []SpriteData,
     ) void {
         var start: usize = 0;
         var end: usize = 0;
@@ -272,7 +272,7 @@ pub const MinimumSize = struct {
         screen_position_x: u16,
         screen_position_y: u16,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardData,
+        out: []SpriteData,
     ) void {
         self.wrapped_widget.populateBillboardData(screen_position_x, screen_position_y, out);
     }
@@ -330,7 +330,7 @@ pub const Spacing = struct {
         screen_position_x: u16,
         screen_position_y: u16,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardData,
+        out: []SpriteData,
     ) void {
         const content = self.wrapped_widget.getDimensionsInPixels();
         const offset = .{
@@ -398,7 +398,7 @@ pub const Box = struct {
         screen_position_x: u16,
         screen_position_y: u16,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []BillboardData,
+        out: []SpriteData,
     ) void {
         const content_u16 = self.wrapped_widget.getDimensionsInPixels();
         const content = .{
@@ -438,7 +438,7 @@ pub const Box = struct {
         top_left_corner: struct { x: f32, y: f32 },
         /// Dimensions. Assumed to be the same for all dialog box sprites.
         scaled_sprite: struct { width: f32, height: f32 },
-        out: []BillboardData,
+        out: []SpriteData,
 
         fn create(
             spritesheet: *const SpriteSheetTexture,
@@ -446,7 +446,7 @@ pub const Box = struct {
             screen_position_y: u16,
             scaled_sprite_width: f32,
             scaled_sprite_height: f32,
-            out: []BillboardData,
+            out: []SpriteData,
         ) BillboardDataHelper {
             return .{
                 .spritesheet = spritesheet,
