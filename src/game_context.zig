@@ -246,7 +246,7 @@ pub const Context = struct {
 
     pub fn writeMapToDisk(self: Context, allocator: std.mem.Allocator) !void {
         var data = try self.map_geometry.toSerializableData(allocator);
-        defer data.destroy(allocator);
+        defer MapGeometry.freeSerializableData(allocator, data);
 
         var file = try std.fs.cwd().createFile(self.map_file_path, .{});
         defer file.close();

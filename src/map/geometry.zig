@@ -157,6 +157,7 @@ pub const Geometry = struct {
         self.floor_animation_state.processElapsedTick(0.02);
     }
 
+    /// Returned result must be freed with freeSerializableData().
     pub fn toSerializableData(self: Geometry, allocator: std.mem.Allocator) !SerializableData {
         var walls = try allocator.alloc(
             SerializableData.Wall,
@@ -207,12 +208,6 @@ pub const Geometry = struct {
         floors: []SerializableData.Floor,
         billboard_objects: []SerializableData.BillboardObject,
 
-        pub fn destroy(self: *SerializableData, allocator: std.mem.Allocator) void {
-            allocator.free(self.billboard_objects);
-            allocator.free(self.floors);
-            allocator.free(self.walls);
-        }
-
         const Wall = struct {
             /// Type enum as string.
             t: []const u8,
@@ -234,6 +229,12 @@ pub const Geometry = struct {
             pos: math.FlatVector,
         };
     };
+
+    pub fn freeSerializableData(allocator: std.mem.Allocator, data: *SerializableData) void {
+        allocator.free(data.billboard_objects);
+        allocator.free(data.floors);
+        allocator.free(data.walls);
+    }
 
     pub const WallType = enum {
         small_wall,
