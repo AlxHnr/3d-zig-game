@@ -355,6 +355,7 @@ pub const Enemy = struct {
     sprite: textures.SpriteSheetTexture.SpriteId,
     state_at_previous_tick: GameCharacter,
     state_at_next_tick: GameCharacter,
+    aggro_radius: f32,
 
     data_to_render: struct {
         state: GameCharacter,
@@ -373,6 +374,7 @@ pub const Enemy = struct {
         spritesheet: textures.SpriteSheetTexture,
         position: math.FlatVector,
         stats: Stats,
+        aggro_radius: f32,
     ) Enemy {
         const character = GameCharacter.create(
             position,
@@ -384,6 +386,8 @@ pub const Enemy = struct {
             .sprite = sprite,
             .state_at_previous_tick = character,
             .state_at_next_tick = character,
+            .aggro_radius = aggro_radius,
+
             .data_to_render = .{
                 .state = character,
                 .should_render_name = true,
@@ -392,8 +396,29 @@ pub const Enemy = struct {
         };
     }
 
-    pub fn processElapsedTick(self: *Enemy, map: Map) void {
+    pub fn processElapsedTick(
+        self: *Enemy,
+        main_character: GameCharacter,
+        map: Map,
+    ) void {
         self.state_at_previous_tick = self.state_at_next_tick;
+
+        const offset_to_main_character = main_character.boundaries.position
+            .subtract(self.state_at_next_tick.boundaries.position);
+        const distance_fom_main_character = offset_to_main_character.lengthSquared();
+        const min_distance_to_main_character2 =
+            self.state_at_next_tick.boundaries.radius * self.state_at_next_tick.boundaries.radius;
+        if (distance_fom_main_character < self.aggro_radius * self.aggro_radius and
+            distance_fom_main_character > min_distance_to_main_character2 and
+            !map.geometry.isSolidWallBetweenPoints(
+            self.state_at_next_tick.boundaries.position,
+            main_character.boundaries.position,
+        )) {
+            const direction_to_main_character = offset_to_main_character.normalize();
+            self.state_at_next_tick.setAcceleration(direction_to_main_character);
+        } else {
+            self.state_at_next_tick.setAcceleration(.{ .x = 0, .z = 0 });
+        }
 
         var remaining_velocity = self.state_at_next_tick.processElapsedTickInit();
         while (self.state_at_next_tick.processElapsedTickConsume(&remaining_velocity, map)) {}

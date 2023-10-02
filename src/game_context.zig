@@ -136,7 +136,10 @@ pub const Context = struct {
             self.main_character.processElapsedTick(self.map, &self.gem_collection);
             self.gem_collection.processElapsedTick();
             for (self.enemies.items) |*enemy| {
-                enemy.processElapsedTick(self.map);
+                enemy.processElapsedTick(
+                    self.main_character.state_at_next_tick.character,
+                    self.map,
+                );
             }
             self.dialog_controller.processElapsedTick();
         }
