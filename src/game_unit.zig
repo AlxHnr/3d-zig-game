@@ -473,7 +473,7 @@ pub const Enemy = struct {
     }
 
     fn getNameText(self: Enemy) [1]text_rendering.TextSegment {
-        return .{.{ .color = Color.fromRgb8(255, 255, 255), .text = self.name }};
+        return .{.{ .color = Color.white, .text = self.name }};
     }
 
     pub fn populateHealthbarBillboardData(
