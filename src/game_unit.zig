@@ -34,17 +34,6 @@ pub const Stats = struct {
         };
     }
 
-    pub fn lerp(self: Stats, other: Stats, t: f32) Stats {
-        return .{
-            .height = math.lerp(self.height, other.height, t),
-            .movement_speed = math.lerp(self.movement_speed, other.movement_speed, t),
-            .health = .{
-                .current = math.lerpU32(self.health.current, other.health.current, t),
-                .max = math.lerpU32(self.health.max, other.health.max, t),
-            },
-        };
-    }
-
     pub const Health = struct { current: u32, max: u32 };
 };
 
@@ -60,18 +49,6 @@ pub const GameCharacter = struct {
             .acceleration_direction = .{ .x = 0, .z = 0 },
             .velocity = .{ .x = 0, .z = 0 },
             .stats = stats,
-        };
-    }
-
-    pub fn lerp(self: GameCharacter, other: GameCharacter, t: f32) GameCharacter {
-        return GameCharacter{
-            .boundaries = self.boundaries.lerp(other.boundaries, t),
-            .acceleration_direction = self.acceleration_direction.lerp(
-                other.acceleration_direction,
-                t,
-            ),
-            .velocity = self.velocity.lerp(other.velocity, t),
-            .stats = self.stats.lerp(other.stats, t),
         };
     }
 
@@ -362,12 +339,12 @@ pub const Enemy = struct {
     /// Non-owning slice.
     name: []const u8,
     sprite: textures.SpriteSheetTexture.SpriteId,
-    state_at_previous_tick: GameCharacter,
-    state_at_next_tick: GameCharacter,
+    character: GameCharacter,
     aggro_radius: f32,
+    values_from_previous_tick: ValuesForRendering,
 
-    data_to_render: struct {
-        state: GameCharacter,
+    prepared_render_data: struct {
+        values: ValuesForRendering,
         should_render_name: bool,
         should_render_health_bar: bool,
     },
@@ -390,15 +367,19 @@ pub const Enemy = struct {
             stats.height / spritesheet.getSpriteAspectRatio(sprite),
             stats,
         );
+        const render_values = .{
+            .boundaries = character.boundaries,
+            .height = character.stats.height,
+            .health = character.stats.health,
+        };
         return .{
             .name = name,
             .sprite = sprite,
-            .state_at_previous_tick = character,
-            .state_at_next_tick = character,
+            .character = character,
             .aggro_radius = aggro_radius,
-
-            .data_to_render = .{
-                .state = character,
+            .values_from_previous_tick = render_values,
+            .prepared_render_data = .{
+                .values = render_values,
                 .should_render_name = true,
                 .should_render_health_bar = true,
             },
@@ -410,27 +391,27 @@ pub const Enemy = struct {
         main_character: GameCharacter,
         map: Map,
     ) void {
-        self.state_at_previous_tick = self.state_at_next_tick;
+        self.values_from_previous_tick = self.getValuesForRendering();
 
         const offset_to_main_character = main_character.boundaries.position
-            .subtract(self.state_at_next_tick.boundaries.position);
+            .subtract(self.character.boundaries.position);
         const distance_fom_main_character = offset_to_main_character.lengthSquared();
         const min_distance_to_main_character2 =
-            self.state_at_next_tick.boundaries.radius * self.state_at_next_tick.boundaries.radius;
+            self.character.boundaries.radius * self.character.boundaries.radius;
         if (distance_fom_main_character < self.aggro_radius * self.aggro_radius and
             distance_fom_main_character > min_distance_to_main_character2 and
             !map.geometry.isSolidWallBetweenPoints(
-            self.state_at_next_tick.boundaries.position,
+            self.character.boundaries.position,
             main_character.boundaries.position,
         )) {
             const direction_to_main_character = offset_to_main_character.normalize();
-            self.state_at_next_tick.setAcceleration(direction_to_main_character);
+            self.character.setAcceleration(direction_to_main_character);
         } else {
-            self.state_at_next_tick.setAcceleration(.{ .x = 0, .z = 0 });
+            self.character.setAcceleration(.{ .x = 0, .z = 0 });
         }
 
-        var remaining_velocity = self.state_at_next_tick.processElapsedTickInit();
-        while (self.state_at_next_tick.processElapsedTickConsume(&remaining_velocity, map)) {}
+        var remaining_velocity = self.character.processElapsedTickInit();
+        while (self.character.processElapsedTickConsume(&remaining_velocity, map)) {}
     }
 
     pub fn prepareRender(
@@ -438,17 +419,17 @@ pub const Enemy = struct {
         camera: ThirdPersonCamera,
         interval_between_previous_and_current_tick: f32,
     ) void {
-        const state = self.state_at_previous_tick.lerp(
-            self.state_at_next_tick,
+        const values_to_render = self.values_from_previous_tick.lerp(
+            self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         );
 
-        const distance_from_camera = self.data_to_render.state.boundaries.position
+        const distance_from_camera = values_to_render.boundaries.position
             .toVector3d().subtract(camera.position).lengthSquared();
-        const max_text_render_distance = state.stats.height * 25;
-        const max_health_render_distance = state.stats.height * 35;
-        self.data_to_render = .{
-            .state = state,
+        const max_text_render_distance = values_to_render.height * 25;
+        const max_health_render_distance = values_to_render.height * 35;
+        self.prepared_render_data = .{
+            .values = values_to_render,
             .should_render_name = distance_from_camera <
                 max_text_render_distance * max_text_render_distance,
             .should_render_health_bar = distance_from_camera <
@@ -458,10 +439,10 @@ pub const Enemy = struct {
 
     pub fn getBillboardCount(self: Enemy) usize {
         var billboard_count: usize = 1; // Enemy sprite.
-        if (self.data_to_render.should_render_name) {
+        if (self.prepared_render_data.should_render_name) {
             billboard_count += text_rendering.getSpriteCount(&self.getNameText());
         }
-        if (self.data_to_render.should_render_health_bar) {
+        if (self.prepared_render_data.should_render_health_bar) {
             billboard_count += 2;
         }
 
@@ -474,15 +455,19 @@ pub const Enemy = struct {
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []rendering.SpriteData,
     ) void {
-        const state = self.data_to_render.state;
         const offset_to_player_height_factor = 1.2;
-        out[0] = makeSpriteData(state.boundaries, state.stats.height, self.sprite, spritesheet);
+        out[0] = makeSpriteData(
+            self.prepared_render_data.values.boundaries,
+            self.prepared_render_data.values.height,
+            self.sprite,
+            spritesheet,
+        );
 
         var offset_to_name_letters: usize = 1;
         var pixel_offset_for_name_y: i16 = 0;
-        if (self.data_to_render.should_render_health_bar) {
+        if (self.prepared_render_data.should_render_health_bar) {
             populateHealthbarBillboardData(
-                state,
+                self.prepared_render_data.values,
                 spritesheet,
                 offset_to_player_height_factor,
                 out[1..],
@@ -491,12 +476,13 @@ pub const Enemy = struct {
             pixel_offset_for_name_y -= health_bar_height * 2;
         }
 
-        if (self.data_to_render.should_render_name) {
+        if (self.prepared_render_data.should_render_name) {
             const up = math.Vector3d{ .x = 0, .y = 1, .z = 0 };
             text_rendering.populateBillboardDataExactPixelSizeWithOffset(
                 &self.getNameText(),
-                state.boundaries.position.toVector3d()
-                    .add(up.scale(state.stats.height * offset_to_player_height_factor)),
+                self.prepared_render_data.values.boundaries.position.toVector3d()
+                    .add(up.scale(self.prepared_render_data.values.height *
+                    offset_to_player_height_factor)),
                 0,
                 pixel_offset_for_name_y,
                 spritesheet.getFontSizeMultiple(enemy_name_font_scale),
@@ -511,25 +497,25 @@ pub const Enemy = struct {
     }
 
     pub fn populateHealthbarBillboardData(
-        state: GameCharacter,
+        values_to_render: ValuesForRendering,
         spritesheet: textures.SpriteSheetTexture,
         offset_to_player_height_factor: f32,
         out: []rendering.SpriteData,
     ) void {
         const health_percent =
-            @as(f32, @floatFromInt(state.stats.health.current)) /
-            @as(f32, @floatFromInt(state.stats.health.max));
+            @as(f32, @floatFromInt(values_to_render.health.current)) /
+            @as(f32, @floatFromInt(values_to_render.health.max));
         const source = spritesheet.getSpriteTexcoords(.white_block);
         const billboard_data = .{
             .position = .{
-                .x = state.boundaries.position.x,
-                .y = state.stats.height * offset_to_player_height_factor,
-                .z = state.boundaries.position.z,
+                .x = values_to_render.boundaries.position.x,
+                .y = values_to_render.height * offset_to_player_height_factor,
+                .z = values_to_render.boundaries.position.z,
             },
             .size = .{
                 .w = health_bar_scale *
                     // This factor has been determined by trial and error.
-                    std.math.log1p(@as(f32, @floatFromInt(state.stats.health.max))) * 8,
+                    std.math.log1p(@as(f32, @floatFromInt(values_to_render.health.max))) * 8,
                 .h = health_bar_height,
             },
             .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
@@ -553,6 +539,35 @@ pub const Enemy = struct {
         right_half.offset_from_origin.x = (billboard_data.size.w - right_half.size.w) / 2;
         right_half.tint = .{ .r = background.r, .g = background.g, .b = background.b };
     }
+
+    fn getValuesForRendering(self: Enemy) ValuesForRendering {
+        return .{
+            .boundaries = self.character.boundaries,
+            .height = self.character.stats.height,
+            .health = self.character.stats.health,
+        };
+    }
+
+    const ValuesForRendering = struct {
+        boundaries: collision.Circle,
+        height: f32,
+        health: Stats.Health,
+
+        pub fn lerp(
+            self: ValuesForRendering,
+            other: ValuesForRendering,
+            t: f32,
+        ) ValuesForRendering {
+            return .{
+                .boundaries = self.boundaries.lerp(other.boundaries, t),
+                .height = math.lerp(self.height, other.height, t),
+                .health = .{
+                    .current = math.lerpU32(self.health.current, other.health.current, t),
+                    .max = math.lerpU32(self.health.max, other.health.max, t),
+                },
+            };
+        }
+    };
 };
 
 fn makeSpriteData(
