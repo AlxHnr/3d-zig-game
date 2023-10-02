@@ -1,6 +1,6 @@
 const Error = @import("error.zig").Error;
 const GameContext = @import("game_context.zig").Context;
-const InputButton = @import("game_context.zig").InputButton;
+const InputButton = @import("game_unit.zig").InputButton;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const edit_mode = @import("edit_mode.zig");
 const gl = @import("gl");
