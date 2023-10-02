@@ -148,7 +148,7 @@ pub const Player = struct {
     animation_cycle: animation.FourStepCycle,
     gem_count: u64,
     input_state: std.EnumArray(InputButton, bool),
-    values_from_previous_tick: RenderedValues,
+    values_from_previous_tick: ValuesForRendering,
 
     pub fn create(
         id: u64,
@@ -325,7 +325,7 @@ pub const Player = struct {
         return .{ .x = std.math.sin(orientation), .z = std.math.cos(orientation) };
     }
 
-    fn getValuesForRendering(self: Player) RenderedValues {
+    fn getValuesForRendering(self: Player) ValuesForRendering {
         return .{
             .boundaries = self.character.boundaries,
             .height = self.character.stats.height,
@@ -335,14 +335,18 @@ pub const Player = struct {
         };
     }
 
-    const RenderedValues = struct {
+    const ValuesForRendering = struct {
         boundaries: collision.Circle,
         height: f32,
         velocity: math.FlatVector,
         camera: ThirdPersonCamera,
         animation_cycle: animation.FourStepCycle,
 
-        pub fn lerp(self: RenderedValues, other: RenderedValues, t: f32) RenderedValues {
+        pub fn lerp(
+            self: ValuesForRendering,
+            other: ValuesForRendering,
+            t: f32,
+        ) ValuesForRendering {
             return .{
                 .boundaries = self.boundaries.lerp(other.boundaries, t),
                 .height = math.lerp(self.height, other.height, t),
