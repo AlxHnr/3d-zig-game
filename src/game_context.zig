@@ -136,10 +136,7 @@ pub const Context = struct {
             self.main_character.processElapsedTick(self.map, &self.gem_collection);
             self.gem_collection.processElapsedTick();
             for (self.enemies.items) |*enemy| {
-                enemy.processElapsedTick(
-                    self.main_character.state_at_next_tick.character,
-                    self.map,
-                );
+                enemy.processElapsedTick(self.main_character.character, self.map);
             }
             self.dialog_controller.processElapsedTick();
         }
@@ -268,15 +265,15 @@ pub const Context = struct {
     }
 
     pub fn increaseCameraDistance(self: *Context, value: f32) void {
-        self.main_character.state_at_next_tick.camera.increaseDistanceToObject(value);
+        self.main_character.camera.increaseDistanceToObject(value);
     }
 
     pub fn setCameraAngleFromGround(self: *Context, angle: f32) void {
-        self.main_character.state_at_next_tick.camera.setAngleFromGround(angle);
+        self.main_character.camera.setAngleFromGround(angle);
     }
 
     pub fn resetCameraAngleFromGround(self: *Context) void {
-        self.main_character.state_at_next_tick.camera.resetAngleFromGround();
+        self.main_character.camera.resetAngleFromGround();
     }
 
     pub fn getCameraDirection(self: Context) math.Vector3d {

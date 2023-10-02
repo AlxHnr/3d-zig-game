@@ -24,7 +24,7 @@ pub const InputButton = enum {
 pub const Stats = struct {
     height: f32,
     movement_speed: f32,
-    health: struct { current: u32, max: u32 },
+    health: Health,
 
     pub fn create(height: f32, movement_speed: f32, max_health: u32) Stats {
         return .{
@@ -44,6 +44,8 @@ pub const Stats = struct {
             },
         };
     }
+
+    pub const Health = struct { current: u32, max: u32 };
 };
 
 pub const GameCharacter = struct {
@@ -140,10 +142,15 @@ pub const GameCharacter = struct {
 pub const Player = struct {
     /// Unique identifier distinct from all other players.
     id: u64,
-    state_at_next_tick: State,
-    state_at_previous_tick: State,
+    character: GameCharacter,
+    orientation: f32,
+    /// Values from -1 (turning left) to 1 (turning right).
+    turning_direction: f32,
+    camera: ThirdPersonCamera,
+    animation_cycle: animation.FourStepCycle,
     gem_count: u64,
     input_state: std.EnumArray(InputButton, bool),
+    values_from_previous_tick: RenderedValues,
 
     pub fn create(
         id: u64,
@@ -158,22 +165,27 @@ pub const Player = struct {
             Stats.create(in_game_height, 0.15, 100),
         );
         const orientation = 0;
-        const state = .{
+        const camera = ThirdPersonCamera.create(
+            character.boundaries.position,
+            getLookingDirection(orientation),
+        );
+        const animation_cycle = animation.FourStepCycle.create();
+        return .{
+            .id = id,
             .character = character,
             .orientation = orientation,
             .turning_direction = 0,
-            .camera = ThirdPersonCamera.create(
-                character.boundaries.position,
-                State.getLookingDirection(orientation),
-            ),
-            .animation_cycle = animation.FourStepCycle.create(),
-        };
-        return .{
-            .id = id,
-            .state_at_next_tick = state,
-            .state_at_previous_tick = state,
+            .camera = camera,
+            .animation_cycle = animation_cycle,
             .gem_count = 0,
             .input_state = std.EnumArray(InputButton, bool).initFill(false),
+            .values_from_previous_tick = .{
+                .boundaries = character.boundaries,
+                .height = character.stats.height,
+                .current_velocity = character.current_velocity,
+                .camera = camera,
+                .animation_cycle = animation_cycle,
+            },
         };
     }
 
@@ -194,8 +206,8 @@ pub const Player = struct {
         interval_between_previous_and_current_tick: f32,
     ) void {
         // Input is relative to the state currently on screen.
-        const state_rendered_to_screen = self.state_at_previous_tick.lerp(
-            self.state_at_next_tick,
+        const state_rendered_to_screen = self.values_from_previous_tick.lerp(
+            self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         );
         const forward_direction = state_rendered_to_screen.camera
@@ -228,14 +240,35 @@ pub const Player = struct {
         if (self.input_state.get(.backwards)) {
             acceleration_direction = acceleration_direction.subtract(forward_direction);
         }
-        self.state_at_next_tick.character.setAcceleration(acceleration_direction.normalize());
-        self.state_at_next_tick.setTurningDirection(turning_direction);
+        self.character.setAcceleration(acceleration_direction.normalize());
+        self.setTurningDirection(turning_direction);
     }
 
     pub fn processElapsedTick(self: *Player, map: Map, gem_collection: *gems.Collection) void {
-        self.state_at_previous_tick = self.state_at_next_tick;
-        self.gem_count +=
-            self.state_at_next_tick.processElapsedTick(self.id, map, gem_collection);
+        self.values_from_previous_tick = self.getValuesForRendering();
+
+        var remaining_velocity = self.character.processElapsedTickInit();
+        while (self.character.processElapsedTickConsume(&remaining_velocity, map)) {
+            self.gem_count += gem_collection.processCollision(.{
+                .id = self.id,
+                .boundaries = self.character.boundaries,
+                .height = self.character.stats.height,
+            }, map.geometry);
+        }
+
+        const max_rotation_per_tick = std.math.degreesToRadians(f32, 3.5);
+        const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
+        self.orientation = @mod(
+            self.orientation + rotation_angle,
+            std.math.degreesToRadians(f32, 360),
+        );
+
+        self.camera.processElapsedTick(
+            self.character.boundaries.position,
+            getLookingDirection(self.orientation),
+        );
+        self.animation_cycle
+            .processElapsedTick(self.character.current_velocity.length() * 0.75);
     }
 
     pub fn getBillboardData(
@@ -243,14 +276,14 @@ pub const Player = struct {
         spritesheet: textures.SpriteSheetTexture,
         interval_between_previous_and_current_tick: f32,
     ) rendering.SpriteData {
-        const state_to_render = self.state_at_previous_tick.lerp(
-            self.state_at_next_tick,
+        const state_to_render = self.values_from_previous_tick.lerp(
+            self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         );
 
         const min_velocity_for_animation = 0.02;
         const animation_frame =
-            if (state_to_render.character.current_velocity.length() < min_velocity_for_animation)
+            if (state_to_render.current_velocity.length() < min_velocity_for_animation)
             1
         else
             state_to_render.animation_cycle.getFrame();
@@ -260,12 +293,17 @@ pub const Player = struct {
             0 => .player_back_frame_0,
             2 => .player_back_frame_2,
         };
-        return makeSpriteData(state_to_render.character, sprite_id, spritesheet);
+        return makeSpriteData(
+            state_to_render.boundaries,
+            state_to_render.height,
+            sprite_id,
+            spritesheet,
+        );
     }
 
     pub fn getCamera(self: Player, interval_between_previous_and_current_tick: f32) ThirdPersonCamera {
-        return self.state_at_previous_tick.lerp(
-            self.state_at_next_tick,
+        return self.values_from_previous_tick.lerp(
+            self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         ).camera;
     }
@@ -274,77 +312,46 @@ pub const Player = struct {
         self: Player,
         interval_between_previous_and_current_tick: f32,
     ) gems.CollisionObject {
-        const state = self.state_at_previous_tick.lerp(
-            self.state_at_next_tick,
+        const state = self.values_from_previous_tick.lerp(
+            self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         );
+        return .{ .id = self.id, .boundaries = state.boundaries, .height = state.height };
+    }
+
+    fn setTurningDirection(self: *Player, turning_direction: f32) void {
+        self.turning_direction = std.math.clamp(turning_direction, -1, 1);
+    }
+
+    fn getLookingDirection(orientation: f32) math.FlatVector {
+        return .{ .x = std.math.sin(orientation), .z = std.math.cos(orientation) };
+    }
+
+    fn getValuesForRendering(self: Player) RenderedValues {
         return .{
-            .id = self.id,
-            .boundaries = state.character.boundaries,
-            .height = state.character.stats.height,
+            .boundaries = self.character.boundaries,
+            .height = self.character.stats.height,
+            .current_velocity = self.character.current_velocity,
+            .camera = self.camera,
+            .animation_cycle = self.animation_cycle,
         };
     }
 
-    const State = struct {
-        character: GameCharacter,
-        orientation: f32,
-        /// Values from -1 (turning left) to 1 (turning right).
-        turning_direction: f32,
-
+    const RenderedValues = struct {
+        boundaries: collision.Circle,
+        height: f32,
+        current_velocity: math.FlatVector,
         camera: ThirdPersonCamera,
         animation_cycle: animation.FourStepCycle,
 
-        fn lerp(self: State, other: State, t: f32) State {
-            return State{
-                .character = self.character.lerp(other.character, t),
-                .orientation = math.lerp(self.orientation, other.orientation, t),
-                .turning_direction = math.lerp(self.turning_direction, other.turning_direction, t),
+        pub fn lerp(self: RenderedValues, other: RenderedValues, t: f32) RenderedValues {
+            return .{
+                .boundaries = self.boundaries.lerp(other.boundaries, t),
+                .height = math.lerp(self.height, other.height, t),
+                .current_velocity = self.current_velocity.lerp(other.current_velocity, t),
                 .camera = self.camera.lerp(other.camera, t),
                 .animation_cycle = self.animation_cycle.lerp(other.animation_cycle, t),
             };
-        }
-
-        /// Return the amount of collected gems.
-        fn processElapsedTick(
-            self: *State,
-            player_id: u64,
-            map: Map,
-            gem_collection: *gems.Collection,
-        ) u64 {
-            var gems_collected: u64 = 0;
-
-            var remaining_velocity = self.character.processElapsedTickInit();
-            while (self.character.processElapsedTickConsume(&remaining_velocity, map)) {
-                gems_collected += gem_collection.processCollision(.{
-                    .id = player_id,
-                    .boundaries = self.character.boundaries,
-                    .height = self.character.stats.height,
-                }, map.geometry);
-            }
-
-            const max_rotation_per_tick = std.math.degreesToRadians(f32, 3.5);
-            const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
-            self.orientation = @mod(
-                self.orientation + rotation_angle,
-                std.math.degreesToRadians(f32, 360),
-            );
-
-            self.camera.processElapsedTick(
-                self.character.boundaries.position,
-                getLookingDirection(self.orientation),
-            );
-            self.animation_cycle
-                .processElapsedTick(self.character.current_velocity.length() * 0.75);
-
-            return gems_collected;
-        }
-
-        fn setTurningDirection(self: *State, turning_direction: f32) void {
-            self.turning_direction = std.math.clamp(turning_direction, -1, 1);
-        }
-
-        fn getLookingDirection(orientation: f32) math.FlatVector {
-            return .{ .x = std.math.sin(orientation), .z = std.math.cos(orientation) };
         }
     };
 };
@@ -467,7 +474,7 @@ pub const Enemy = struct {
     ) void {
         const state = self.data_to_render.state;
         const offset_to_player_height_factor = 1.2;
-        out[0] = makeSpriteData(state, self.sprite, spritesheet);
+        out[0] = makeSpriteData(state.boundaries, state.stats.height, self.sprite, spritesheet);
 
         var offset_to_name_letters: usize = 1;
         var pixel_offset_for_name_y: i16 = 0;
@@ -547,21 +554,19 @@ pub const Enemy = struct {
 };
 
 fn makeSpriteData(
-    character: GameCharacter,
+    boundaries: collision.Circle,
+    height: f32,
     sprite: textures.SpriteSheetTexture.SpriteId,
     spritesheet: textures.SpriteSheetTexture,
 ) rendering.SpriteData {
     const source = spritesheet.getSpriteTexcoords(sprite);
     return .{
         .position = .{
-            .x = character.boundaries.position.x,
-            .y = character.stats.height / 2,
-            .z = character.boundaries.position.z,
+            .x = boundaries.position.x,
+            .y = height / 2,
+            .z = boundaries.position.z,
         },
-        .size = .{
-            .w = character.boundaries.radius * 2,
-            .h = character.stats.height,
-        },
+        .size = .{ .w = boundaries.radius * 2, .h = height },
         .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
     };
 }
