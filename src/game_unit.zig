@@ -359,7 +359,12 @@ pub const Enemy = struct {
     data_to_render: struct {
         state: GameCharacter,
         should_render_name: bool,
+        should_render_health_bar: bool,
     },
+
+    const enemy_name_font_scale = 1;
+    const health_bar_scale = 1;
+    const health_bar_height = health_bar_scale * 6;
 
     pub fn create(
         /// Will be referenced by the returned object.
@@ -382,6 +387,7 @@ pub const Enemy = struct {
             .data_to_render = .{
                 .state = character,
                 .should_render_name = true,
+                .should_render_health_bar = true,
             },
         };
     }
@@ -402,13 +408,17 @@ pub const Enemy = struct {
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
         );
+
         const distance_from_camera = self.data_to_render.state.boundaries.position
             .toVector3d().subtract(camera.position).lengthSquared();
-        const min_text_to_camera_distance = state.stats.height * 35;
+        const max_text_render_distance = state.stats.height * 25;
+        const max_health_render_distance = state.stats.height * 35;
         self.data_to_render = .{
             .state = state,
             .should_render_name = distance_from_camera <
-                min_text_to_camera_distance * min_text_to_camera_distance,
+                max_text_render_distance * max_text_render_distance,
+            .should_render_health_bar = distance_from_camera <
+                max_health_render_distance * max_health_render_distance,
         };
     }
 
@@ -416,6 +426,9 @@ pub const Enemy = struct {
         var billboard_count: usize = 1; // Enemy sprite.
         if (self.data_to_render.should_render_name) {
             billboard_count += text_rendering.getSpriteCount(&self.getNameText());
+        }
+        if (self.data_to_render.should_render_health_bar) {
+            billboard_count += 2;
         }
 
         return billboard_count;
@@ -428,22 +441,83 @@ pub const Enemy = struct {
         out: []rendering.SpriteData,
     ) void {
         const state = self.data_to_render.state;
-
+        const offset_to_player_height_factor = 1.2;
         out[0] = makeSpriteData(state, self.sprite, spritesheet);
+
+        var offset_to_name_letters: usize = 1;
+        var pixel_offset_for_name_y: i16 = 0;
+        if (self.data_to_render.should_render_health_bar) {
+            populateHealthbarBillboardData(
+                state,
+                spritesheet,
+                offset_to_player_height_factor,
+                out[1..],
+            );
+            offset_to_name_letters += 2;
+            pixel_offset_for_name_y -= health_bar_height * 2;
+        }
+
         if (self.data_to_render.should_render_name) {
             const up = math.Vector3d{ .x = 0, .y = 1, .z = 0 };
-            text_rendering.populateBillboardDataExactPixelSize(
+            text_rendering.populateBillboardDataExactPixelSizeWithOffset(
                 &self.getNameText(),
-                state.boundaries.position.toVector3d().add(up.scale(state.stats.height * 1.2)),
-                spritesheet.getFontSizeMultiple(1),
+                state.boundaries.position.toVector3d()
+                    .add(up.scale(state.stats.height * offset_to_player_height_factor)),
+                0,
+                pixel_offset_for_name_y,
+                spritesheet.getFontSizeMultiple(enemy_name_font_scale),
                 spritesheet,
-                out[1..],
+                out[offset_to_name_letters..],
             );
         }
     }
 
     fn getNameText(self: Enemy) [1]text_rendering.TextSegment {
         return .{.{ .color = Color.fromRgb8(255, 255, 255), .text = self.name }};
+    }
+
+    pub fn populateHealthbarBillboardData(
+        state: GameCharacter,
+        spritesheet: textures.SpriteSheetTexture,
+        offset_to_player_height_factor: f32,
+        out: []rendering.SpriteData,
+    ) void {
+        const health_percent =
+            @as(f32, @floatFromInt(state.stats.health.current)) /
+            @as(f32, @floatFromInt(state.stats.health.max));
+        const source = spritesheet.getSpriteTexcoords(.white_block);
+        const billboard_data = .{
+            .position = .{
+                .x = state.boundaries.position.x,
+                .y = state.stats.height * offset_to_player_height_factor,
+                .z = state.boundaries.position.z,
+            },
+            .size = .{
+                .w = health_bar_scale *
+                    // This factor has been determined by trial and error.
+                    std.math.log1p(@as(f32, @floatFromInt(state.stats.health.max))) * 8,
+                .h = health_bar_height,
+            },
+            .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
+            .preserve_exact_pixel_size = 1,
+        };
+
+        const full_health = Color.fromRgb8(21, 213, 21);
+        const empty_health = Color.fromRgb8(213, 21, 21);
+        const background = Color.fromRgb8(0, 0, 0);
+        const current_health = empty_health.lerp(full_health, health_percent);
+
+        var left_half = &out[0];
+        left_half.* = billboard_data;
+        left_half.size.w *= health_percent;
+        left_half.offset_from_origin.x = -(billboard_data.size.w - left_half.size.w) / 2;
+        left_half.tint = .{ .r = current_health.r, .g = current_health.g, .b = current_health.b };
+
+        var right_half = &out[1];
+        right_half.* = billboard_data;
+        right_half.size.w *= 1 - health_percent;
+        right_half.offset_from_origin.x = (billboard_data.size.w - right_half.size.w) / 2;
+        right_half.tint = .{ .r = background.r, .g = background.g, .b = background.b };
     }
 };
 
