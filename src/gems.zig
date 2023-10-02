@@ -217,7 +217,8 @@ const Gem = struct {
         if (self.pickup_animation_progress == null and
             self.boundaries.collidesWithCircle(collision_object.boundaries) != null and
             !map_geometry.isSolidWallBetweenPoints(
-            .{ self.boundaries.position, collision_object_position },
+            self.boundaries.position,
+            collision_object_position,
         )) {
             self.pickup_animation_progress = 0;
             self.collided_object_id = collision_object.id;

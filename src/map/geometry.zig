@@ -487,9 +487,9 @@ pub const Geometry = struct {
     }
 
     /// Check if two points are separated by a solid wall. Fences are not solid.
-    pub fn isSolidWallBetweenPoints(self: Geometry, points: [2]math.FlatVector) bool {
+    pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVector, b: math.FlatVector) bool {
         for (self.walls.solid.items) |wall| {
-            if (wall.boundaries.collidesWithLine(points[0], points[1])) {
+            if (wall.boundaries.collidesWithLine(a, b)) {
                 return true;
             }
         }
