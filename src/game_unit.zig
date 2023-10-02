@@ -51,14 +51,14 @@ pub const Stats = struct {
 pub const GameCharacter = struct {
     boundaries: collision.Circle,
     acceleration_direction: math.FlatVector,
-    current_velocity: math.FlatVector,
+    velocity: math.FlatVector,
     stats: Stats,
 
     pub fn create(position: math.FlatVector, width: f32, stats: Stats) GameCharacter {
         return .{
             .boundaries = .{ .position = position, .radius = width / 2 },
             .acceleration_direction = .{ .x = 0, .z = 0 },
-            .current_velocity = .{ .x = 0, .z = 0 },
+            .velocity = .{ .x = 0, .z = 0 },
             .stats = stats,
         };
     }
@@ -70,7 +70,7 @@ pub const GameCharacter = struct {
                 other.acceleration_direction,
                 t,
             ),
-            .current_velocity = self.current_velocity.lerp(other.current_velocity, t),
+            .velocity = self.velocity.lerp(other.velocity, t),
             .stats = self.stats.lerp(other.stats, t),
         };
     }
@@ -85,8 +85,8 @@ pub const GameCharacter = struct {
     /// Returns an object which has to be consumed with processElapsedTickConsume().
     pub fn processElapsedTickInit(self: GameCharacter) RemainingTickVelocity {
         return .{
-            .direction = self.current_velocity.normalize(),
-            .magnitude = self.current_velocity.length(),
+            .direction = self.velocity.normalize(),
+            .magnitude = self.velocity.length(),
         };
     }
 
@@ -115,26 +115,24 @@ pub const GameCharacter = struct {
         const is_accelerating = self.acceleration_direction.length() > math.epsilon;
         if (is_accelerating) {
             const acceleration = self.stats.movement_speed / 5.0;
-            self.current_velocity =
-                self.current_velocity.add(self.acceleration_direction.scale(acceleration));
-            if (self.current_velocity.length() > self.stats.movement_speed) {
-                self.current_velocity =
-                    self.current_velocity.normalize().scale(self.stats.movement_speed);
+            self.velocity = self.velocity.add(self.acceleration_direction.scale(acceleration));
+            if (self.velocity.length() > self.stats.movement_speed) {
+                self.velocity = self.velocity.normalize().scale(self.stats.movement_speed);
             }
         } else {
-            self.current_velocity = self.current_velocity.scale(0.7);
+            self.velocity = self.velocity.scale(0.7);
         }
         return false;
     }
 
     fn resolveCollision(self: *GameCharacter, displacement_vector: math.FlatVector) void {
         self.boundaries.position = self.boundaries.position.add(displacement_vector);
-        const dot_product = std.math.clamp(self.current_velocity.normalize()
+        const dot_product = std.math.clamp(self.velocity.normalize()
             .dotProduct(displacement_vector.normalize()), -1, 1);
         const moving_against_displacement_vector =
-            self.current_velocity.dotProduct(displacement_vector) < 0;
+            self.velocity.dotProduct(displacement_vector) < 0;
         if (moving_against_displacement_vector) {
-            self.current_velocity = self.current_velocity.scale(1 + dot_product);
+            self.velocity = self.velocity.scale(1 + dot_product);
         }
     }
 };
@@ -182,7 +180,7 @@ pub const Player = struct {
             .values_from_previous_tick = .{
                 .boundaries = character.boundaries,
                 .height = character.stats.height,
-                .current_velocity = character.current_velocity,
+                .velocity = character.velocity,
                 .camera = camera,
                 .animation_cycle = animation_cycle,
             },
@@ -268,7 +266,7 @@ pub const Player = struct {
             getLookingDirection(self.orientation),
         );
         self.animation_cycle
-            .processElapsedTick(self.character.current_velocity.length() * 0.75);
+            .processElapsedTick(self.character.velocity.length() * 0.75);
     }
 
     pub fn getBillboardData(
@@ -283,7 +281,7 @@ pub const Player = struct {
 
         const min_velocity_for_animation = 0.02;
         const animation_frame =
-            if (state_to_render.current_velocity.length() < min_velocity_for_animation)
+            if (state_to_render.velocity.length() < min_velocity_for_animation)
             1
         else
             state_to_render.animation_cycle.getFrame();
@@ -331,7 +329,7 @@ pub const Player = struct {
         return .{
             .boundaries = self.character.boundaries,
             .height = self.character.stats.height,
-            .current_velocity = self.character.current_velocity,
+            .velocity = self.character.velocity,
             .camera = self.camera,
             .animation_cycle = self.animation_cycle,
         };
@@ -340,7 +338,7 @@ pub const Player = struct {
     const RenderedValues = struct {
         boundaries: collision.Circle,
         height: f32,
-        current_velocity: math.FlatVector,
+        velocity: math.FlatVector,
         camera: ThirdPersonCamera,
         animation_cycle: animation.FourStepCycle,
 
@@ -348,7 +346,7 @@ pub const Player = struct {
             return .{
                 .boundaries = self.boundaries.lerp(other.boundaries, t),
                 .height = math.lerp(self.height, other.height, t),
-                .current_velocity = self.current_velocity.lerp(other.current_velocity, t),
+                .velocity = self.velocity.lerp(other.velocity, t),
                 .camera = self.camera.lerp(other.camera, t),
                 .animation_cycle = self.animation_cycle.lerp(other.animation_cycle, t),
             };
