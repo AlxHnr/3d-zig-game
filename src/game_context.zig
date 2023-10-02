@@ -24,6 +24,7 @@ pub const Context = struct {
     map_file_path: []const u8,
     map: Map,
     gem_collection: gems.Collection,
+    enemies: std.ArrayList(game_unit.Enemy),
     tileable_textures: textures.TileableArrayTexture,
     spritesheet: textures.SpriteSheetTexture,
 
@@ -81,6 +82,7 @@ pub const Context = struct {
             .map_file_path = map_file_path_buffer,
             .map = map,
             .gem_collection = gem_collection,
+            .enemies = std.ArrayList(game_unit.Enemy).init(allocator),
             .tileable_textures = tileable_textures,
             .spritesheet = spritesheet,
 
@@ -99,6 +101,7 @@ pub const Context = struct {
         self.billboard_renderer.destroy();
         self.spritesheet.destroy();
         self.tileable_textures.destroy();
+        self.enemies.deinit();
         self.gem_collection.destroy();
         self.map.destroy();
         allocator.free(self.map_file_path);
@@ -132,6 +135,9 @@ pub const Context = struct {
             self.map.processElapsedTick();
             self.main_character.processElapsedTick(self.map, &self.gem_collection);
             self.gem_collection.processElapsedTick();
+            for (self.enemies.items) |*enemy| {
+                enemy.processElapsedTick(self.map);
+            }
             self.dialog_controller.processElapsedTick();
         }
         self.interval_between_previous_and_current_tick = lap_result.next_tick_progress;
@@ -153,23 +159,44 @@ pub const Context = struct {
         screen_dimensions: ScreenDimensions,
     ) !void {
         try self.map.prepareRender(self.spritesheet);
+        const camera = self.main_character
+            .getCamera(self.interval_between_previous_and_current_tick);
 
-        const billboards_to_render = self.gem_collection.getBillboardCount();
+        var billboards_to_render: usize = 0;
+
+        const gems_to_render = self.gem_collection.getBillboardCount();
+        billboards_to_render += gems_to_render;
+        for (self.enemies.items) |*enemy| {
+            enemy.prepareRender(camera, self.interval_between_previous_and_current_tick);
+            billboards_to_render += enemy.getBillboardCount();
+        }
+        billboards_to_render += 1; // Player sprite.
+
         if (self.billboard_buffer.len < billboards_to_render) {
             self.billboard_buffer =
                 try allocator.realloc(self.billboard_buffer, billboards_to_render);
         }
+
         self.gem_collection.populateBillboardData(
-            self.billboard_buffer,
+            self.billboard_buffer[0..gems_to_render],
             self.spritesheet,
             &.{self.main_character
                 .getLerpedCollisionObject(self.interval_between_previous_and_current_tick)},
             self.interval_between_previous_and_current_tick,
         );
+        var start: usize = gems_to_render;
+        var end: usize = gems_to_render;
+        for (self.enemies.items) |enemy| {
+            start = end;
+            end += enemy.getBillboardCount();
+            enemy.populateBillboardData(self.spritesheet, self.billboard_buffer[start..end]);
+        }
+        self.billboard_buffer[end] = self.main_character.getBillboardData(
+            self.spritesheet,
+            self.interval_between_previous_and_current_tick,
+        );
         self.billboard_renderer.uploadBillboards(self.billboard_buffer[0..billboards_to_render]);
 
-        const camera = self.main_character
-            .getCamera(self.interval_between_previous_and_current_tick);
         const vp_matrix = camera.getViewProjectionMatrix(
             screen_dimensions,
             self.max_camera_distance,
@@ -181,20 +208,6 @@ pub const Context = struct {
             self.tileable_textures,
             self.spritesheet,
         );
-        self.billboard_renderer.render(
-            vp_matrix,
-            screen_dimensions,
-            camera.getDirectionToTarget(),
-            self.spritesheet.id,
-        );
-
-        const player_billboard_data = [_]rendering.SpriteData{
-            self.main_character.getBillboardData(
-                self.spritesheet,
-                self.interval_between_previous_and_current_tick,
-            ),
-        };
-        self.billboard_renderer.uploadBillboards(player_billboard_data[0..]);
         self.billboard_renderer.render(
             vp_matrix,
             screen_dimensions,
@@ -218,10 +231,6 @@ pub const Context = struct {
             screen_dimensions,
             self.interval_between_previous_and_current_tick,
         );
-    }
-
-    pub fn hasOpenDialogs(self: Context) bool {
-        return self.dialog_controller.hasOpenDialogs();
     }
 
     pub fn getMutableMap(self: *Context) *Map {
