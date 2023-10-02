@@ -168,6 +168,7 @@ pub const SpriteSheetTexture = struct {
         player_front_frame_2,
         red_lava_worm,
         small_bush,
+        white_block,
         yellow_floating_eye,
     };
 
@@ -252,6 +253,7 @@ pub const SpriteSheetTexture = struct {
             .player_front_frame_2 = .{ .x = 48, .y = 88, .w = 16, .h = 32 },
             .red_lava_worm = .{ .x = 0, .y = 208, .w = 29, .h = 31 },
             .small_bush = .{ .x = 72, .y = 48, .w = 24, .h = 26 },
+            .white_block = .{ .x = 488, .y = 40, .w = 8, .h = 8 },
             .yellow_floating_eye = .{ .x = 40, .y = 168, .w = 16, .h = 24 },
         },
     );
