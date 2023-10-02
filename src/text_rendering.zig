@@ -73,14 +73,42 @@ pub fn populateBillboardDataExactPixelSize(
     /// Must have enough capacity to store all sprites. See getSpriteCount().
     out: []SpriteData,
 ) void {
+    populateBillboardDataExactPixelSizeWithOffset(
+        segments,
+        center_position,
+        0,
+        0,
+        character_size_pixels,
+        spritesheet,
+        out,
+    );
+}
+
+/// Like `populateBillboardDataExactPixelSize()`, but takes an extra offset in pixels relative to
+/// the rendered center of the text block on the screen. This can be used for adjustments.
+pub fn populateBillboardDataExactPixelSizeWithOffset(
+    segments: []const TextSegment,
+    center_position: Vector3d,
+    pixel_offset_from_center_x: i16,
+    pixel_offset_from_center_y: i16,
+    character_size_pixels: u16,
+    spritesheet: SpriteSheetTexture,
+    /// Must have enough capacity to store all sprites. See getSpriteCount().
+    out: []SpriteData,
+) void {
+    const top_left_corner = getOffsetToTopLeftCorner(
+        segments,
+        @floatFromInt(character_size_pixels),
+        spritesheet,
+    ).add(.{
+        .x = @as(f32, @floatFromInt(pixel_offset_from_center_x)),
+        .y = -@as(f32, @floatFromInt(pixel_offset_from_center_y)),
+        .z = 0,
+    });
     populateSpriteDataRaw(
         segments,
         center_position,
-        getOffsetToTopLeftCorner(
-            segments,
-            @floatFromInt(character_size_pixels),
-            spritesheet,
-        ),
+        top_left_corner,
         @floatFromInt(character_size_pixels),
         true,
         true,
