@@ -21,13 +21,20 @@ pub const InputButton = enum {
 
 pub const MovingCharacter = struct {
     boundaries: collision.Circle,
+    height: f32,
     movement_speed: f32,
     acceleration_direction: math.FlatVector,
     current_velocity: math.FlatVector,
 
-    pub fn create(position: math.FlatVector, width: f32, movement_speed: f32) MovingCharacter {
+    pub fn create(
+        position: math.FlatVector,
+        width: f32,
+        height: f32,
+        movement_speed: f32,
+    ) MovingCharacter {
         return .{
             .boundaries = .{ .position = position, .radius = width / 2 },
+            .height = height,
             .movement_speed = movement_speed,
             .acceleration_direction = .{ .x = 0, .z = 0 },
             .current_velocity = .{ .x = 0, .z = 0 },
@@ -37,6 +44,7 @@ pub const MovingCharacter = struct {
     pub fn lerp(self: MovingCharacter, other: MovingCharacter, t: f32) MovingCharacter {
         return MovingCharacter{
             .boundaries = self.boundaries.lerp(other.boundaries, t),
+            .height = math.lerp(self.height, other.height, t),
             .movement_speed = math.lerp(self.movement_speed, other.movement_speed, t),
             .acceleration_direction = self.acceleration_direction.lerp(
                 other.acceleration_direction,
@@ -128,6 +136,7 @@ pub const Player = struct {
         const character = MovingCharacter.create(
             .{ .x = starting_position_x, .z = starting_position_z },
             in_game_height / spritesheet_frame_ratio,
+            in_game_height,
             0.15,
         );
         const orientation = 0;
@@ -135,7 +144,6 @@ pub const Player = struct {
             .character = character,
             .orientation = orientation,
             .turning_direction = 0,
-            .height = in_game_height,
             .camera = ThirdPersonCamera.create(
                 character.boundaries.position,
                 State.getLookingDirection(orientation),
@@ -238,12 +246,12 @@ pub const Player = struct {
         return .{
             .position = .{
                 .x = state_to_render.character.boundaries.position.x,
-                .y = state_to_render.height / 2,
+                .y = state_to_render.character.height / 2,
                 .z = state_to_render.character.boundaries.position.z,
             },
             .size = .{
                 .w = state_to_render.character.boundaries.radius * 2,
-                .h = state_to_render.height,
+                .h = state_to_render.character.height,
             },
             .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
         };
@@ -267,7 +275,7 @@ pub const Player = struct {
         return .{
             .id = self.id,
             .boundaries = state.character.boundaries,
-            .height = state.height,
+            .height = state.character.height,
         };
     }
 
@@ -276,7 +284,6 @@ pub const Player = struct {
         orientation: f32,
         /// Values from -1 (turning left) to 1 (turning right).
         turning_direction: f32,
-        height: f32,
 
         camera: ThirdPersonCamera,
         animation_cycle: animation.FourStepCycle,
@@ -286,7 +293,6 @@ pub const Player = struct {
                 .character = self.character.lerp(other.character, t),
                 .orientation = math.lerp(self.orientation, other.orientation, t),
                 .turning_direction = math.lerp(self.turning_direction, other.turning_direction, t),
-                .height = math.lerp(self.height, other.height, t),
                 .camera = self.camera.lerp(other.camera, t),
                 .animation_cycle = self.animation_cycle.lerp(other.animation_cycle, t),
             };
@@ -306,7 +312,7 @@ pub const Player = struct {
                 gems_collected += gem_collection.processCollision(.{
                     .id = player_id,
                     .boundaries = self.character.boundaries,
-                    .height = self.height,
+                    .height = self.character.height,
                 }, map.geometry);
             }
 
