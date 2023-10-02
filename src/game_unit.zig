@@ -19,42 +19,59 @@ pub const InputButton = enum {
     confirm,
 };
 
-pub const MovingCharacter = struct {
-    boundaries: collision.Circle,
+pub const Stats = struct {
     height: f32,
     movement_speed: f32,
-    acceleration_direction: math.FlatVector,
-    current_velocity: math.FlatVector,
+    health: struct { current: u32, max: u32 },
 
-    pub fn create(
-        position: math.FlatVector,
-        width: f32,
-        height: f32,
-        movement_speed: f32,
-    ) MovingCharacter {
+    pub fn create(height: f32, movement_speed: f32, max_health: u32) Stats {
         return .{
-            .boundaries = .{ .position = position, .radius = width / 2 },
             .height = height,
             .movement_speed = movement_speed,
-            .acceleration_direction = .{ .x = 0, .z = 0 },
-            .current_velocity = .{ .x = 0, .z = 0 },
+            .health = .{ .current = max_health, .max = max_health },
         };
     }
 
-    pub fn lerp(self: MovingCharacter, other: MovingCharacter, t: f32) MovingCharacter {
-        return MovingCharacter{
-            .boundaries = self.boundaries.lerp(other.boundaries, t),
+    pub fn lerp(self: Stats, other: Stats, t: f32) Stats {
+        return .{
             .height = math.lerp(self.height, other.height, t),
             .movement_speed = math.lerp(self.movement_speed, other.movement_speed, t),
+            .health = .{
+                .current = math.lerpU32(self.health.current, other.health.current, t),
+                .max = math.lerpU32(self.health.max, other.health.max, t),
+            },
+        };
+    }
+};
+
+pub const GameCharacter = struct {
+    boundaries: collision.Circle,
+    acceleration_direction: math.FlatVector,
+    current_velocity: math.FlatVector,
+    stats: Stats,
+
+    pub fn create(position: math.FlatVector, width: f32, stats: Stats) GameCharacter {
+        return .{
+            .boundaries = .{ .position = position, .radius = width / 2 },
+            .acceleration_direction = .{ .x = 0, .z = 0 },
+            .current_velocity = .{ .x = 0, .z = 0 },
+            .stats = stats,
+        };
+    }
+
+    pub fn lerp(self: GameCharacter, other: GameCharacter, t: f32) GameCharacter {
+        return GameCharacter{
+            .boundaries = self.boundaries.lerp(other.boundaries, t),
             .acceleration_direction = self.acceleration_direction.lerp(
                 other.acceleration_direction,
                 t,
             ),
             .current_velocity = self.current_velocity.lerp(other.current_velocity, t),
+            .stats = self.stats.lerp(other.stats, t),
         };
     }
 
-    pub fn setAcceleration(self: *MovingCharacter, direction: math.FlatVector) void {
+    pub fn setAcceleration(self: *GameCharacter, direction: math.FlatVector) void {
         std.debug.assert(direction.lengthSquared() < 1 + math.epsilon);
         self.acceleration_direction = direction;
     }
@@ -62,7 +79,7 @@ pub const MovingCharacter = struct {
     pub const RemainingTickVelocity = struct { direction: math.FlatVector, magnitude: f32 };
 
     /// Returns an object which has to be consumed with processElapsedTickConsume().
-    pub fn processElapsedTickInit(self: MovingCharacter) RemainingTickVelocity {
+    pub fn processElapsedTickInit(self: GameCharacter) RemainingTickVelocity {
         return .{
             .direction = self.current_velocity.normalize(),
             .magnitude = self.current_velocity.length(),
@@ -72,7 +89,7 @@ pub const MovingCharacter = struct {
     /// Returns true if this function needs to be called again. False if there is no velocity left
     /// to consume and the tick has been processed completely.
     pub fn processElapsedTickConsume(
-        self: *MovingCharacter,
+        self: *GameCharacter,
         remaining_velocity: *RemainingTickVelocity,
         map: Map,
     ) bool {
@@ -93,12 +110,12 @@ pub const MovingCharacter = struct {
 
         const is_accelerating = self.acceleration_direction.length() > math.epsilon;
         if (is_accelerating) {
-            const acceleration = self.movement_speed / 5.0;
+            const acceleration = self.stats.movement_speed / 5.0;
             self.current_velocity =
                 self.current_velocity.add(self.acceleration_direction.scale(acceleration));
-            if (self.current_velocity.length() > self.movement_speed) {
+            if (self.current_velocity.length() > self.stats.movement_speed) {
                 self.current_velocity =
-                    self.current_velocity.normalize().scale(self.movement_speed);
+                    self.current_velocity.normalize().scale(self.stats.movement_speed);
             }
         } else {
             self.current_velocity = self.current_velocity.scale(0.7);
@@ -106,7 +123,7 @@ pub const MovingCharacter = struct {
         return false;
     }
 
-    fn resolveCollision(self: *MovingCharacter, displacement_vector: math.FlatVector) void {
+    fn resolveCollision(self: *GameCharacter, displacement_vector: math.FlatVector) void {
         self.boundaries.position = self.boundaries.position.add(displacement_vector);
         const dot_product = std.math.clamp(self.current_velocity.normalize()
             .dotProduct(displacement_vector.normalize()), -1, 1);
@@ -133,11 +150,10 @@ pub const Player = struct {
         spritesheet_frame_ratio: f32,
     ) Player {
         const in_game_height = 1.8;
-        const character = MovingCharacter.create(
+        const character = GameCharacter.create(
             .{ .x = starting_position_x, .z = starting_position_z },
             in_game_height / spritesheet_frame_ratio,
-            in_game_height,
-            0.15,
+            Stats.create(in_game_height, 0.15, 100),
         );
         const orientation = 0;
         const state = .{
@@ -263,12 +279,12 @@ pub const Player = struct {
         return .{
             .id = self.id,
             .boundaries = state.character.boundaries,
-            .height = state.character.height,
+            .height = state.character.stats.height,
         };
     }
 
     const State = struct {
-        character: MovingCharacter,
+        character: GameCharacter,
         orientation: f32,
         /// Values from -1 (turning left) to 1 (turning right).
         turning_direction: f32,
@@ -300,7 +316,7 @@ pub const Player = struct {
                 gems_collected += gem_collection.processCollision(.{
                     .id = player_id,
                     .boundaries = self.character.boundaries,
-                    .height = self.character.height,
+                    .height = self.character.stats.height,
                 }, map.geometry);
             }
 
@@ -333,21 +349,19 @@ pub const Player = struct {
 
 pub const Enemy = struct {
     sprite: textures.SpriteSheetTexture.SpriteId,
-    state_at_previous_tick: MovingCharacter,
-    state_at_next_tick: MovingCharacter,
+    state_at_previous_tick: GameCharacter,
+    state_at_next_tick: GameCharacter,
 
     pub fn create(
         sprite: textures.SpriteSheetTexture.SpriteId,
         spritesheet: textures.SpriteSheetTexture,
         position: math.FlatVector,
-        height: f32,
-        movement_speed: f32,
+        stats: Stats,
     ) Enemy {
-        const character = MovingCharacter.create(
+        const character = GameCharacter.create(
             position,
-            height / spritesheet.getSpriteAspectRatio(sprite),
-            height,
-            movement_speed,
+            stats.height / spritesheet.getSpriteAspectRatio(sprite),
+            stats,
         );
         return .{
             .sprite = sprite,
@@ -377,7 +391,7 @@ pub const Enemy = struct {
 };
 
 fn makeSpriteData(
-    character: MovingCharacter,
+    character: GameCharacter,
     sprite: textures.SpriteSheetTexture.SpriteId,
     spritesheet: textures.SpriteSheetTexture,
 ) rendering.SpriteData {
@@ -385,12 +399,12 @@ fn makeSpriteData(
     return .{
         .position = .{
             .x = character.boundaries.position.x,
-            .y = character.height / 2,
+            .y = character.stats.height / 2,
             .z = character.boundaries.position.z,
         },
         .size = .{
             .w = character.boundaries.radius * 2,
-            .h = character.height,
+            .h = character.stats.height,
         },
         .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
     };
