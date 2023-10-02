@@ -1,3 +1,4 @@
+const Color = @import("util.zig").Color;
 const Map = @import("map/map.zig").Map;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const animation = @import("animation.zig");
@@ -6,6 +7,7 @@ const gems = @import("gems.zig");
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
 const std = @import("std");
+const text_rendering = @import("text_rendering.zig");
 const textures = @import("textures.zig");
 
 pub const InputButton = enum {
@@ -348,11 +350,20 @@ pub const Player = struct {
 };
 
 pub const Enemy = struct {
+    /// Non-owning slice.
+    name: []const u8,
     sprite: textures.SpriteSheetTexture.SpriteId,
     state_at_previous_tick: GameCharacter,
     state_at_next_tick: GameCharacter,
 
+    data_to_render: struct {
+        state: GameCharacter,
+        should_render_name: bool,
+    },
+
     pub fn create(
+        /// Will be referenced by the returned object.
+        name: []const u8,
         sprite: textures.SpriteSheetTexture.SpriteId,
         spritesheet: textures.SpriteSheetTexture,
         position: math.FlatVector,
@@ -364,9 +375,14 @@ pub const Enemy = struct {
             stats,
         );
         return .{
+            .name = name,
             .sprite = sprite,
             .state_at_previous_tick = character,
             .state_at_next_tick = character,
+            .data_to_render = .{
+                .state = character,
+                .should_render_name = true,
+            },
         };
     }
 
@@ -377,16 +393,57 @@ pub const Enemy = struct {
         while (self.state_at_next_tick.processElapsedTickConsume(&remaining_velocity, map)) {}
     }
 
-    pub fn getBillboardData(
-        self: Enemy,
-        spritesheet: textures.SpriteSheetTexture,
+    pub fn prepareRender(
+        self: *Enemy,
+        camera: ThirdPersonCamera,
         interval_between_previous_and_current_tick: f32,
-    ) rendering.SpriteData {
-        const state_to_render = self.state_at_previous_tick.lerp(
+    ) void {
+        const state = self.state_at_previous_tick.lerp(
             self.state_at_next_tick,
             interval_between_previous_and_current_tick,
         );
-        return makeSpriteData(state_to_render, self.sprite, spritesheet);
+        const distance_from_camera = self.data_to_render.state.boundaries.position
+            .toVector3d().subtract(camera.position).lengthSquared();
+        const min_text_to_camera_distance = state.stats.height * 35;
+        self.data_to_render = .{
+            .state = state,
+            .should_render_name = distance_from_camera <
+                min_text_to_camera_distance * min_text_to_camera_distance,
+        };
+    }
+
+    pub fn getBillboardCount(self: Enemy) usize {
+        var billboard_count: usize = 1; // Enemy sprite.
+        if (self.data_to_render.should_render_name) {
+            billboard_count += text_rendering.getSpriteCount(&self.getNameText());
+        }
+
+        return billboard_count;
+    }
+
+    pub fn populateBillboardData(
+        self: Enemy,
+        spritesheet: textures.SpriteSheetTexture,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []rendering.SpriteData,
+    ) void {
+        const state = self.data_to_render.state;
+
+        out[0] = makeSpriteData(state, self.sprite, spritesheet);
+        if (self.data_to_render.should_render_name) {
+            const up = math.Vector3d{ .x = 0, .y = 1, .z = 0 };
+            text_rendering.populateBillboardDataExactPixelSize(
+                &self.getNameText(),
+                state.boundaries.position.toVector3d().add(up.scale(state.stats.height * 1.2)),
+                spritesheet.getFontSizeMultiple(1),
+                spritesheet,
+                out[1..],
+            );
+        }
+    }
+
+    fn getNameText(self: Enemy) [1]text_rendering.TextSegment {
+        return .{.{ .color = Color.fromRgb8(255, 255, 255), .text = self.name }};
     }
 };
 
