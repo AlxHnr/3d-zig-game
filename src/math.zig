@@ -12,6 +12,12 @@ fn _lerp(a: f32, b: f32, t: f32) f32 {
     return a + (b - a) * std.math.clamp(t, 0, 1);
 }
 
+pub fn lerpU32(a: u32, b: u32, t: f32) u32 {
+    const a_f32 = @as(f32, @floatFromInt(a));
+    const b_f32 = @as(f32, @floatFromInt(b));
+    return @as(u32, @intFromFloat(_lerp(a_f32, b_f32, t)));
+}
+
 pub fn isEqual(a: f32, b: f32) bool {
     return std.math.fabs(a - b) < epsilon;
 }
