@@ -331,6 +331,51 @@ pub const Player = struct {
     };
 };
 
+pub const Enemy = struct {
+    sprite: textures.SpriteSheetTexture.SpriteId,
+    state_at_previous_tick: MovingCharacter,
+    state_at_next_tick: MovingCharacter,
+
+    pub fn create(
+        sprite: textures.SpriteSheetTexture.SpriteId,
+        spritesheet: textures.SpriteSheetTexture,
+        position: math.FlatVector,
+        height: f32,
+        movement_speed: f32,
+    ) Enemy {
+        const character = MovingCharacter.create(
+            position,
+            height / spritesheet.getSpriteAspectRatio(sprite),
+            height,
+            movement_speed,
+        );
+        return .{
+            .sprite = sprite,
+            .state_at_previous_tick = character,
+            .state_at_next_tick = character,
+        };
+    }
+
+    pub fn processElapsedTick(self: *Enemy, map: Map) void {
+        self.state_at_previous_tick = self.state_at_next_tick;
+
+        var remaining_velocity = self.state_at_next_tick.processElapsedTickInit();
+        while (self.state_at_next_tick.processElapsedTickConsume(&remaining_velocity, map)) {}
+    }
+
+    pub fn getBillboardData(
+        self: Enemy,
+        spritesheet: textures.SpriteSheetTexture,
+        interval_between_previous_and_current_tick: f32,
+    ) rendering.SpriteData {
+        const state_to_render = self.state_at_previous_tick.lerp(
+            self.state_at_next_tick,
+            interval_between_previous_and_current_tick,
+        );
+        return makeSpriteData(state_to_render, self.sprite, spritesheet);
+    }
+};
+
 fn makeSpriteData(
     character: MovingCharacter,
     sprite: textures.SpriteSheetTexture.SpriteId,
