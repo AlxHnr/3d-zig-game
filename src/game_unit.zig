@@ -242,19 +242,7 @@ pub const Player = struct {
             0 => .player_back_frame_0,
             2 => .player_back_frame_2,
         };
-        const source = spritesheet.getSpriteTexcoords(sprite_id);
-        return .{
-            .position = .{
-                .x = state_to_render.character.boundaries.position.x,
-                .y = state_to_render.character.height / 2,
-                .z = state_to_render.character.boundaries.position.z,
-            },
-            .size = .{
-                .w = state_to_render.character.boundaries.radius * 2,
-                .h = state_to_render.character.height,
-            },
-            .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
-        };
+        return makeSpriteData(state_to_render.character, sprite_id, spritesheet);
     }
 
     pub fn getCamera(self: Player, interval_between_previous_and_current_tick: f32) ThirdPersonCamera {
@@ -342,3 +330,23 @@ pub const Player = struct {
         }
     };
 };
+
+fn makeSpriteData(
+    character: MovingCharacter,
+    sprite: textures.SpriteSheetTexture.SpriteId,
+    spritesheet: textures.SpriteSheetTexture,
+) rendering.SpriteData {
+    const source = spritesheet.getSpriteTexcoords(sprite);
+    return .{
+        .position = .{
+            .x = character.boundaries.position.x,
+            .y = character.height / 2,
+            .z = character.boundaries.position.z,
+        },
+        .size = .{
+            .w = character.boundaries.radius * 2,
+            .h = character.height,
+        },
+        .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
+    };
+}
