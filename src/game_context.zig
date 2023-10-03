@@ -232,6 +232,7 @@ pub const Context = struct {
             screen_dimensions,
             self.spritesheet,
             self.main_character.gem_count,
+            self.main_character.character.health.current,
         );
         try self.shared_context.dialog_controller.render(
             screen_dimensions,

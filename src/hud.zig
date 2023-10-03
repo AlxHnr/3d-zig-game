@@ -28,17 +28,18 @@ pub const Hud = struct {
         screen_dimensions: ScreenDimensions,
         spritesheet: SpriteSheetTexture,
         gem_count: u64,
+        player_health: u32,
     ) !void {
-        var gem_info = try GemCountInfo.create(allocator, gem_count, &spritesheet);
-        defer gem_info.destroy(allocator);
+        var widgets = try WrappedWidgets.create(allocator, gem_count, player_health, &spritesheet);
+        defer widgets.destroy(allocator);
 
-        const total_sprite_count = gem_info.getSpriteCount();
+        const total_sprite_count = widgets.getSpriteCount();
         if (self.sprite_buffer.len < total_sprite_count) {
             self.sprite_buffer =
                 try allocator.realloc(self.sprite_buffer, total_sprite_count);
         }
 
-        gem_info.populateSpriteData(
+        widgets.populateSpriteData(
             screen_dimensions,
             self.sprite_buffer[0..total_sprite_count],
         );
@@ -47,7 +48,7 @@ pub const Hud = struct {
     }
 };
 
-const GemCountInfo = struct {
+const WrappedWidgets = struct {
     buffer: []u8,
     segments: []text_rendering.TextSegment,
     widgets: []ui.Widget,
@@ -57,30 +58,24 @@ const GemCountInfo = struct {
     fn create(
         allocator: std.mem.Allocator,
         gem_count: u64,
+        player_health: u32,
         /// Returned object keeps a reference to this sprite sheet.
         spritesheet: *const SpriteSheetTexture,
-    ) !GemCountInfo {
-        var buffer = try allocator.alloc(u8, 16);
+    ) !WrappedWidgets {
+        var buffer = try allocator.alloc(u8, 64);
         errdefer allocator.free(buffer);
 
         var segments = try allocator.alloc(text_rendering.TextSegment, 1);
         errdefer allocator.free(segments);
 
-        var widgets = try allocator.alloc(ui.Widget, 4);
+        var widgets = try allocator.alloc(ui.Widget, 1);
         errdefer allocator.free(widgets);
-
-        const sprite_scale = 3;
-        widgets[0] = .{ .sprite = ui.Sprite.create(.gem, spritesheet.*, sprite_scale) };
-        widgets[1] = .{
-            .spacing = ui.Spacing.wrapFixedPixels(&widgets[0], sprite_scale * 2, sprite_scale * 2),
-        };
 
         segments[0] = .{
             .color = Color.fromRgb8(0, 0, 0),
-            .text = try std.fmt.bufPrint(buffer, "{}", .{gem_count}),
+            .text = try std.fmt.bufPrint(buffer, "Gems: {}\nHP: {}", .{ gem_count, player_health }),
         };
-        widgets[2] = .{ .text = ui.Text.wrap(segments, spritesheet, 4) };
-        widgets[3] = .{ .split = ui.Split.wrap(.horizontal, widgets[1..3]) };
+        widgets[0] = .{ .text = ui.Text.wrap(segments, spritesheet, 3) };
 
         return .{
             .buffer = buffer,
@@ -90,18 +85,18 @@ const GemCountInfo = struct {
         };
     }
 
-    fn destroy(self: *GemCountInfo, allocator: std.mem.Allocator) void {
+    fn destroy(self: *WrappedWidgets, allocator: std.mem.Allocator) void {
         allocator.free(self.widgets);
         allocator.free(self.segments);
         allocator.free(self.buffer);
     }
 
-    fn getSpriteCount(self: GemCountInfo) usize {
+    fn getSpriteCount(self: WrappedWidgets) usize {
         return self.main_widget.getSpriteCount();
     }
 
     fn populateSpriteData(
-        self: GemCountInfo,
+        self: WrappedWidgets,
         screen_dimensions: ScreenDimensions,
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
