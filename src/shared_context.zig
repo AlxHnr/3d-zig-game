@@ -1,5 +1,5 @@
 const DialogController = @import("dialog.zig").Controller;
-const Enemy = @import("game_unit.zig").Enemy;
+const Enemy = @import("enemy.zig").Enemy;
 const GemCollection = @import("gems.zig").Collection;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const std = @import("std");

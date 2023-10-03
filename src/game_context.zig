@@ -9,6 +9,7 @@ const rendering = @import("rendering.zig");
 const std = @import("std");
 const textures = @import("textures.zig");
 
+const Enemy = @import("enemy.zig").Enemy;
 const Hud = @import("hud.zig").Hud;
 const Map = @import("map/map.zig").Map;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
@@ -53,7 +54,7 @@ pub const Context = struct {
         var counter: usize = 0;
         while (counter < 1000) : (counter += 1) {
             try shared_context.enemies.append(
-                game_unit.Enemy.create(
+                Enemy.create(
                     .{
                         .x = -shared_context.rng.random().float(f32) * 100 - 50,
                         .z = shared_context.rng.random().float(f32) * 500,
