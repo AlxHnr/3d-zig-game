@@ -31,6 +31,8 @@ pub const FlatVector = struct {
     x: f32,
     z: f32,
 
+    pub const zero = FlatVector{ .x = 0, .z = 0 };
+
     pub fn toVector3d(self: FlatVector) Vector3d {
         return .{ .x = self.x, .y = 0, .z = self.z };
     }

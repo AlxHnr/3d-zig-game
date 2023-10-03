@@ -44,8 +44,8 @@ pub const GameCharacter = struct {
         return .{
             .object_id = object_id_generator.makeNewId(),
             .boundaries = .{ .position = position, .radius = width / 2 },
-            .acceleration_direction = .{ .x = 0, .z = 0 },
-            .velocity = .{ .x = 0, .z = 0 },
+            .acceleration_direction = math.FlatVector.zero,
+            .velocity = math.FlatVector.zero,
             .height = height,
             .movement_speed = movement_speed,
             .health = .{ .current = max_health, .max = max_health },
@@ -184,7 +184,7 @@ pub const Player = struct {
             .getDirectionToTarget().toFlatVector();
         const right_direction = forward_direction.rotateRightBy90Degrees();
 
-        var acceleration_direction = math.FlatVector{ .x = 0, .z = 0 };
+        var acceleration_direction = math.FlatVector.zero;
         var turning_direction: f32 = 0;
         if (self.input_state.get(.left)) {
             if (self.input_state.get(.strafe)) {

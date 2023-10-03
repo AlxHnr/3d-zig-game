@@ -277,7 +277,7 @@ pub const Enemy = struct {
             self.state.idle.ticks_remaining =
                 rng.intRangeAtMost(u64, 0, simulation.secondsToTicks(4));
         } else { // Stand still.
-            self.character.acceleration_direction = .{ .x = 0, .z = 0 };
+            self.character.acceleration_direction = math.FlatVector.zero;
             self.state.idle.ticks_remaining =
                 rng.intRangeAtMost(u64, 0, simulation.secondsToTicks(20));
         }
@@ -298,7 +298,7 @@ pub const Enemy = struct {
             self.character.movement_speed = self.config.movement_speed.attacking;
             self.character.acceleration_direction = offset_to_target.normalize();
         } else {
-            self.character.acceleration_direction = .{ .x = 0, .z = 0 };
+            self.character.acceleration_direction = math.FlatVector.zero;
         }
     }
 };
