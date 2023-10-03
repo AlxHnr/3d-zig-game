@@ -11,6 +11,17 @@ const rendering = @import("rendering.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 
+/// Used for initializing enemies.
+pub const Configuration = struct {
+    /// Non-owning slice. Will be referenced by all enemies created with this configuration.
+    name: []const u8,
+    sprite: SpriteSheetTexture.SpriteId,
+    height: f32,
+    movement_speed: f32,
+    max_health: u32,
+    aggro_radius: f32,
+};
+
 pub const Enemy = struct {
     /// Non-owning slice.
     name: []const u8,
@@ -61,16 +72,6 @@ pub const Enemy = struct {
             },
         };
     }
-
-    pub const Configuration = struct {
-        /// Non-owning slice. Will be referenced by all enemies created with this configuration.
-        name: []const u8,
-        sprite: SpriteSheetTexture.SpriteId,
-        height: f32,
-        movement_speed: f32,
-        max_health: u32,
-        aggro_radius: f32,
-    };
 
     pub fn processElapsedTick(
         self: *Enemy,

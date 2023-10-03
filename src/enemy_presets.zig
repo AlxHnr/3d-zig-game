@@ -1,4 +1,4 @@
-const Config = @import("enemy.zig").Enemy.Configuration;
+const Config = @import("enemy.zig").Configuration;
 
 pub const floating_eye = Config{
     .name = "Floating Eye",
