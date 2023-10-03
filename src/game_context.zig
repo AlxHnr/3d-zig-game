@@ -138,7 +138,11 @@ pub const Context = struct {
             self.main_character.processElapsedTick(self.map, &self.shared_context.gem_collection);
             self.shared_context.gem_collection.processElapsedTick();
             for (self.shared_context.enemies.items) |*enemy| {
-                enemy.processElapsedTick(self.main_character.character, self.map);
+                enemy.processElapsedTick(
+                    &self.shared_context,
+                    self.main_character.character,
+                    self.map,
+                );
             }
             self.shared_context.dialog_controller.processElapsedTick();
         }

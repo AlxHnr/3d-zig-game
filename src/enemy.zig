@@ -2,34 +2,34 @@ const Color = @import("util.zig").Color;
 const GameCharacter = @import("game_unit.zig").GameCharacter;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
+const SharedContext = @import("shared_context.zig").SharedContext;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const collision = @import("collision.zig");
 const makeSpriteData = @import("game_unit.zig").makeSpriteData;
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
+const simulation = @import("simulation.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 
 /// Used for initializing enemies.
-pub const Configuration = struct {
+pub const Config = struct {
     /// Non-owning slice. Will be referenced by all enemies created with this configuration.
     name: []const u8,
     sprite: SpriteSheetTexture.SpriteId,
     height: f32,
-    movement_speed: f32,
+    movement_speed: struct { idle: f32, attacking: f32 },
     max_health: u32,
     aggro_radius: f32,
 };
 
 pub const Enemy = struct {
-    /// Non-owning slice.
-    name: []const u8,
-    sprite: SpriteSheetTexture.SpriteId,
+    config: Config,
     character: GameCharacter,
-    aggro_radius: f32,
-    values_from_previous_tick: ValuesForRendering,
+    state: State,
 
+    values_from_previous_tick: ValuesForRendering,
     prepared_render_data: struct {
         values: ValuesForRendering,
         should_render_name: bool,
@@ -43,16 +43,16 @@ pub const Enemy = struct {
     pub fn create(
         object_id_generator: *ObjectIdGenerator,
         position: math.FlatVector,
-        configuration: Configuration,
+        config: Config,
         spritesheet: SpriteSheetTexture,
     ) Enemy {
         const character = GameCharacter.create(
             object_id_generator,
             position,
-            configuration.height / spritesheet.getSpriteAspectRatio(configuration.sprite),
-            configuration.height,
-            configuration.movement_speed,
-            configuration.max_health,
+            config.height / spritesheet.getSpriteAspectRatio(config.sprite),
+            config.height,
+            0,
+            config.max_health,
         );
         const render_values = .{
             .boundaries = character.boundaries,
@@ -60,10 +60,9 @@ pub const Enemy = struct {
             .health = character.health,
         };
         return .{
-            .name = configuration.name,
-            .sprite = configuration.sprite,
             .character = character,
-            .aggro_radius = configuration.aggro_radius,
+            .config = config,
+            .state = .{ .spawning = undefined },
             .values_from_previous_tick = render_values,
             .prepared_render_data = .{
                 .values = render_values,
@@ -75,27 +74,21 @@ pub const Enemy = struct {
 
     pub fn processElapsedTick(
         self: *Enemy,
+        shared_context: *SharedContext,
         main_character: GameCharacter,
         map: Map,
     ) void {
         self.values_from_previous_tick = self.getValuesForRendering();
 
-        const offset_to_main_character = main_character.boundaries.position
-            .subtract(self.character.boundaries.position);
-        const distance_fom_main_character = offset_to_main_character.lengthSquared();
-        const min_distance_to_main_character =
-            self.character.boundaries.radius + main_character.boundaries.radius;
-        if (distance_fom_main_character < self.aggro_radius * self.aggro_radius and
-            distance_fom_main_character > min_distance_to_main_character *
-            min_distance_to_main_character and
-            !map.geometry.isSolidWallBetweenPoints(
-            self.character.boundaries.position,
-            main_character.boundaries.position,
-        )) {
-            const direction_to_main_character = offset_to_main_character.normalize();
-            self.character.setAcceleration(direction_to_main_character);
-        } else {
-            self.character.setAcceleration(.{ .x = 0, .z = 0 });
+        var context = .{
+            .shared_context = shared_context,
+            .main_character = &main_character,
+            .map = &map,
+        };
+        switch (self.state) {
+            .spawning => self.handleSpawningState(context),
+            .idle => self.handleIdleState(context),
+            else => {},
         }
 
         var remaining_velocity = self.character.processElapsedTickInit();
@@ -147,7 +140,7 @@ pub const Enemy = struct {
         out[0] = makeSpriteData(
             self.prepared_render_data.values.boundaries,
             self.prepared_render_data.values.height,
-            self.sprite,
+            self.config.sprite,
             spritesheet,
         );
 
@@ -181,7 +174,7 @@ pub const Enemy = struct {
     }
 
     fn getNameText(self: Enemy) [1]text_rendering.TextSegment {
-        return .{.{ .color = Color.white, .text = self.name }};
+        return .{.{ .color = Color.white, .text = self.config.name }};
     }
 
     pub fn populateHealthbarBillboardData(
@@ -236,24 +229,94 @@ pub const Enemy = struct {
         };
     }
 
-    const ValuesForRendering = struct {
-        boundaries: collision.Circle,
-        height: f32,
-        health: GameCharacter.Health,
-
-        pub fn lerp(
-            self: ValuesForRendering,
-            other: ValuesForRendering,
-            t: f32,
-        ) ValuesForRendering {
-            return .{
-                .boundaries = self.boundaries.lerp(other.boundaries, t),
-                .height = math.lerp(self.height, other.height, t),
-                .health = .{
-                    .current = math.lerpU32(self.health.current, other.health.current, t),
-                    .max = math.lerpU32(self.health.max, other.health.max, t),
-                },
-            };
+    /// Return true if the tick was not consumed completely.
+    fn consumeTick(tick: *u64) bool {
+        if (tick.* == 0) {
+            return false;
         }
+        tick.* -= 1;
+        return true;
+    }
+
+    const TickContextPointers = struct {
+        shared_context: *SharedContext,
+        main_character: *const GameCharacter,
+        map: *const Map,
     };
+
+    fn handleSpawningState(self: *Enemy, context: TickContextPointers) void {
+        _ = context;
+        self.state = .{ .idle = .{ .ticks_remaining = 0 } };
+    }
+
+    fn handleIdleState(self: *Enemy, context: TickContextPointers) void {
+        self.character.movement_speed = self.config.movement_speed.idle;
+        if (consumeTick(&self.state.idle.ticks_remaining)) {
+            return;
+        }
+        var rng = context.shared_context.rng.random();
+
+        if (rng.boolean()) { // Walk.
+            const direction = std.math.degreesToRadians(f32, 360 * rng.float(f32));
+            const forward = math.FlatVector{ .x = 0, .z = -1 };
+            self.character.setAcceleration(forward.rotate(direction));
+            self.state.idle.ticks_remaining =
+                rng.intRangeAtMost(u64, 0, simulation.secondsToTicks(4));
+        } else { // Stand still.
+            self.character.setAcceleration(.{ .x = 0, .z = 0 });
+            self.state.idle.ticks_remaining =
+                rng.intRangeAtMost(u64, 0, simulation.secondsToTicks(20));
+        }
+    }
+
+    fn checkIfSeesTarget(self: *Enemy, context: TickContextPointers) void {
+        const offset_to_main_character = context.main_character.boundaries.position
+            .subtract(self.character.boundaries.position);
+        const distance_fom_main_character = offset_to_main_character.lengthSquared();
+        const min_distance_to_main_character =
+            self.character.boundaries.radius + context.main_character.boundaries.radius;
+        if (distance_fom_main_character < self.config.aggro_radius * self.config.aggro_radius and
+            distance_fom_main_character > min_distance_to_main_character *
+            min_distance_to_main_character and
+            !context.map.geometry.isSolidWallBetweenPoints(
+            self.character.boundaries.position,
+            context.main_character.boundaries.position,
+        )) {
+            const direction_to_main_character = offset_to_main_character.normalize();
+            self.character.setAcceleration(direction_to_main_character);
+        } else {
+            self.character.setAcceleration(.{ .x = 0, .z = 0 });
+        }
+    }
+};
+
+const State = union(enum) {
+    spawning: void,
+    idle: struct { ticks_remaining: u64 },
+    attacking: struct {
+        target_object_id: u64,
+        aggro_follow_radius: f32,
+    },
+    dead: void,
+};
+
+const ValuesForRendering = struct {
+    boundaries: collision.Circle,
+    height: f32,
+    health: GameCharacter.Health,
+
+    pub fn lerp(
+        self: ValuesForRendering,
+        other: ValuesForRendering,
+        t: f32,
+    ) ValuesForRendering {
+        return .{
+            .boundaries = self.boundaries.lerp(other.boundaries, t),
+            .height = math.lerp(self.height, other.height, t),
+            .health = .{
+                .current = math.lerpU32(self.health.current, other.health.current, t),
+                .max = math.lerpU32(self.health.max, other.health.max, t),
+            },
+        };
+    }
 };
