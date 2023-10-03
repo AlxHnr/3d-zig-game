@@ -7,6 +7,7 @@ const collision = @import("collision.zig");
 const gems = @import("gems.zig");
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
+const simulation = @import("simulation.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 
@@ -136,7 +137,7 @@ pub const Player = struct {
             .{ .x = starting_position_x, .z = starting_position_z },
             in_game_height / spritesheet_frame_ratio,
             in_game_height,
-            0.15,
+            simulation.kphToGameUnitsPerTick(30),
             100,
         );
         const orientation = 0;

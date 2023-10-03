@@ -16,7 +16,7 @@ const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
-const TickTimer = @import("util.zig").TickTimer;
+const TickTimer = @import("simulation.zig").TickTimer;
 
 pub const Context = struct {
     tick_timer: TickTimer,
