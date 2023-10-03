@@ -1,6 +1,7 @@
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const dialog = @import("dialog.zig");
+const enemy_presets = @import("enemy_presets.zig");
 const game_unit = @import("game_unit.zig");
 const gems = @import("gems.zig");
 const math = @import("math.zig");
@@ -11,6 +12,7 @@ const textures = @import("textures.zig");
 const Hud = @import("hud.zig").Hud;
 const Map = @import("map/map.zig").Map;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const TickTimer = @import("util.zig").TickTimer;
 
@@ -23,8 +25,7 @@ pub const Context = struct {
 
     map_file_path: []const u8,
     map: Map,
-    gem_collection: gems.Collection,
-    enemies: std.ArrayList(game_unit.Enemy),
+    shared_context: SharedContext,
     tileable_textures: textures.TileableArrayTexture,
     spritesheet: textures.SpriteSheetTexture,
 
@@ -32,7 +33,6 @@ pub const Context = struct {
     billboard_buffer: []rendering.SpriteData,
 
     hud: Hud,
-    dialog_controller: dialog.Controller,
 
     pub fn create(allocator: std.mem.Allocator, map_file_path: []const u8) !Context {
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);
@@ -41,32 +41,34 @@ pub const Context = struct {
         var map = try loadMap(allocator, map_file_path);
         errdefer map.destroy();
 
-        var gem_collection = gems.Collection.create(allocator);
-        errdefer gem_collection.destroy();
-
-        var rng = std.rand.DefaultPrng.init(0);
-        var counter: usize = 0;
-        while (counter < 3000) : (counter += 1) {
-            try gem_collection.addGem(.{
-                .x = rng.random().float(f32) * 100 + 100,
-                .z = rng.random().float(f32) * 180 - 280,
-            });
-        }
-
         var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
         errdefer tileable_textures.destroy();
 
         var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
         errdefer spritesheet.destroy();
 
+        var shared_context = try SharedContext.create(allocator);
+        errdefer shared_context.destroy();
+
+        var counter: usize = 0;
+        while (counter < 1000) : (counter += 1) {
+            try shared_context.enemies.append(
+                game_unit.Enemy.create(
+                    .{
+                        .x = -shared_context.rng.random().float(f32) * 100 - 50,
+                        .z = shared_context.rng.random().float(f32) * 500,
+                    },
+                    enemy_presets.floating_eye,
+                    spritesheet,
+                ),
+            );
+        }
+
         var billboard_renderer = try rendering.BillboardRenderer.create();
         errdefer billboard_renderer.destroy();
 
         var hud = try Hud.create();
         errdefer hud.destroy(allocator);
-
-        var dialog_controller = try dialog.Controller.create(allocator);
-        errdefer dialog_controller.destroy();
 
         return .{
             .tick_timer = try TickTimer.start(60),
@@ -81,8 +83,7 @@ pub const Context = struct {
 
             .map_file_path = map_file_path_buffer,
             .map = map,
-            .gem_collection = gem_collection,
-            .enemies = std.ArrayList(game_unit.Enemy).init(allocator),
+            .shared_context = shared_context,
             .tileable_textures = tileable_textures,
             .spritesheet = spritesheet,
 
@@ -90,19 +91,16 @@ pub const Context = struct {
             .billboard_buffer = &.{},
 
             .hud = hud,
-            .dialog_controller = dialog_controller,
         };
     }
 
     pub fn destroy(self: *Context, allocator: std.mem.Allocator) void {
-        self.dialog_controller.destroy();
         self.hud.destroy(allocator);
         allocator.free(self.billboard_buffer);
         self.billboard_renderer.destroy();
         self.spritesheet.destroy();
         self.tileable_textures.destroy();
-        self.enemies.deinit();
-        self.gem_collection.destroy();
+        self.shared_context.destroy();
         self.map.destroy();
         allocator.free(self.map_file_path);
     }
@@ -110,11 +108,12 @@ pub const Context = struct {
     pub fn markButtonAsPressed(self: *Context, button: game_unit.InputButton) void {
         self.main_character.markButtonAsPressed(button);
 
+        var dialog_controller = &self.shared_context.dialog_controller;
         switch (button) {
-            .cancel => self.dialog_controller.sendCommandToCurrentDialog(.cancel),
-            .confirm => self.dialog_controller.sendCommandToCurrentDialog(.confirm),
-            .forwards => self.dialog_controller.sendCommandToCurrentDialog(.previous),
-            .backwards => self.dialog_controller.sendCommandToCurrentDialog(.next),
+            .cancel => dialog_controller.sendCommandToCurrentDialog(.cancel),
+            .confirm => dialog_controller.sendCommandToCurrentDialog(.confirm),
+            .forwards => dialog_controller.sendCommandToCurrentDialog(.previous),
+            .backwards => dialog_controller.sendCommandToCurrentDialog(.next),
             else => {},
         }
     }
@@ -124,7 +123,7 @@ pub const Context = struct {
     }
 
     pub fn handleElapsedFrame(self: *Context) void {
-        if (self.dialog_controller.hasOpenDialogs()) {
+        if (self.shared_context.dialog_controller.hasOpenDialogs()) {
             self.main_character.markAllButtonsAsReleased();
         }
         self.main_character.applyCurrentInput(self.interval_between_previous_and_current_tick);
@@ -133,12 +132,12 @@ pub const Context = struct {
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             self.map.processElapsedTick();
-            self.main_character.processElapsedTick(self.map, &self.gem_collection);
-            self.gem_collection.processElapsedTick();
-            for (self.enemies.items) |*enemy| {
+            self.main_character.processElapsedTick(self.map, &self.shared_context.gem_collection);
+            self.shared_context.gem_collection.processElapsedTick();
+            for (self.shared_context.enemies.items) |*enemy| {
                 enemy.processElapsedTick(self.main_character.character, self.map);
             }
-            self.dialog_controller.processElapsedTick();
+            self.shared_context.dialog_controller.processElapsedTick();
         }
         self.interval_between_previous_and_current_tick = lap_result.next_tick_progress;
 
@@ -164,9 +163,9 @@ pub const Context = struct {
 
         var billboards_to_render: usize = 0;
 
-        const gems_to_render = self.gem_collection.getBillboardCount();
+        const gems_to_render = self.shared_context.gem_collection.getBillboardCount();
         billboards_to_render += gems_to_render;
-        for (self.enemies.items) |*enemy| {
+        for (self.shared_context.enemies.items) |*enemy| {
             enemy.prepareRender(camera, self.interval_between_previous_and_current_tick);
             billboards_to_render += enemy.getBillboardCount();
         }
@@ -177,7 +176,7 @@ pub const Context = struct {
                 try allocator.realloc(self.billboard_buffer, billboards_to_render);
         }
 
-        self.gem_collection.populateBillboardData(
+        self.shared_context.gem_collection.populateBillboardData(
             self.billboard_buffer[0..gems_to_render],
             self.spritesheet,
             &.{self.main_character
@@ -186,7 +185,7 @@ pub const Context = struct {
         );
         var start: usize = gems_to_render;
         var end: usize = gems_to_render;
-        for (self.enemies.items) |enemy| {
+        for (self.shared_context.enemies.items) |enemy| {
             start = end;
             end += enemy.getBillboardCount();
             enemy.populateBillboardData(self.spritesheet, self.billboard_buffer[start..end]);
@@ -227,7 +226,7 @@ pub const Context = struct {
             self.spritesheet,
             self.main_character.gem_count,
         );
-        try self.dialog_controller.render(
+        try self.shared_context.dialog_controller.render(
             screen_dimensions,
             self.interval_between_previous_and_current_tick,
         );
