@@ -47,11 +47,11 @@ pub const TickTimer = struct {
     };
 };
 
-pub fn millisecondsToTicks(milliseconds: u64) u64 {
+pub fn millisecondsToTicks(milliseconds: anytype) @TypeOf(milliseconds) {
     return milliseconds / std.time.ms_per_s * engine_base_ticks_per_second;
 }
 
-pub fn secondsToTicks(seconds: u64) u64 {
+pub fn secondsToTicks(seconds: anytype) @TypeOf(seconds) {
     return millisecondsToTicks(seconds * std.time.ms_per_s);
 }
 
