@@ -52,11 +52,6 @@ pub const GameCharacter = struct {
         };
     }
 
-    pub fn setAcceleration(self: *GameCharacter, direction: math.FlatVector) void {
-        std.debug.assert(direction.lengthSquared() < 1 + math.epsilon);
-        self.acceleration_direction = direction;
-    }
-
     pub const RemainingTickVelocity = struct { direction: math.FlatVector, magnitude: f32 };
 
     /// Returns an object which has to be consumed with processElapsedTickConsume().
@@ -215,7 +210,7 @@ pub const Player = struct {
         if (self.input_state.get(.backwards)) {
             acceleration_direction = acceleration_direction.subtract(forward_direction);
         }
-        self.character.setAcceleration(acceleration_direction.normalize());
+        self.character.acceleration_direction = acceleration_direction.normalize();
         self.setTurningDirection(turning_direction);
     }
 

@@ -272,12 +272,12 @@ pub const Enemy = struct {
         if (rng.boolean()) { // Walk.
             const direction = std.math.degreesToRadians(f32, 360 * rng.float(f32));
             const forward = math.FlatVector{ .x = 0, .z = -1 };
-            self.character.setAcceleration(forward.rotate(direction));
+            self.character.acceleration_direction = forward.rotate(direction);
             self.character.movement_speed = self.config.movement_speed.idle;
             self.state.idle.ticks_remaining =
                 rng.intRangeAtMost(u64, 0, simulation.secondsToTicks(4));
         } else { // Stand still.
-            self.character.setAcceleration(.{ .x = 0, .z = 0 });
+            self.character.acceleration_direction = .{ .x = 0, .z = 0 };
             self.state.idle.ticks_remaining =
                 rng.intRangeAtMost(u64, 0, simulation.secondsToTicks(20));
         }
@@ -296,9 +296,9 @@ pub const Enemy = struct {
             self.character.boundaries.radius + context.main_character.boundaries.radius;
         if (distance_to_target > min_distance_to_target * min_distance_to_target) {
             self.character.movement_speed = self.config.movement_speed.attacking;
-            self.character.setAcceleration(offset_to_target.normalize());
+            self.character.acceleration_direction = offset_to_target.normalize();
         } else {
-            self.character.setAcceleration(.{ .x = 0, .z = 0 });
+            self.character.acceleration_direction = .{ .x = 0, .z = 0 };
         }
     }
 };
