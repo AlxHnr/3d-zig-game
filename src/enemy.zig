@@ -18,14 +18,24 @@ pub const Config = struct {
     /// Non-owning slice. Will be referenced by all enemies created with this configuration.
     name: []const u8,
     sprite: SpriteSheetTexture.SpriteId,
+    movement_speed: IdleAndAttackingValues,
+    aggro_radius: IdleAndAttackingValues,
+
+    // Every member below this line is duplicating the values in `game_unit.GameCharacter` and does
+    // not need to be replicated in `Enemy`.
+
     height: f32,
-    movement_speed: struct { idle: f32, attacking: f32 },
     max_health: u32,
-    aggro_radius: struct { idle: f32, attacking: f32 },
+
+    const IdleAndAttackingValues = struct { idle: f32, attacking: f32 };
 };
 
 pub const Enemy = struct {
-    config: Config,
+    /// Non-owning slice.
+    name: []const u8,
+    sprite: SpriteSheetTexture.SpriteId,
+    movement_speed: Config.IdleAndAttackingValues,
+    aggro_radius: Config.IdleAndAttackingValues,
     character: GameCharacter,
     state: State,
 
@@ -61,7 +71,10 @@ pub const Enemy = struct {
         };
         return .{
             .character = character,
-            .config = config,
+            .name = config.name,
+            .sprite = config.sprite,
+            .movement_speed = config.movement_speed,
+            .aggro_radius = config.aggro_radius,
             .state = .{ .spawning = undefined },
             .values_from_previous_tick = render_values,
             .prepared_render_data = .{
@@ -141,7 +154,7 @@ pub const Enemy = struct {
         out[0] = makeSpriteData(
             self.prepared_render_data.values.boundaries,
             self.prepared_render_data.values.height,
-            self.config.sprite,
+            self.sprite,
             spritesheet,
         );
 
@@ -175,7 +188,7 @@ pub const Enemy = struct {
     }
 
     fn getNameText(self: Enemy) [1]text_rendering.TextSegment {
-        return .{.{ .color = Color.white, .text = self.config.name }};
+        return .{.{ .color = Color.white, .text = self.name }};
     }
 
     pub fn populateHealthbarBillboardData(
@@ -260,7 +273,7 @@ pub const Enemy = struct {
     }
 
     fn handleIdleState(self: *Enemy, context: TickContextPointers) void {
-        if (self.isSeeingTarget(context, self.config.aggro_radius.idle)) {
+        if (self.isSeeingTarget(context, self.aggro_radius.idle)) {
             self.state = .{ .attacking = undefined };
             return;
         }
@@ -273,7 +286,7 @@ pub const Enemy = struct {
             const direction = std.math.degreesToRadians(f32, 360 * rng.float(f32));
             const forward = math.FlatVector{ .x = 0, .z = -1 };
             self.character.acceleration_direction = forward.rotate(direction);
-            self.character.movement_speed = self.config.movement_speed.idle;
+            self.character.movement_speed = self.movement_speed.idle;
             self.state.idle.ticks_remaining =
                 rng.intRangeAtMost(u64, 0, simulation.secondsToTicks(4));
         } else { // Stand still.
@@ -284,7 +297,7 @@ pub const Enemy = struct {
     }
 
     fn handleAttackingState(self: *Enemy, context: TickContextPointers) void {
-        if (!self.isSeeingTarget(context, self.config.aggro_radius.attacking)) {
+        if (!self.isSeeingTarget(context, self.aggro_radius.attacking)) {
             self.state = .{ .idle = .{ .ticks_remaining = 0 } };
             return;
         }
@@ -295,7 +308,7 @@ pub const Enemy = struct {
         const min_distance_to_target =
             self.character.boundaries.radius + context.main_character.boundaries.radius;
         if (distance_to_target > min_distance_to_target * min_distance_to_target) {
-            self.character.movement_speed = self.config.movement_speed.attacking;
+            self.character.movement_speed = self.movement_speed.attacking;
             self.character.acceleration_direction = offset_to_target.normalize();
         } else {
             self.character.acceleration_direction = math.FlatVector.zero;
