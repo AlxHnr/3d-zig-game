@@ -10,5 +10,5 @@ pub const floating_eye = Config{
         .attacking = kphToGameUnitsPerTick(20),
     },
     .max_health = 70,
-    .aggro_radius = 20,
+    .aggro_radius = .{ .idle = 20, .attacking = 100 },
 };

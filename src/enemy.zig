@@ -21,7 +21,7 @@ pub const Config = struct {
     height: f32,
     movement_speed: struct { idle: f32, attacking: f32 },
     max_health: u32,
-    aggro_radius: f32,
+    aggro_radius: struct { idle: f32, attacking: f32 },
 };
 
 pub const Enemy = struct {
@@ -88,6 +88,7 @@ pub const Enemy = struct {
         switch (self.state) {
             .spawning => self.handleSpawningState(context),
             .idle => self.handleIdleState(context),
+            .attacking => self.handleAttackingState(context),
             else => {},
         }
 
@@ -238,28 +239,41 @@ pub const Enemy = struct {
         return true;
     }
 
+    fn isSeeingTarget(self: *Enemy, context: TickContextPointers, aggro_radius: f32) bool {
+        const offset_to_main_character = context.main_character.boundaries.position
+            .subtract(self.character.boundaries.position);
+        return offset_to_main_character.lengthSquared() < aggro_radius * aggro_radius and
+            !context.map.geometry.isSolidWallBetweenPoints(
+            self.character.boundaries.position,
+            context.main_character.boundaries.position,
+        );
+    }
+
     const TickContextPointers = struct {
         shared_context: *SharedContext,
         main_character: *const GameCharacter,
         map: *const Map,
     };
 
-    fn handleSpawningState(self: *Enemy, context: TickContextPointers) void {
-        _ = context;
+    fn handleSpawningState(self: *Enemy, _: TickContextPointers) void {
         self.state = .{ .idle = .{ .ticks_remaining = 0 } };
     }
 
     fn handleIdleState(self: *Enemy, context: TickContextPointers) void {
-        self.character.movement_speed = self.config.movement_speed.idle;
+        if (self.isSeeingTarget(context, self.config.aggro_radius.idle)) {
+            self.state = .{ .attacking = undefined };
+            return;
+        }
         if (consumeTick(&self.state.idle.ticks_remaining)) {
             return;
         }
-        var rng = context.shared_context.rng.random();
 
+        var rng = context.shared_context.rng.random();
         if (rng.boolean()) { // Walk.
             const direction = std.math.degreesToRadians(f32, 360 * rng.float(f32));
             const forward = math.FlatVector{ .x = 0, .z = -1 };
             self.character.setAcceleration(forward.rotate(direction));
+            self.character.movement_speed = self.config.movement_speed.idle;
             self.state.idle.ticks_remaining =
                 rng.intRangeAtMost(u64, 0, simulation.secondsToTicks(4));
         } else { // Stand still.
@@ -269,21 +283,20 @@ pub const Enemy = struct {
         }
     }
 
-    fn checkIfSeesTarget(self: *Enemy, context: TickContextPointers) void {
-        const offset_to_main_character = context.main_character.boundaries.position
+    fn handleAttackingState(self: *Enemy, context: TickContextPointers) void {
+        if (!self.isSeeingTarget(context, self.config.aggro_radius.attacking)) {
+            self.state = .{ .idle = .{ .ticks_remaining = 0 } };
+            return;
+        }
+
+        const offset_to_target = context.main_character.boundaries.position
             .subtract(self.character.boundaries.position);
-        const distance_fom_main_character = offset_to_main_character.lengthSquared();
-        const min_distance_to_main_character =
+        const distance_to_target = offset_to_target.lengthSquared();
+        const min_distance_to_target =
             self.character.boundaries.radius + context.main_character.boundaries.radius;
-        if (distance_fom_main_character < self.config.aggro_radius * self.config.aggro_radius and
-            distance_fom_main_character > min_distance_to_main_character *
-            min_distance_to_main_character and
-            !context.map.geometry.isSolidWallBetweenPoints(
-            self.character.boundaries.position,
-            context.main_character.boundaries.position,
-        )) {
-            const direction_to_main_character = offset_to_main_character.normalize();
-            self.character.setAcceleration(direction_to_main_character);
+        if (distance_to_target > min_distance_to_target * min_distance_to_target) {
+            self.character.movement_speed = self.config.movement_speed.attacking;
+            self.character.setAcceleration(offset_to_target.normalize());
         } else {
             self.character.setAcceleration(.{ .x = 0, .z = 0 });
         }
@@ -293,10 +306,7 @@ pub const Enemy = struct {
 const State = union(enum) {
     spawning: void,
     idle: struct { ticks_remaining: u64 },
-    attacking: struct {
-        target_object_id: u64,
-        aggro_follow_radius: f32,
-    },
+    attacking: void,
     dead: void,
 };
 
