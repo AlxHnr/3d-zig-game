@@ -22,11 +22,91 @@ pub const InputButton = enum {
     confirm,
 };
 
+pub const MovingCircle = struct {
+    boundaries: collision.Circle,
+    velocity: math.FlatVector,
+    wall_collision_behaviour: WallCollisionBehaviour,
+
+    pub const WallCollisionBehaviour = enum {
+        lose_velocity,
+        slide,
+        slide_and_pass_trough_translucent_walls,
+    };
+
+    pub fn create(
+        position: math.FlatVector,
+        radius: f32,
+        velocity: math.FlatVector,
+        wall_collision_behaviour: WallCollisionBehaviour,
+    ) MovingCircle {
+        return .{
+            .boundaries = .{ .position = position, .radius = radius },
+            .velocity = velocity,
+            .wall_collision_behaviour = wall_collision_behaviour,
+        };
+    }
+
+    pub const RemainingTickVelocity = struct { direction: math.FlatVector, magnitude: f32 };
+
+    /// Returns an object which has to be consumed with processElapsedTickConsume().
+    pub fn processElapsedTickInit(self: MovingCircle) RemainingTickVelocity {
+        return .{
+            .direction = self.velocity.normalize(),
+            .magnitude = self.velocity.length(),
+        };
+    }
+
+    /// Returns true if this function needs to be called again. False if there is no velocity left
+    /// to consume and the tick has been processed completely.
+    pub fn processElapsedTickConsume(
+        self: *MovingCircle,
+        remaining_velocity: *RemainingTickVelocity,
+        map: Map,
+    ) bool {
+        if (remaining_velocity.magnitude < math.epsilon) {
+            return false;
+        }
+
+        // Determined by trial and error to prevent an object with a radius of 0.05 from passing
+        // trough a fence with a thickness of 0.15.
+        const max_velocity_substep = 0.1;
+
+        const velocity_step_length = @min(remaining_velocity.magnitude, max_velocity_substep);
+        const velocity_step = remaining_velocity.direction.scale(velocity_step_length);
+        self.boundaries.position = self.boundaries.position.add(velocity_step);
+        remaining_velocity.magnitude -= velocity_step_length;
+
+        const collide_with_translucent_walls =
+            self.wall_collision_behaviour != .slide_and_pass_trough_translucent_walls;
+        if (map.geometry.collidesWithCircle(
+            self.boundaries,
+            collide_with_translucent_walls,
+        )) |displacement_vector| {
+            self.resolveCollision(displacement_vector);
+        }
+        return true;
+    }
+
+    fn resolveCollision(self: *MovingCircle, displacement_vector: math.FlatVector) void {
+        self.boundaries.position = self.boundaries.position.add(displacement_vector);
+        if (self.wall_collision_behaviour != .lose_velocity) {
+            return;
+        }
+
+        const dot_product = std.math.clamp(self.velocity.normalize()
+            .dotProduct(displacement_vector.normalize()), -1, 1);
+        const moving_against_displacement_vector =
+            self.velocity.dotProduct(displacement_vector) < 0;
+        if (moving_against_displacement_vector) {
+            self.velocity = self.velocity.scale(1 + dot_product);
+        }
+    }
+};
+
 pub const GameCharacter = struct {
     object_id: u64,
-    boundaries: collision.Circle,
+    moving_circle: MovingCircle,
     acceleration_direction: math.FlatVector,
-    velocity: math.FlatVector,
     height: f32,
     movement_speed: f32,
     health: Health,
@@ -43,23 +123,24 @@ pub const GameCharacter = struct {
     ) GameCharacter {
         return .{
             .object_id = object_id_generator.makeNewId(),
-            .boundaries = .{ .position = position, .radius = width / 2 },
+            .moving_circle = MovingCircle.create(
+                position,
+                width / 2,
+                math.FlatVector.zero,
+                .lose_velocity,
+            ),
             .acceleration_direction = math.FlatVector.zero,
-            .velocity = math.FlatVector.zero,
             .height = height,
             .movement_speed = movement_speed,
             .health = .{ .current = max_health, .max = max_health },
         };
     }
 
-    pub const RemainingTickVelocity = struct { direction: math.FlatVector, magnitude: f32 };
+    pub const RemainingTickVelocity = MovingCircle.RemainingTickVelocity;
 
     /// Returns an object which has to be consumed with processElapsedTickConsume().
     pub fn processElapsedTickInit(self: GameCharacter) RemainingTickVelocity {
-        return .{
-            .direction = self.velocity.normalize(),
-            .magnitude = self.velocity.length(),
-        };
+        return self.moving_circle.processElapsedTickInit();
     }
 
     /// Returns true if this function needs to be called again. False if there is no velocity left
@@ -69,43 +150,25 @@ pub const GameCharacter = struct {
         remaining_velocity: *RemainingTickVelocity,
         map: Map,
     ) bool {
-        if (remaining_velocity.magnitude > math.epsilon) {
-            // Determined by trial and error to prevent an object with a radius of 0.05 from passing
-            // trough a fence with a thickness of 0.15.
-            const max_velocity_substep = 0.1;
-
-            const velocity_step_length = @min(remaining_velocity.magnitude, max_velocity_substep);
-            const velocity_step = remaining_velocity.direction.scale(velocity_step_length);
-            self.boundaries.position = self.boundaries.position.add(velocity_step);
-            remaining_velocity.magnitude -= velocity_step_length;
-            if (map.geometry.collidesWithCircle(self.boundaries)) |displacement_vector| {
-                self.resolveCollision(displacement_vector);
-            }
+        if (self.moving_circle.processElapsedTickConsume(remaining_velocity, map)) {
             return true;
         }
 
         const is_accelerating = self.acceleration_direction.length() > math.epsilon;
         if (is_accelerating) {
             const acceleration = self.movement_speed / 5.0;
-            self.velocity = self.velocity.add(self.acceleration_direction.scale(acceleration));
-            if (self.velocity.length() > self.movement_speed) {
-                self.velocity = self.velocity.normalize().scale(self.movement_speed);
+            self.moving_circle.velocity =
+                self.moving_circle.velocity.add(self.acceleration_direction.scale(acceleration));
+            if (self.moving_circle.velocity.length() > self.movement_speed) {
+                self.moving_circle.velocity =
+                    self.moving_circle.velocity.normalize().scale(self.movement_speed);
             }
         } else {
-            self.velocity = self.velocity.scale(0.7);
+            self.moving_circle.velocity = self.moving_circle.velocity.scale(0.7);
         }
         return false;
     }
 
-    fn resolveCollision(self: *GameCharacter, displacement_vector: math.FlatVector) void {
-        self.boundaries.position = self.boundaries.position.add(displacement_vector);
-        const dot_product = std.math.clamp(self.velocity.normalize()
-            .dotProduct(displacement_vector.normalize()), -1, 1);
-        const moving_against_displacement_vector =
-            self.velocity.dotProduct(displacement_vector) < 0;
-        if (moving_against_displacement_vector) {
-            self.velocity = self.velocity.scale(1 + dot_product);
-        }
     }
 };
 
@@ -137,7 +200,7 @@ pub const Player = struct {
         );
         const orientation = 0;
         const camera = ThirdPersonCamera.create(
-            character.boundaries.position,
+            character.moving_circle.boundaries.position,
             getLookingDirection(orientation),
         );
         const animation_cycle = animation.FourStepCycle.create();
@@ -150,9 +213,9 @@ pub const Player = struct {
             .gem_count = 0,
             .input_state = std.EnumArray(InputButton, bool).initFill(false),
             .values_from_previous_tick = .{
-                .boundaries = character.boundaries,
+                .boundaries = character.moving_circle.boundaries,
                 .height = character.height,
-                .velocity = character.velocity,
+                .velocity = character.moving_circle.velocity,
                 .camera = camera,
                 .animation_cycle = animation_cycle,
             },
@@ -221,7 +284,7 @@ pub const Player = struct {
         while (self.character.processElapsedTickConsume(&remaining_velocity, map)) {
             self.gem_count += gem_collection.processCollision(.{
                 .id = self.character.object_id,
-                .boundaries = self.character.boundaries,
+                .boundaries = self.character.moving_circle.boundaries,
                 .height = self.character.height,
             }, map.geometry);
         }
@@ -234,11 +297,11 @@ pub const Player = struct {
         );
 
         self.camera.processElapsedTick(
-            self.character.boundaries.position,
+            self.character.moving_circle.boundaries.position,
             getLookingDirection(self.orientation),
         );
         self.animation_cycle
-            .processElapsedTick(self.character.velocity.length() * 0.75);
+            .processElapsedTick(self.character.moving_circle.velocity.length() * 0.75);
     }
 
     pub fn getBillboardData(
@@ -303,9 +366,9 @@ pub const Player = struct {
 
     fn getValuesForRendering(self: Player) ValuesForRendering {
         return .{
-            .boundaries = self.character.boundaries,
+            .boundaries = self.character.moving_circle.boundaries,
             .height = self.character.height,
-            .velocity = self.character.velocity,
+            .velocity = self.character.moving_circle.velocity,
             .camera = self.camera,
             .animation_cycle = self.animation_cycle,
         };

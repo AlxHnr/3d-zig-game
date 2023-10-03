@@ -467,7 +467,11 @@ pub const Geometry = struct {
     /// If a collision occurs, return a displacement vector for moving the given circle out of the
     /// map geometry. The returned displacement vector must be added to the given circles position
     /// to resolve the collision.
-    pub fn collidesWithCircle(self: Geometry, circle: collision.Circle) ?math.FlatVector {
+    pub fn collidesWithCircle(
+        self: Geometry,
+        circle: collision.Circle,
+        collide_with_translucent_walls: bool,
+    ) ?math.FlatVector {
         var found_collision = false;
         var displaced_circle = circle;
 
@@ -475,8 +479,10 @@ pub const Geometry = struct {
         for (self.walls.solid.items) |wall| {
             updateDisplacedCircle(wall, &displaced_circle, &found_collision);
         }
-        for (self.walls.translucent.items) |wall| {
-            updateDisplacedCircle(wall, &displaced_circle, &found_collision);
+        if (collide_with_translucent_walls) {
+            for (self.walls.translucent.items) |wall| {
+                updateDisplacedCircle(wall, &displaced_circle, &found_collision);
+            }
         }
 
         return if (found_collision)

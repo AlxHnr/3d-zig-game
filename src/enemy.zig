@@ -65,7 +65,7 @@ pub const Enemy = struct {
             config.max_health,
         );
         const render_values = .{
-            .boundaries = character.boundaries,
+            .boundaries = character.moving_circle.boundaries,
             .height = character.height,
             .health = character.health,
         };
@@ -237,7 +237,7 @@ pub const Enemy = struct {
 
     fn getValuesForRendering(self: Enemy) ValuesForRendering {
         return .{
-            .boundaries = self.character.boundaries,
+            .boundaries = self.character.moving_circle.boundaries,
             .height = self.character.height,
             .health = self.character.health,
         };
@@ -253,12 +253,12 @@ pub const Enemy = struct {
     }
 
     fn isSeeingTarget(self: *Enemy, context: TickContextPointers, aggro_radius: f32) bool {
-        const offset_to_main_character = context.main_character.boundaries.position
-            .subtract(self.character.boundaries.position);
+        const offset_to_main_character = context.main_character.moving_circle.boundaries.position
+            .subtract(self.character.moving_circle.boundaries.position);
         return offset_to_main_character.lengthSquared() < aggro_radius * aggro_radius and
             !context.map.geometry.isSolidWallBetweenPoints(
-            self.character.boundaries.position,
-            context.main_character.boundaries.position,
+            self.character.moving_circle.boundaries.position,
+            context.main_character.moving_circle.boundaries.position,
         );
     }
 
@@ -302,11 +302,11 @@ pub const Enemy = struct {
             return;
         }
 
-        const offset_to_target = context.main_character.boundaries.position
-            .subtract(self.character.boundaries.position);
+        const offset_to_target = context.main_character.moving_circle.boundaries.position
+            .subtract(self.character.moving_circle.boundaries.position);
         const distance_to_target = offset_to_target.lengthSquared();
-        const min_distance_to_target =
-            self.character.boundaries.radius + context.main_character.boundaries.radius;
+        const min_distance_to_target = self.character.moving_circle.boundaries.radius +
+            context.main_character.moving_circle.boundaries.radius;
         if (distance_to_target > min_distance_to_target * min_distance_to_target) {
             self.character.movement_speed = self.movement_speed.attacking;
             self.character.acceleration_direction = offset_to_target.normalize();
