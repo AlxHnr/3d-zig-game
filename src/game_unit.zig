@@ -1,6 +1,7 @@
 const Color = @import("util.zig").Color;
 const Map = @import("map/map.zig").Map;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
+const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const gems = @import("gems.zig");
@@ -8,7 +9,6 @@ const math = @import("math.zig");
 const rendering = @import("rendering.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
-const textures = @import("textures.zig");
 
 pub const InputButton = enum {
     forwards,
@@ -21,34 +21,30 @@ pub const InputButton = enum {
     confirm,
 };
 
-pub const Stats = struct {
-    height: f32,
-    movement_speed: f32,
-    health: Health,
-
-    pub fn create(height: f32, movement_speed: f32, max_health: u32) Stats {
-        return .{
-            .height = height,
-            .movement_speed = movement_speed,
-            .health = .{ .current = max_health, .max = max_health },
-        };
-    }
-
-    pub const Health = struct { current: u32, max: u32 };
-};
-
 pub const GameCharacter = struct {
     boundaries: collision.Circle,
     acceleration_direction: math.FlatVector,
     velocity: math.FlatVector,
-    stats: Stats,
+    height: f32,
+    movement_speed: f32,
+    health: Health,
 
-    pub fn create(position: math.FlatVector, width: f32, stats: Stats) GameCharacter {
+    pub const Health = struct { current: u32, max: u32 };
+
+    pub fn create(
+        position: math.FlatVector,
+        width: f32,
+        height: f32,
+        movement_speed: f32,
+        max_health: u32,
+    ) GameCharacter {
         return .{
             .boundaries = .{ .position = position, .radius = width / 2 },
             .acceleration_direction = .{ .x = 0, .z = 0 },
             .velocity = .{ .x = 0, .z = 0 },
-            .stats = stats,
+            .height = height,
+            .movement_speed = movement_speed,
+            .health = .{ .current = max_health, .max = max_health },
         };
     }
 
@@ -91,10 +87,10 @@ pub const GameCharacter = struct {
 
         const is_accelerating = self.acceleration_direction.length() > math.epsilon;
         if (is_accelerating) {
-            const acceleration = self.stats.movement_speed / 5.0;
+            const acceleration = self.movement_speed / 5.0;
             self.velocity = self.velocity.add(self.acceleration_direction.scale(acceleration));
-            if (self.velocity.length() > self.stats.movement_speed) {
-                self.velocity = self.velocity.normalize().scale(self.stats.movement_speed);
+            if (self.velocity.length() > self.movement_speed) {
+                self.velocity = self.velocity.normalize().scale(self.movement_speed);
             }
         } else {
             self.velocity = self.velocity.scale(0.7);
@@ -137,7 +133,9 @@ pub const Player = struct {
         const character = GameCharacter.create(
             .{ .x = starting_position_x, .z = starting_position_z },
             in_game_height / spritesheet_frame_ratio,
-            Stats.create(in_game_height, 0.15, 100),
+            in_game_height,
+            0.15,
+            100,
         );
         const orientation = 0;
         const camera = ThirdPersonCamera.create(
@@ -156,7 +154,7 @@ pub const Player = struct {
             .input_state = std.EnumArray(InputButton, bool).initFill(false),
             .values_from_previous_tick = .{
                 .boundaries = character.boundaries,
-                .height = character.stats.height,
+                .height = character.height,
                 .velocity = character.velocity,
                 .camera = camera,
                 .animation_cycle = animation_cycle,
@@ -227,7 +225,7 @@ pub const Player = struct {
             self.gem_count += gem_collection.processCollision(.{
                 .id = self.id,
                 .boundaries = self.character.boundaries,
-                .height = self.character.stats.height,
+                .height = self.character.height,
             }, map.geometry);
         }
 
@@ -248,7 +246,7 @@ pub const Player = struct {
 
     pub fn getBillboardData(
         self: Player,
-        spritesheet: textures.SpriteSheetTexture,
+        spritesheet: SpriteSheetTexture,
         interval_between_previous_and_current_tick: f32,
     ) rendering.SpriteData {
         const state_to_render = self.values_from_previous_tick.lerp(
@@ -263,7 +261,7 @@ pub const Player = struct {
         else
             state_to_render.animation_cycle.getFrame();
 
-        const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (animation_frame) {
+        const sprite_id: SpriteSheetTexture.SpriteId = switch (animation_frame) {
             else => .player_back_frame_1,
             0 => .player_back_frame_0,
             2 => .player_back_frame_2,
@@ -305,7 +303,7 @@ pub const Player = struct {
     fn getValuesForRendering(self: Player) ValuesForRendering {
         return .{
             .boundaries = self.character.boundaries,
-            .height = self.character.stats.height,
+            .height = self.character.height,
             .velocity = self.character.velocity,
             .camera = self.camera,
             .animation_cycle = self.animation_cycle,
@@ -338,7 +336,7 @@ pub const Player = struct {
 pub const Enemy = struct {
     /// Non-owning slice.
     name: []const u8,
-    sprite: textures.SpriteSheetTexture.SpriteId,
+    sprite: SpriteSheetTexture.SpriteId,
     character: GameCharacter,
     aggro_radius: f32,
     values_from_previous_tick: ValuesForRendering,
@@ -354,29 +352,27 @@ pub const Enemy = struct {
     const health_bar_height = health_bar_scale * 6;
 
     pub fn create(
-        /// Will be referenced by the returned object.
-        name: []const u8,
-        sprite: textures.SpriteSheetTexture.SpriteId,
-        spritesheet: textures.SpriteSheetTexture,
         position: math.FlatVector,
-        stats: Stats,
-        aggro_radius: f32,
+        configuration: Configuration,
+        spritesheet: SpriteSheetTexture,
     ) Enemy {
         const character = GameCharacter.create(
             position,
-            stats.height / spritesheet.getSpriteAspectRatio(sprite),
-            stats,
+            configuration.height / spritesheet.getSpriteAspectRatio(configuration.sprite),
+            configuration.height,
+            configuration.movement_speed,
+            configuration.max_health,
         );
         const render_values = .{
             .boundaries = character.boundaries,
-            .height = character.stats.height,
-            .health = character.stats.health,
+            .height = character.height,
+            .health = character.health,
         };
         return .{
-            .name = name,
-            .sprite = sprite,
+            .name = configuration.name,
+            .sprite = configuration.sprite,
             .character = character,
-            .aggro_radius = aggro_radius,
+            .aggro_radius = configuration.aggro_radius,
             .values_from_previous_tick = render_values,
             .prepared_render_data = .{
                 .values = render_values,
@@ -385,6 +381,16 @@ pub const Enemy = struct {
             },
         };
     }
+
+    pub const Configuration = struct {
+        /// Non-owning slice. Will be referenced by all enemies created with this configuration.
+        name: []const u8,
+        sprite: SpriteSheetTexture.SpriteId,
+        height: f32,
+        movement_speed: f32,
+        max_health: u32,
+        aggro_radius: f32,
+    };
 
     pub fn processElapsedTick(
         self: *Enemy,
@@ -451,7 +457,7 @@ pub const Enemy = struct {
 
     pub fn populateBillboardData(
         self: Enemy,
-        spritesheet: textures.SpriteSheetTexture,
+        spritesheet: SpriteSheetTexture,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []rendering.SpriteData,
     ) void {
@@ -498,7 +504,7 @@ pub const Enemy = struct {
 
     pub fn populateHealthbarBillboardData(
         values_to_render: ValuesForRendering,
-        spritesheet: textures.SpriteSheetTexture,
+        spritesheet: SpriteSheetTexture,
         offset_to_player_height_factor: f32,
         out: []rendering.SpriteData,
     ) void {
@@ -543,15 +549,15 @@ pub const Enemy = struct {
     fn getValuesForRendering(self: Enemy) ValuesForRendering {
         return .{
             .boundaries = self.character.boundaries,
-            .height = self.character.stats.height,
-            .health = self.character.stats.health,
+            .height = self.character.height,
+            .health = self.character.health,
         };
     }
 
     const ValuesForRendering = struct {
         boundaries: collision.Circle,
         height: f32,
-        health: Stats.Health,
+        health: GameCharacter.Health,
 
         pub fn lerp(
             self: ValuesForRendering,
@@ -573,8 +579,8 @@ pub const Enemy = struct {
 fn makeSpriteData(
     boundaries: collision.Circle,
     height: f32,
-    sprite: textures.SpriteSheetTexture.SpriteId,
-    spritesheet: textures.SpriteSheetTexture,
+    sprite: SpriteSheetTexture.SpriteId,
+    spritesheet: SpriteSheetTexture,
 ) rendering.SpriteData {
     const source = spritesheet.getSpriteTexcoords(sprite);
     return .{
