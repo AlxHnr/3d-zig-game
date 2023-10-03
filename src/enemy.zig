@@ -1,6 +1,7 @@
 const Color = @import("util.zig").Color;
 const GameCharacter = @import("game_unit.zig").GameCharacter;
 const Map = @import("map/map.zig").Map;
+const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const collision = @import("collision.zig");
@@ -29,11 +30,13 @@ pub const Enemy = struct {
     const health_bar_height = health_bar_scale * 6;
 
     pub fn create(
+        object_id_generator: *ObjectIdGenerator,
         position: math.FlatVector,
         configuration: Configuration,
         spritesheet: SpriteSheetTexture,
     ) Enemy {
         const character = GameCharacter.create(
+            object_id_generator,
             position,
             configuration.height / spritesheet.getSpriteAspectRatio(configuration.sprite),
             configuration.height,

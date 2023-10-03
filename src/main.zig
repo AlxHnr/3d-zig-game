@@ -145,6 +145,7 @@ const ProgramContext = struct {
             } else if (event.type == sdl.SDL_MOUSEBUTTONDOWN) {
                 if (event.button.button == sdl.SDL_BUTTON_LEFT) {
                     try self.edit_mode_state.handleActionAtTarget(
+                        self.game_context.getMutableObjectIdGenerator(),
                         self.game_context.getMutableMap(),
                         ray,
                     );

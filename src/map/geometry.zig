@@ -13,9 +13,6 @@ const ThirdPersonCamera = @import("../third_person_camera.zig").Camera;
 pub const Geometry = struct {
     allocator: std.mem.Allocator,
 
-    /// Gives every object owned by this struct a unique id.
-    object_id_counter: u64,
-
     walls: struct {
         /// Solid walls have no transparency and are able to block the camera.
         solid: std.ArrayList(Wall),
@@ -50,7 +47,6 @@ pub const Geometry = struct {
 
         return .{
             .allocator = allocator,
-            .object_id_counter = 0,
             .walls = .{
                 .solid = std.ArrayList(Wall).init(allocator),
                 .translucent = std.ArrayList(Wall).init(allocator),
@@ -82,6 +78,7 @@ pub const Geometry = struct {
     /// Stores the given allocator internally for its entire lifetime.
     pub fn createFromSerializableData(
         allocator: std.mem.Allocator,
+        object_id_generator: *util.ObjectIdGenerator,
         data: SerializableData,
     ) !Geometry {
         var geometry = try create(allocator);
@@ -91,13 +88,14 @@ pub const Geometry = struct {
             const wall_type = std.meta.stringToEnum(WallType, wall.t) orelse {
                 return Error.FailedToDeserializeMapGeometry;
             };
-            _ = try geometry.addWall(wall.start, wall.end, wall_type);
+            _ = try geometry.addWall(object_id_generator, wall.start, wall.end, wall_type);
         }
         for (data.floors) |floor| {
             const floor_type = std.meta.stringToEnum(FloorType, floor.t) orelse {
                 return Error.FailedToDeserializeMapGeometry;
             };
             _ = try geometry.addFloor(
+                object_id_generator,
                 floor.side_a_start,
                 floor.side_a_end,
                 floor.side_b_length,
@@ -108,7 +106,7 @@ pub const Geometry = struct {
             const object_type = std.meta.stringToEnum(BillboardObjectType, billboard.t) orelse {
                 return Error.FailedToDeserializeMapGeometry;
             };
-            _ = try geometry.addBillboardObject(object_type, billboard.pos);
+            _ = try geometry.addBillboardObject(object_id_generator, object_type, billboard.pos);
         }
 
         return geometry;
@@ -249,6 +247,7 @@ pub const Geometry = struct {
     /// Returns the object id of the created wall on success.
     pub fn addWall(
         self: *Geometry,
+        object_id_generator: *util.ObjectIdGenerator,
         start_position: math.FlatVector,
         end_position: math.FlatVector,
         wall_type: WallType,
@@ -258,12 +257,11 @@ pub const Geometry = struct {
         else
             self.walls.solid.addOne();
         wall.* = Wall.create(
-            self.object_id_counter,
+            object_id_generator.makeNewId(),
             wall_type,
             start_position,
             end_position,
         );
-        self.object_id_counter = self.object_id_counter + 1;
         self.walls_have_changed = true;
         return wall.object_id;
     }
@@ -299,6 +297,7 @@ pub const Geometry = struct {
     /// created floor on success.
     pub fn addFloor(
         self: *Geometry,
+        object_id_generator: *util.ObjectIdGenerator,
         side_a_start: math.FlatVector,
         side_a_end: math.FlatVector,
         side_b_length: f32,
@@ -306,13 +305,12 @@ pub const Geometry = struct {
     ) !u64 {
         const floor = try self.floors.addOne();
         floor.* = Floor.create(
-            self.object_id_counter,
+            object_id_generator.makeNewId(),
             floor_type,
             side_a_start,
             side_a_end,
             side_b_length,
         );
-        self.object_id_counter = self.object_id_counter + 1;
         self.floors_have_changed = true;
         return floor.object_id;
     }
@@ -347,12 +345,13 @@ pub const Geometry = struct {
     /// Returns the object id of the created billboard object on success.
     pub fn addBillboardObject(
         self: *Geometry,
+        object_id_generator: *util.ObjectIdGenerator,
         object_type: BillboardObjectType,
         position: math.FlatVector,
     ) !u64 {
         const billboard = try self.billboard_objects.addOne();
-        billboard.* = BillboardObject.create(self.object_id_counter, object_type, position);
-        self.object_id_counter = self.object_id_counter + 1;
+        billboard.* =
+            BillboardObject.create(object_id_generator.makeNewId(), object_type, position);
         self.billboards_have_changed = true;
         return billboard.object_id;
     }

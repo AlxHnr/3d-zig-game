@@ -1,6 +1,7 @@
 const Map = @import("map/map.zig").Map;
-const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
+const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
+const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const gems = @import("gems.zig");
@@ -21,6 +22,7 @@ pub const InputButton = enum {
 };
 
 pub const GameCharacter = struct {
+    object_id: u64,
     boundaries: collision.Circle,
     acceleration_direction: math.FlatVector,
     velocity: math.FlatVector,
@@ -31,6 +33,7 @@ pub const GameCharacter = struct {
     pub const Health = struct { current: u32, max: u32 };
 
     pub fn create(
+        object_id_generator: *ObjectIdGenerator,
         position: math.FlatVector,
         width: f32,
         height: f32,
@@ -38,6 +41,7 @@ pub const GameCharacter = struct {
         max_health: u32,
     ) GameCharacter {
         return .{
+            .object_id = object_id_generator.makeNewId(),
             .boundaries = .{ .position = position, .radius = width / 2 },
             .acceleration_direction = .{ .x = 0, .z = 0 },
             .velocity = .{ .x = 0, .z = 0 },
@@ -110,8 +114,6 @@ pub const GameCharacter = struct {
 };
 
 pub const Player = struct {
-    /// Unique identifier distinct from all other players.
-    id: u64,
     character: GameCharacter,
     orientation: f32,
     /// Values from -1 (turning left) to 1 (turning right).
@@ -123,13 +125,14 @@ pub const Player = struct {
     values_from_previous_tick: ValuesForRendering,
 
     pub fn create(
-        id: u64,
+        object_id_generator: *ObjectIdGenerator,
         starting_position_x: f32,
         starting_position_z: f32,
         spritesheet_frame_ratio: f32,
     ) Player {
         const in_game_height = 1.8;
         const character = GameCharacter.create(
+            object_id_generator,
             .{ .x = starting_position_x, .z = starting_position_z },
             in_game_height / spritesheet_frame_ratio,
             in_game_height,
@@ -143,7 +146,6 @@ pub const Player = struct {
         );
         const animation_cycle = animation.FourStepCycle.create();
         return .{
-            .id = id,
             .character = character,
             .orientation = orientation,
             .turning_direction = 0,
@@ -222,7 +224,7 @@ pub const Player = struct {
         var remaining_velocity = self.character.processElapsedTickInit();
         while (self.character.processElapsedTickConsume(&remaining_velocity, map)) {
             self.gem_count += gem_collection.processCollision(.{
-                .id = self.id,
+                .id = self.character.object_id,
                 .boundaries = self.character.boundaries,
                 .height = self.character.height,
             }, map.geometry);
@@ -288,7 +290,11 @@ pub const Player = struct {
             self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         );
-        return .{ .id = self.id, .boundaries = state.boundaries, .height = state.height };
+        return .{
+            .id = self.character.object_id,
+            .boundaries = state.boundaries,
+            .height = state.height,
+        };
     }
 
     fn setTurningDirection(self: *Player, turning_direction: f32) void {

@@ -12,6 +12,7 @@ const textures = @import("textures.zig");
 const Enemy = @import("enemy.zig").Enemy;
 const Hud = @import("hud.zig").Hud;
 const Map = @import("map/map.zig").Map;
+const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
@@ -39,9 +40,6 @@ pub const Context = struct {
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);
         errdefer allocator.free(map_file_path_buffer);
 
-        var map = try loadMap(allocator, map_file_path);
-        errdefer map.destroy();
-
         var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
         errdefer tileable_textures.destroy();
 
@@ -51,10 +49,14 @@ pub const Context = struct {
         var shared_context = try SharedContext.create(allocator);
         errdefer shared_context.destroy();
 
+        var map = try loadMap(allocator, &shared_context.object_id_generator, map_file_path);
+        errdefer map.destroy();
+
         var counter: usize = 0;
         while (counter < 1000) : (counter += 1) {
             try shared_context.enemies.append(
                 Enemy.create(
+                    &shared_context.object_id_generator,
                     .{
                         .x = -shared_context.rng.random().float(f32) * 100 - 50,
                         .z = shared_context.rng.random().float(f32) * 500,
@@ -75,7 +77,7 @@ pub const Context = struct {
             .tick_timer = try TickTimer.start(60),
             .interval_between_previous_and_current_tick = 1,
             .main_character = game_unit.Player.create(
-                0,
+                &shared_context.object_id_generator,
                 0,
                 0,
                 spritesheet.getSpriteAspectRatio(.player_back_frame_1),
@@ -237,8 +239,13 @@ pub const Context = struct {
         return &self.map;
     }
 
+    pub fn getMutableObjectIdGenerator(self: *Context) *ObjectIdGenerator {
+        return &self.shared_context.object_id_generator;
+    }
+
     pub fn reloadMapFromDisk(self: *Context, allocator: std.mem.Allocator) !void {
-        const map = try loadMap(allocator, self.map_file_path);
+        const map =
+            try loadMap(allocator, &self.shared_context.object_id_generator, self.map_file_path);
         self.map.destroy();
         self.map = map;
     }
@@ -282,7 +289,11 @@ pub const Context = struct {
             .getDirectionToTarget();
     }
 
-    fn loadMap(allocator: std.mem.Allocator, file_path: []const u8) !Map {
+    fn loadMap(
+        allocator: std.mem.Allocator,
+        object_id_generator: *ObjectIdGenerator,
+        file_path: []const u8,
+    ) !Map {
         var json_string = try std.fs.cwd().readFileAlloc(allocator, file_path, 20 * 1024 * 1024);
         defer allocator.free(json_string);
 
@@ -290,6 +301,10 @@ pub const Context = struct {
             try std.json.parseFromSlice(Map.SerializableData, allocator, json_string, .{});
         defer serializable_data.deinit();
 
-        return Map.createFromSerializableData(allocator, serializable_data.value);
+        return Map.createFromSerializableData(
+            allocator,
+            object_id_generator,
+            serializable_data.value,
+        );
     }
 };

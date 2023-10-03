@@ -23,13 +23,18 @@ pub const State = struct {
         };
     }
 
-    pub fn handleActionAtTarget(self: *State, map: *Map, mouse_ray: collision.Ray3d) !void {
+    pub fn handleActionAtTarget(
+        self: *State,
+        object_id_generator: *util.ObjectIdGenerator,
+        map: *Map,
+        mouse_ray: collision.Ray3d,
+    ) !void {
         switch (self.mode) {
             .insert_objects => {
                 if (self.currently_edited_object != null) {
                     self.resetCurrentlyEditedObject(map);
                 } else if (cast3DRayToGround(mouse_ray)) |ground_position| {
-                    try self.startPlacingObject(map, ground_position);
+                    try self.startPlacingObject(object_id_generator, map, ground_position);
                 }
             },
             .delete_objects => {
@@ -148,12 +153,32 @@ pub const State = struct {
         self.currently_edited_object = null;
     }
 
-    fn startPlacingObject(self: *State, map: *Map, position: math.FlatVector) !void {
+    fn startPlacingObject(
+        self: *State,
+        object_id_generator: *util.ObjectIdGenerator,
+        map: *Map,
+        position: math.FlatVector,
+    ) !void {
         const object_type = &self.object_type_to_insert;
         const object_id = try switch (object_type.used_field) {
-            .wall => map.geometry.addWall(position, position, object_type.wall),
-            .floor => map.geometry.addFloor(position, position, 0, object_type.floor),
-            .billboard => map.geometry.addBillboardObject(object_type.billboard, position),
+            .wall => map.geometry.addWall(
+                object_id_generator,
+                position,
+                position,
+                object_type.wall,
+            ),
+            .floor => map.geometry.addFloor(
+                object_id_generator,
+                position,
+                position,
+                0,
+                object_type.floor,
+            ),
+            .billboard => map.geometry.addBillboardObject(
+                object_id_generator,
+                object_type.billboard,
+                position,
+            ),
         };
         if (object_type.used_field != .billboard) {
             map.geometry.tintObject(object_id, .{ .r = 0, .g = 1, .b = 0 });

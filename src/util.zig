@@ -81,6 +81,7 @@ pub const TickTimer = struct {
     };
 };
 
+/// Generates unique ids for distinguishing all objects in the game.
 pub const ObjectIdGenerator = struct {
     id_counter: u64,
 

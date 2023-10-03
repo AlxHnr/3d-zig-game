@@ -1,4 +1,5 @@
 const Geometry = @import("geometry.zig").Geometry;
+const ObjectIdGenerator = @import("../util.zig").ObjectIdGenerator;
 const ScreenDimensions = @import("../util.zig").ScreenDimensions;
 const math = @import("../math.zig");
 const std = @import("std");
@@ -16,12 +17,20 @@ pub const Map = struct {
     }
 
     /// Returned object will keep a reference to the given allocator.
-    pub fn createFromSerializableData(allocator: std.mem.Allocator, data: SerializableData) !Map {
-        var geometry = try Geometry.createFromSerializableData(allocator, .{
-            .walls = data.walls,
-            .floors = data.floors,
-            .billboard_objects = data.billboard_objects,
-        });
+    pub fn createFromSerializableData(
+        allocator: std.mem.Allocator,
+        object_id_generator: *ObjectIdGenerator,
+        data: SerializableData,
+    ) !Map {
+        var geometry = try Geometry.createFromSerializableData(
+            allocator,
+            object_id_generator,
+            .{
+                .walls = data.walls,
+                .floors = data.floors,
+                .billboard_objects = data.billboard_objects,
+            },
+        );
         errdefer geometry.destroy();
 
         return .{ .geometry = geometry };
