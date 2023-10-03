@@ -244,7 +244,7 @@ pub const Enemy = struct {
     }
 
     /// Return true if the tick was not consumed completely.
-    fn consumeTick(tick: *u64) bool {
+    fn consumeTick(tick: *u32) bool {
         if (tick.* == 0) {
             return false;
         }
@@ -288,11 +288,11 @@ pub const Enemy = struct {
             self.character.acceleration_direction = forward.rotate(direction);
             self.character.movement_speed = self.movement_speed.idle;
             self.state.idle.ticks_remaining =
-                rng.intRangeAtMost(u64, 0, simulation.secondsToTicks(4));
+                rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(4));
         } else { // Stand still.
             self.character.acceleration_direction = math.FlatVector.zero;
             self.state.idle.ticks_remaining =
-                rng.intRangeAtMost(u64, 0, simulation.secondsToTicks(20));
+                rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(20));
         }
     }
 
@@ -318,7 +318,7 @@ pub const Enemy = struct {
 
 const State = union(enum) {
     spawning: void,
-    idle: struct { ticks_remaining: u64 },
+    idle: struct { ticks_remaining: u32 },
     attacking: void,
     dead: void,
 };
