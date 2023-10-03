@@ -402,10 +402,11 @@ pub const Enemy = struct {
         const offset_to_main_character = main_character.boundaries.position
             .subtract(self.character.boundaries.position);
         const distance_fom_main_character = offset_to_main_character.lengthSquared();
-        const min_distance_to_main_character2 =
-            self.character.boundaries.radius * self.character.boundaries.radius;
+        const min_distance_to_main_character =
+            self.character.boundaries.radius + main_character.boundaries.radius;
         if (distance_fom_main_character < self.aggro_radius * self.aggro_radius and
-            distance_fom_main_character > min_distance_to_main_character2 and
+            distance_fom_main_character > min_distance_to_main_character *
+            min_distance_to_main_character and
             !map.geometry.isSolidWallBetweenPoints(
             self.character.boundaries.position,
             main_character.boundaries.position,
