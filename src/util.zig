@@ -81,6 +81,19 @@ pub const TickTimer = struct {
     };
 };
 
+pub const ObjectIdGenerator = struct {
+    id_counter: u64,
+
+    pub fn create() ObjectIdGenerator {
+        return .{ .id_counter = 0 };
+    }
+
+    pub fn makeNewId(self: *ObjectIdGenerator) u64 {
+        self.id_counter += 1;
+        return self.id_counter;
+    }
+};
+
 pub fn getPreviousEnumWrapAround(value: anytype) @TypeOf(value) {
     comptime {
         const argument_is_enum = switch (@typeInfo(@TypeOf(value))) {
