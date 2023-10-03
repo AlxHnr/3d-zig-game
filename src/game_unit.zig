@@ -169,6 +169,8 @@ pub const GameCharacter = struct {
         return false;
     }
 
+    pub fn getPosition(self: GameCharacter) math.FlatVector {
+        return self.moving_circle.boundaries.position;
     }
 };
 

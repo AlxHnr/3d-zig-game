@@ -253,12 +253,15 @@ pub const Enemy = struct {
     }
 
     fn isSeeingTarget(self: *Enemy, context: TickContextPointers, aggro_radius: f32) bool {
-        const offset_to_main_character = context.main_character.moving_circle.boundaries.position
-            .subtract(self.character.moving_circle.boundaries.position);
-        return offset_to_main_character.lengthSquared() < aggro_radius * aggro_radius and
+        const aggro_boundaries = .{
+            .position = self.character.getPosition(),
+            .radius = aggro_radius + self.character.moving_circle.boundaries.radius,
+        };
+        const target_boundaries = context.main_character.moving_circle.boundaries;
+        return target_boundaries.collidesWithCircle(aggro_boundaries) and
             !context.map.geometry.isSolidWallBetweenPoints(
-            self.character.moving_circle.boundaries.position,
-            context.main_character.moving_circle.boundaries.position,
+            self.character.getPosition(),
+            target_boundaries.position,
         );
     }
 
@@ -302,8 +305,8 @@ pub const Enemy = struct {
             return;
         }
 
-        const offset_to_target = context.main_character.moving_circle.boundaries.position
-            .subtract(self.character.moving_circle.boundaries.position);
+        const offset_to_target =
+            context.main_character.getPosition().subtract(self.character.getPosition());
         const distance_to_target = offset_to_target.lengthSquared();
         const min_distance_to_target = self.character.moving_circle.boundaries.radius +
             context.main_character.moving_circle.boundaries.radius;
