@@ -124,7 +124,9 @@ pub const GameCharacter = struct {
             const acceleration = self.movement_speed / 5.0;
             self.moving_circle.velocity =
                 self.moving_circle.velocity.add(self.acceleration_direction.scale(acceleration));
-            if (self.moving_circle.velocity.length() > self.movement_speed) {
+            if (self.moving_circle.velocity.lengthSquared() >
+                self.movement_speed * self.movement_speed)
+            {
                 self.moving_circle.velocity =
                     self.moving_circle.velocity.normalize().scale(self.movement_speed);
             }
