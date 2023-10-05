@@ -67,14 +67,10 @@ pub const MovingCircle = struct {
             return false;
         }
 
-        // Determined by trial and error to prevent an object with a radius of 0.05 from passing
-        // trough a fence with a thickness of 0.15.
-        const max_velocity_substep = 0.1;
-
-        const velocity_step_length = @min(remaining_velocity.magnitude, max_velocity_substep);
-        const velocity_step = remaining_velocity.direction.scale(velocity_step_length);
-        self.boundaries.position = self.boundaries.position.add(velocity_step);
-        remaining_velocity.magnitude -= velocity_step_length;
+        const velocity_substep_length = @min(remaining_velocity.magnitude, self.boundaries.radius);
+        const velocity_substep = remaining_velocity.direction.scale(velocity_substep_length);
+        self.boundaries.position = self.boundaries.position.add(velocity_substep);
+        remaining_velocity.magnitude -= velocity_substep_length;
 
         const collide_with_translucent_walls =
             self.wall_collision_behaviour != .slide_and_pass_trough_translucent_walls;
