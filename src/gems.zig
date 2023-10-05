@@ -1,16 +1,15 @@
-//! Contains all the code related to gem collecting.
-
-const collision = @import("collision.zig");
-const std = @import("std");
-const math = @import("math.zig");
 const MapGeometry = @import("map/geometry.zig").Geometry;
+const MovingCircle = @import("game_unit.zig").MovingCircle;
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
+const collision = @import("collision.zig");
+const math = @import("math.zig");
+const std = @import("std");
 
 pub const CollisionObject = struct {
     /// Unique identifier, distinct from all other collision objects.
     id: u64,
-    boundaries: collision.Circle,
+    moving_circle: MovingCircle,
     /// Height of the object colliding with the gem. Needed for animations.
     height: f32,
 };
@@ -177,9 +176,9 @@ const Gem = struct {
             const lerp_destination = for (collision_objects) |object| {
                 if (object.id == self.collided_object_id) {
                     break math.Vector3d{
-                        .x = object.boundaries.position.x,
+                        .x = object.moving_circle.getPosition().x,
                         .y = object.height / 2,
-                        .z = object.boundaries.position.z,
+                        .z = object.moving_circle.getPosition().z,
                     };
                 }
             } else self.boundaries.position.toVector3d();
@@ -208,21 +207,23 @@ const Gem = struct {
     }
 
     /// If a collision was found it will return true and start the pickup animation.
-    fn processCollision(self: *Gem, collision_object: CollisionObject, map_geometry: MapGeometry) bool {
-        if (self.spawn_animation_progress < 1) {
+    fn processCollision(
+        self: *Gem,
+        collision_object: CollisionObject,
+        map_geometry: MapGeometry,
+    ) bool {
+        if (self.spawn_animation_progress < 1 or
+            self.pickup_animation_progress != null)
+        {
             return false;
         }
 
-        const collision_object_position = collision_object.boundaries.position;
-        if (self.pickup_animation_progress == null and
-            self.boundaries.collidesWithCircle(collision_object.boundaries) and
-            !map_geometry.isSolidWallBetweenPoints(
-            self.boundaries.position,
-            collision_object_position,
-        )) {
-            self.pickup_animation_progress = 0;
-            self.collided_object_id = collision_object.id;
-            return true;
+        if (collision_object.moving_circle.hasCollidedWithCircle(self.boundaries)) |position| {
+            if (!map_geometry.isSolidWallBetweenPoints(self.boundaries.position, position)) {
+                self.pickup_animation_progress = 0;
+                self.collided_object_id = collision_object.id;
+                return true;
+            }
         }
         return false;
     }

@@ -107,6 +107,18 @@ pub const MovingCircle = struct {
         }
     }
 
+    /// Check if this object has collided with the given circle during `processElapsedTick()`.
+    /// Returns the position of `self` during the substep at which the collision occurred.
+    pub fn hasCollidedWithCircle(self: MovingCircle, other: collision.Circle) ?math.FlatVector {
+        for (self.trace) |position| {
+            const boundaries = .{ .position = position, .radius = self.radius };
+            if (boundaries.collidesWithCircle(other)) {
+                return boundaries;
+            }
+        }
+        return null;
+    }
+
     fn applyWallFriction(self: *MovingCircle, displacement_vector: math.FlatVector) void {
         if (self.wall_collision_behaviour != .apply_wall_friction) {
             return;
@@ -346,10 +358,7 @@ pub const Player = struct {
         );
         return .{
             .id = self.character.object_id,
-            .boundaries = .{
-                .position = state.position,
-                .radius = state.radius,
-            },
+            .moving_circle = self.character.moving_circle,
             .height = state.height,
         };
     }
