@@ -105,8 +105,7 @@ pub const Enemy = struct {
             else => {},
         }
 
-        var remaining_velocity = self.character.processElapsedTickInit();
-        while (self.character.processElapsedTickConsume(&remaining_velocity, map)) {}
+        self.character.processElapsedTick(map);
     }
 
     pub fn prepareRender(

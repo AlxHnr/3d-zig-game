@@ -135,7 +135,7 @@ pub const Context = struct {
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             self.map.processElapsedTick();
-            self.main_character.processElapsedTick(self.map, &self.shared_context.gem_collection);
+            self.main_character.processElapsedTick(self.map);
             self.shared_context.gem_collection.processElapsedTick();
             for (self.shared_context.enemies.items) |*enemy| {
                 enemy.processElapsedTick(
