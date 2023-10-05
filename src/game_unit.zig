@@ -107,6 +107,20 @@ pub const MovingCircle = struct {
         }
     }
 
+    pub const PositionsDuringContact = struct { self: math.FlatVector, other: math.FlatVector };
+
+    pub fn hasCollidedWith(self: MovingCircle, other: MovingCircle) ?PositionsDuringContact {
+        for (self.trace, other.trace) |self_position, other_position| {
+            const self_boundaries =
+                collision.Circle{ .position = self_position, .radius = self.radius };
+            const other_boundaries = .{ .position = other_position, .radius = other.radius };
+            if (self_boundaries.collidesWithCircle(other_boundaries)) {
+                return .{ .self = self_position, .other = other_position };
+            }
+        }
+        return null;
+    }
+
     /// Check if this object has collided with the given circle during `processElapsedTick()`.
     /// Returns the position of `self` during the substep at which the collision occurred.
     pub fn hasCollidedWithCircle(self: MovingCircle, other: collision.Circle) ?math.FlatVector {

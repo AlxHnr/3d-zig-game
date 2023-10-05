@@ -93,6 +93,7 @@ pub const Enemy = struct {
         map: Map,
     ) void {
         self.values_from_previous_tick = self.getValuesForRendering();
+        self.character.processElapsedTick(map);
 
         var context = .{
             .shared_context = shared_context,
@@ -105,8 +106,6 @@ pub const Enemy = struct {
             .attacking => self.handleAttackingState(context),
             else => {},
         }
-
-        self.character.processElapsedTick(map);
     }
 
     pub fn prepareRender(
@@ -255,19 +254,13 @@ pub const Enemy = struct {
     }
 
     fn isSeeingTarget(self: *Enemy, context: TickContextPointers, aggro_radius: f32) bool {
-        const aggro_boundaries = .{
-            .position = self.character.moving_circle.getPosition(),
-            .radius = aggro_radius + self.character.moving_circle.radius,
-        };
-        const target_boundaries = collision.Circle{
-            .position = context.main_character.moving_circle.getPosition(),
-            .radius = context.main_character.moving_circle.radius,
-        };
-        return target_boundaries.collidesWithCircle(aggro_boundaries) and
-            !context.map.geometry.isSolidWallBetweenPoints(
-            self.character.moving_circle.getPosition(),
-            target_boundaries.position,
-        );
+        var self_circle = self.character.moving_circle;
+        self_circle.radius += aggro_radius;
+
+        if (self_circle.hasCollidedWith(context.main_character.moving_circle)) |positions| {
+            return !context.map.geometry.isSolidWallBetweenPoints(positions.self, positions.other);
+        }
+        return false;
     }
 
     const TickContextPointers = struct {
