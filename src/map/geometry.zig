@@ -470,7 +470,7 @@ pub const Geometry = struct {
     pub fn collidesWithCircle(
         self: Geometry,
         circle: collision.Circle,
-        collide_with_translucent_walls: bool,
+        ignore_fences: bool,
     ) ?math.FlatVector {
         var found_collision = false;
         var displaced_circle = circle;
@@ -479,7 +479,7 @@ pub const Geometry = struct {
         for (self.walls.solid.items) |wall| {
             updateDisplacedCircle(wall, &displaced_circle, &found_collision);
         }
-        if (collide_with_translucent_walls) {
+        if (!ignore_fences) {
             for (self.walls.translucent.items) |wall| {
                 updateDisplacedCircle(wall, &displaced_circle, &found_collision);
             }

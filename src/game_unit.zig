@@ -23,14 +23,18 @@ pub const InputButton = enum {
 };
 
 pub const MovingCircle = struct {
-    boundaries: collision.Circle,
+    radius: f32,
     velocity: math.FlatVector,
     wall_collision_behaviour: WallCollisionBehaviour,
+
+    /// Contains the position of this object during the substeps of the last tick. The values are
+    /// ordered from old to new. The last value contains the current position.
+    trace: [4]math.FlatVector,
 
     pub const WallCollisionBehaviour = enum {
         apply_wall_friction,
         slide,
-        slide_and_pass_trough_translucent_walls,
+        slide_and_pass_trough_fences,
     };
 
     pub fn create(
@@ -39,40 +43,74 @@ pub const MovingCircle = struct {
         velocity: math.FlatVector,
         wall_collision_behaviour: WallCollisionBehaviour,
     ) MovingCircle {
+        var trace: [4]math.FlatVector = undefined;
+        for (&trace) |*point| {
+            point.* = position;
+        }
+
         return .{
-            .boundaries = .{ .position = position, .radius = radius },
+            .radius = radius,
             .velocity = velocity,
             .wall_collision_behaviour = wall_collision_behaviour,
+            .trace = trace,
         };
     }
 
+    pub fn getPosition(self: MovingCircle) math.FlatVector {
+        return self.trace[self.trace.len - 1];
+    }
+
     pub fn processElapsedTick(self: *MovingCircle, map: Map) void {
+        const velocity_length_squared = self.velocity.lengthSquared();
+        if (velocity_length_squared < math.epsilon) {
+            return;
+        }
         const direction = self.velocity.normalize();
+        const ignore_fences = self.wall_collision_behaviour == .slide_and_pass_trough_fences;
+        const start_position = self.getPosition();
 
-        var remaining_velocity = self.velocity.length();
-        while (remaining_velocity > math.epsilon) {
-            const velocity_substep_length = @min(remaining_velocity, self.boundaries.radius);
-            const velocity_substep = direction.scale(velocity_substep_length);
-            self.boundaries.position = self.boundaries.position.add(velocity_substep);
-            remaining_velocity -= velocity_substep_length;
+        // Max applicable velocity (limit) per tick is `radius * self.traces.len`.
+        var index: usize = 0;
+        var remaining_velocity = std.math.sqrt(velocity_length_squared);
+        var boundaries = collision.Circle{ .position = start_position, .radius = self.radius };
+        while (remaining_velocity > math.epsilon and index < self.trace.len) : (index += 1) {
+            const substep_length = @min(remaining_velocity, self.radius);
+            const substep = direction.scale(substep_length);
+            remaining_velocity -= substep_length;
 
-            const collide_with_translucent_walls =
-                self.wall_collision_behaviour != .slide_and_pass_trough_translucent_walls;
-            if (map.geometry.collidesWithCircle(
-                self.boundaries,
-                collide_with_translucent_walls,
-            )) |displacement_vector| {
-                self.resolveCollision(displacement_vector);
+            boundaries.position = boundaries.position.add(substep);
+            if (map.geometry.collidesWithCircle(boundaries, ignore_fences)) |displacement_vector| {
+                boundaries.position = boundaries.position.add(displacement_vector);
+                self.applyWallFriction(displacement_vector);
             }
+            self.trace[index] = boundaries.position;
+        }
+
+        // Fill trace position array with interpolated values.
+        switch (index) {
+            0 => self.trace = .{ start_position, start_position, start_position, start_position },
+            1 => self.trace = .{ self.trace[0], self.trace[0], self.trace[0], self.trace[0] },
+            2 => self.trace = .{
+                self.trace[0],
+                self.trace[0].lerp(self.trace[1], 1.0 / 3.0),
+                self.trace[0].lerp(self.trace[1], 2.0 / 3.0),
+                self.trace[1],
+            },
+            3 => self.trace = .{
+                self.trace[0],
+                self.trace[0].lerp(self.trace[1], 2.0 / 3.0),
+                self.trace[1].lerp(self.trace[2], 1.0 / 3.0),
+                self.trace[2],
+            },
+            4 => {},
+            else => unreachable,
         }
     }
 
-    fn resolveCollision(self: *MovingCircle, displacement_vector: math.FlatVector) void {
-        self.boundaries.position = self.boundaries.position.add(displacement_vector);
+    fn applyWallFriction(self: *MovingCircle, displacement_vector: math.FlatVector) void {
         if (self.wall_collision_behaviour != .apply_wall_friction) {
             return;
         }
-
         const dot_product = std.math.clamp(self.velocity.normalize()
             .dotProduct(displacement_vector.normalize()), -1, 1);
         const moving_against_displacement_vector =
@@ -134,10 +172,6 @@ pub const GameCharacter = struct {
             self.moving_circle.velocity = self.moving_circle.velocity.scale(0.7);
         }
     }
-
-    pub fn getPosition(self: GameCharacter) math.FlatVector {
-        return self.moving_circle.boundaries.position;
-    }
 };
 
 pub const Player = struct {
@@ -168,7 +202,7 @@ pub const Player = struct {
         );
         const orientation = 0;
         const camera = ThirdPersonCamera.create(
-            character.moving_circle.boundaries.position,
+            character.moving_circle.getPosition(),
             getLookingDirection(orientation),
         );
         const animation_cycle = animation.FourStepCycle.create();
@@ -181,7 +215,8 @@ pub const Player = struct {
             .gem_count = 0,
             .input_state = std.EnumArray(InputButton, bool).initFill(false),
             .values_from_previous_tick = .{
-                .boundaries = character.moving_circle.boundaries,
+                .position = character.moving_circle.getPosition(),
+                .radius = character.moving_circle.radius,
                 .height = character.height,
                 .velocity = character.moving_circle.velocity,
                 .camera = camera,
@@ -256,7 +291,7 @@ pub const Player = struct {
             std.math.degreesToRadians(f32, 360),
         );
         self.camera.processElapsedTick(
-            self.character.moving_circle.boundaries.position,
+            self.character.moving_circle.getPosition(),
             getLookingDirection(self.orientation),
         );
         self.animation_cycle
@@ -286,7 +321,8 @@ pub const Player = struct {
             2 => .player_back_frame_2,
         };
         return makeSpriteData(
-            state_to_render.boundaries,
+            state_to_render.position,
+            state_to_render.radius,
             state_to_render.height,
             sprite_id,
             spritesheet,
@@ -310,7 +346,10 @@ pub const Player = struct {
         );
         return .{
             .id = self.character.object_id,
-            .boundaries = state.boundaries,
+            .boundaries = .{
+                .position = state.position,
+                .radius = state.radius,
+            },
             .height = state.height,
         };
     }
@@ -325,7 +364,8 @@ pub const Player = struct {
 
     fn getValuesForRendering(self: Player) ValuesForRendering {
         return .{
-            .boundaries = self.character.moving_circle.boundaries,
+            .position = self.character.moving_circle.getPosition(),
+            .radius = self.character.moving_circle.radius,
             .height = self.character.height,
             .velocity = self.character.moving_circle.velocity,
             .camera = self.camera,
@@ -334,7 +374,8 @@ pub const Player = struct {
     }
 
     const ValuesForRendering = struct {
-        boundaries: collision.Circle,
+        position: math.FlatVector,
+        radius: f32,
         height: f32,
         velocity: math.FlatVector,
         camera: ThirdPersonCamera,
@@ -346,7 +387,8 @@ pub const Player = struct {
             t: f32,
         ) ValuesForRendering {
             return .{
-                .boundaries = self.boundaries.lerp(other.boundaries, t),
+                .position = self.position.lerp(other.position, t),
+                .radius = math.lerp(self.radius, other.radius, t),
                 .height = math.lerp(self.height, other.height, t),
                 .velocity = self.velocity.lerp(other.velocity, t),
                 .camera = self.camera.lerp(other.camera, t),
@@ -357,19 +399,16 @@ pub const Player = struct {
 };
 
 pub fn makeSpriteData(
-    boundaries: collision.Circle,
+    position: math.FlatVector,
+    radius: f32,
     height: f32,
     sprite: SpriteSheetTexture.SpriteId,
     spritesheet: SpriteSheetTexture,
 ) rendering.SpriteData {
     const source = spritesheet.getSpriteTexcoords(sprite);
     return .{
-        .position = .{
-            .x = boundaries.position.x,
-            .y = height / 2,
-            .z = boundaries.position.z,
-        },
-        .size = .{ .w = boundaries.radius * 2, .h = height },
+        .position = .{ .x = position.x, .y = height / 2, .z = position.z },
+        .size = .{ .w = radius * 2, .h = height },
         .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
     };
 }

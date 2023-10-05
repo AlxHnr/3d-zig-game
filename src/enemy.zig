@@ -65,7 +65,8 @@ pub const Enemy = struct {
             config.max_health,
         );
         const render_values = .{
-            .boundaries = character.moving_circle.boundaries,
+            .position = character.moving_circle.getPosition(),
+            .radius = character.moving_circle.radius,
             .height = character.height,
             .health = character.health,
         };
@@ -118,7 +119,7 @@ pub const Enemy = struct {
             interval_between_previous_and_current_tick,
         );
 
-        const distance_from_camera = values_to_render.boundaries.position
+        const distance_from_camera = values_to_render.position
             .toVector3d().subtract(camera.position).lengthSquared();
         const max_text_render_distance = values_to_render.height * 15;
         const max_health_render_distance = values_to_render.height * 35;
@@ -151,7 +152,8 @@ pub const Enemy = struct {
     ) void {
         const offset_to_player_height_factor = 1.2;
         out[0] = makeSpriteData(
-            self.prepared_render_data.values.boundaries,
+            self.prepared_render_data.values.position,
+            self.prepared_render_data.values.radius,
             self.prepared_render_data.values.height,
             self.sprite,
             spritesheet,
@@ -174,7 +176,7 @@ pub const Enemy = struct {
             const up = math.Vector3d{ .x = 0, .y = 1, .z = 0 };
             text_rendering.populateBillboardDataExactPixelSizeWithOffset(
                 &self.getNameText(),
-                self.prepared_render_data.values.boundaries.position.toVector3d()
+                self.prepared_render_data.values.position.toVector3d()
                     .add(up.scale(self.prepared_render_data.values.height *
                     offset_to_player_height_factor)),
                 0,
@@ -202,9 +204,9 @@ pub const Enemy = struct {
         const source = spritesheet.getSpriteTexcoords(.white_block);
         const billboard_data = .{
             .position = .{
-                .x = values_to_render.boundaries.position.x,
+                .x = values_to_render.position.x,
                 .y = values_to_render.height * offset_to_player_height_factor,
-                .z = values_to_render.boundaries.position.z,
+                .z = values_to_render.position.z,
             },
             .size = .{
                 .w = health_bar_scale *
@@ -236,7 +238,8 @@ pub const Enemy = struct {
 
     fn getValuesForRendering(self: Enemy) ValuesForRendering {
         return .{
-            .boundaries = self.character.moving_circle.boundaries,
+            .position = self.character.moving_circle.getPosition(),
+            .radius = self.character.moving_circle.radius,
             .height = self.character.height,
             .health = self.character.health,
         };
@@ -253,13 +256,16 @@ pub const Enemy = struct {
 
     fn isSeeingTarget(self: *Enemy, context: TickContextPointers, aggro_radius: f32) bool {
         const aggro_boundaries = .{
-            .position = self.character.getPosition(),
-            .radius = aggro_radius + self.character.moving_circle.boundaries.radius,
+            .position = self.character.moving_circle.getPosition(),
+            .radius = aggro_radius + self.character.moving_circle.radius,
         };
-        const target_boundaries = context.main_character.moving_circle.boundaries;
+        const target_boundaries = collision.Circle{
+            .position = context.main_character.moving_circle.getPosition(),
+            .radius = context.main_character.moving_circle.radius,
+        };
         return target_boundaries.collidesWithCircle(aggro_boundaries) and
             !context.map.geometry.isSolidWallBetweenPoints(
-            self.character.getPosition(),
+            self.character.moving_circle.getPosition(),
             target_boundaries.position,
         );
     }
@@ -304,11 +310,11 @@ pub const Enemy = struct {
             return;
         }
 
-        const offset_to_target =
-            context.main_character.getPosition().subtract(self.character.getPosition());
+        const offset_to_target = context.main_character.moving_circle.getPosition()
+            .subtract(self.character.moving_circle.getPosition());
         const distance_to_target = offset_to_target.lengthSquared();
-        const min_distance_to_target = self.character.moving_circle.boundaries.radius +
-            context.main_character.moving_circle.boundaries.radius;
+        const min_distance_to_target = self.character.moving_circle.radius +
+            context.main_character.moving_circle.radius;
         if (distance_to_target > min_distance_to_target * min_distance_to_target) {
             self.character.movement_speed = self.movement_speed.attacking;
             self.character.acceleration_direction = offset_to_target.normalize();
@@ -326,7 +332,8 @@ const State = union(enum) {
 };
 
 const ValuesForRendering = struct {
-    boundaries: collision.Circle,
+    position: math.FlatVector,
+    radius: f32,
     height: f32,
     health: GameCharacter.Health,
 
@@ -336,7 +343,8 @@ const ValuesForRendering = struct {
         t: f32,
     ) ValuesForRendering {
         return .{
-            .boundaries = self.boundaries.lerp(other.boundaries, t),
+            .position = self.position.lerp(other.position, t),
+            .radius = math.lerp(self.radius, other.radius, t),
             .height = math.lerp(self.height, other.height, t),
             .health = .{
                 .current = math.lerpU32(self.health.current, other.health.current, t),
