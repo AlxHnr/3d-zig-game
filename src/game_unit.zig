@@ -28,7 +28,7 @@ pub const MovingCircle = struct {
     wall_collision_behaviour: WallCollisionBehaviour,
 
     pub const WallCollisionBehaviour = enum {
-        lose_velocity,
+        apply_wall_friction,
         slide,
         slide_and_pass_trough_translucent_walls,
     };
@@ -85,7 +85,7 @@ pub const MovingCircle = struct {
 
     fn resolveCollision(self: *MovingCircle, displacement_vector: math.FlatVector) void {
         self.boundaries.position = self.boundaries.position.add(displacement_vector);
-        if (self.wall_collision_behaviour != .lose_velocity) {
+        if (self.wall_collision_behaviour != .apply_wall_friction) {
             return;
         }
 
@@ -123,7 +123,7 @@ pub const GameCharacter = struct {
                 position,
                 width / 2,
                 math.FlatVector.zero,
-                .lose_velocity,
+                .apply_wall_friction,
             ),
             .acceleration_direction = math.FlatVector.zero,
             .height = height,
