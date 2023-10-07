@@ -9,6 +9,7 @@ const util = @import("util.zig");
 const math = @import("math.zig");
 const epsilon = math.epsilon;
 const text_rendering = @import("text_rendering.zig");
+const UnorderedCollection = @import("unordered_collection.zig").UnorderedCollection;
 
 fn expectXZ(vector: ?math.FlatVector, expected_x: f32, expected_z: f32) !void {
     try expect(vector != null);
@@ -406,4 +407,58 @@ test "Text rendering: truncate text segments" {
         );
         try expectSegmentColors(segments, &[_]util.Color{ white, green, red });
     }
+}
+
+test "UnorderedCollection" {
+    var collection = UnorderedCollection(u32).create(std.testing.allocator);
+    defer collection.destroy();
+
+    var iterator = collection.iterator();
+    try expect(iterator.next() == null);
+
+    try collection.append(1);
+    try collection.append(2);
+    try collection.append(3);
+
+    // Basic iteration.
+    iterator = collection.iterator();
+    try expect(iterator.next().?.* == 1);
+    try expect(iterator.next().?.* == 2);
+    try expect(iterator.next().?.* == 3);
+    try expect(iterator.next() == null);
+
+    // Remove element in the middle.
+    iterator = collection.iterator();
+    try expect(iterator.next().?.* == 1);
+    try expect(iterator.next().?.* == 2);
+    collection.swapRemoveCurrentItem(&iterator);
+    try expect(iterator.next().?.* == 3);
+    try expect(iterator.next() == null);
+
+    // Remove last element.
+    iterator = collection.iterator();
+    try expect(iterator.next().?.* == 1);
+    try expect(iterator.next().?.* == 3);
+    collection.swapRemoveCurrentItem(&iterator);
+    try expect(iterator.next() == null);
+
+    // Remove only remaining element.
+    iterator = collection.iterator();
+    try expect(iterator.next().?.* == 1);
+    collection.swapRemoveCurrentItem(&iterator);
+    try expect(iterator.next() == null);
+
+    // Check collection is empty.
+    iterator = collection.iterator();
+    try expect(iterator.next() == null);
+
+    // Append during iteration.
+    iterator = collection.iterator();
+    try collection.append(1);
+    try expect(iterator.next().?.* == 1);
+    try collection.append(2);
+    try collection.append(3);
+    try expect(iterator.next().?.* == 2);
+    try expect(iterator.next().?.* == 3);
+    try expect(iterator.next() == null);
 }
