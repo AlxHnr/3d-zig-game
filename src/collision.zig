@@ -3,10 +3,21 @@
 const std = @import("std");
 const math = @import("math.zig");
 
+pub const AxisAlignedBoundingBox = struct {
+    min: math.FlatVector,
+    max: math.FlatVector,
+
+    pub fn collidesWithPoint(self: AxisAlignedBoundingBox, point: math.FlatVector) bool {
+        return point.x > self.min.x and
+            point.z > self.min.z and
+            point.x < self.max.x and
+            point.z < self.max.z;
+    }
+};
+
 pub const Rectangle = struct {
     /// Game-world coordinates rotated around the worlds origin to axis-align this rectangle.
-    first_corner: math.FlatVector,
-    third_corner: math.FlatVector,
+    aabb: AxisAlignedBoundingBox,
     /// Precomputed sine/cosine values for replicating this rectangles rotation around the game
     /// worlds origin.
     rotation: Rotation,
@@ -42,10 +53,9 @@ pub const Rectangle = struct {
         const rotation = Rotation.create(rotation_angle);
         const first_corner = rotation.rotate(side_a_end);
         return Rectangle{
-            .first_corner = first_corner,
-            .third_corner = .{
-                .x = first_corner.x + side_b_length,
-                .z = first_corner.z - side_a_length,
+            .aabb = .{
+                .min = .{ .x = first_corner.x, .z = first_corner.z - side_a_length },
+                .max = .{ .x = first_corner.x + side_b_length, .z = first_corner.z },
             },
             .rotation = rotation,
             .inverse_rotation = Rotation.create(-rotation_angle),
@@ -60,14 +70,18 @@ pub const Rectangle = struct {
     ) bool {
         const start = self.rotation.rotate(line_start);
         const end = self.rotation.rotate(line_end);
-        const second_corner = math.FlatVector{ .x = self.third_corner.x, .z = self.first_corner.z };
-        const fourth_corner = math.FlatVector{ .x = self.first_corner.x, .z = self.third_corner.z };
+        const corners = .{
+            self.aabb.min,
+            .{ .x = self.aabb.min.x, .z = self.aabb.max.z },
+            self.aabb.max,
+            .{ .x = self.aabb.max.x, .z = self.aabb.min.z },
+        };
         return self.collidesWithRotatedPoint(start) or
             self.collidesWithRotatedPoint(end) or
-            lineCollidesWithLine(start, end, self.first_corner, fourth_corner) != null or
-            lineCollidesWithLine(start, end, self.first_corner, second_corner) != null or
-            lineCollidesWithLine(start, end, fourth_corner, self.third_corner) != null or
-            lineCollidesWithLine(start, end, self.third_corner, second_corner) != null;
+            lineCollidesWithLine(start, end, corners[0], corners[1]) != null or
+            lineCollidesWithLine(start, end, corners[1], corners[2]) != null or
+            lineCollidesWithLine(start, end, corners[2], corners[3]) != null or
+            lineCollidesWithLine(start, end, corners[3], corners[0]) != null;
     }
 
     pub fn collidesWithPoint(self: Rectangle, point: math.FlatVector) bool {
@@ -75,21 +89,16 @@ pub const Rectangle = struct {
     }
 
     pub fn getCornersInGameCoordinates(self: Rectangle) [4]math.FlatVector {
-        const second_corner = .{ .x = self.third_corner.x, .z = self.first_corner.z };
-        const fourth_corner = .{ .x = self.first_corner.x, .z = self.third_corner.z };
         return [_]math.FlatVector{
-            self.inverse_rotation.rotate(self.first_corner),
-            self.inverse_rotation.rotate(second_corner),
-            self.inverse_rotation.rotate(self.third_corner),
-            self.inverse_rotation.rotate(fourth_corner),
+            self.inverse_rotation.rotate(self.aabb.min),
+            self.inverse_rotation.rotate(.{ .x = self.aabb.min.x, .z = self.aabb.max.z }),
+            self.inverse_rotation.rotate(self.aabb.max),
+            self.inverse_rotation.rotate(.{ .x = self.aabb.max.x, .z = self.aabb.min.z }),
         };
     }
 
     fn collidesWithRotatedPoint(self: Rectangle, rotated_point: math.FlatVector) bool {
-        return rotated_point.x > self.first_corner.x and
-            rotated_point.x < self.third_corner.x and
-            rotated_point.z < self.first_corner.z and
-            rotated_point.z > self.third_corner.z;
+        return self.aabb.collidesWithPoint(rotated_point);
     }
 };
 
@@ -164,19 +173,9 @@ pub const Circle = struct {
     /// returned displacement vector must be added to self.position to resolve the collision.
     pub fn collidesWithRectangle(self: Circle, rectangle: Rectangle) ?math.FlatVector {
         const rotated_self_position = rectangle.rotation.rotate(self.position);
-        const reference_point = math.FlatVector{
-            .x = if (rotated_self_position.x < rectangle.first_corner.x)
-                rectangle.first_corner.x
-            else if (rotated_self_position.x > rectangle.third_corner.x)
-                rectangle.third_corner.x
-            else
-                rotated_self_position.x,
-            .z = if (rotated_self_position.z > rectangle.first_corner.z)
-                rectangle.first_corner.z
-            else if (rotated_self_position.z < rectangle.third_corner.z)
-                rectangle.third_corner.z
-            else
-                rotated_self_position.z,
+        const reference_point = .{
+            .x = std.math.clamp(rotated_self_position.x, rectangle.aabb.min.x, rectangle.aabb.max.x),
+            .z = std.math.clamp(rotated_self_position.z, rectangle.aabb.min.z, rectangle.aabb.max.z),
         };
         const offset = rotated_self_position.subtract(reference_point);
         if (offset.lengthSquared() > self.radius * self.radius) {
@@ -184,12 +183,12 @@ pub const Circle = struct {
         }
 
         const displacement_x = getSmallestValueBasedOnAbsolute(
-            rectangle.first_corner.x - rotated_self_position.x - self.radius,
-            rectangle.third_corner.x - rotated_self_position.x + self.radius,
+            rectangle.aabb.min.x - rotated_self_position.x - self.radius,
+            rectangle.aabb.max.x - rotated_self_position.x + self.radius,
         );
         const displacement_z = getSmallestValueBasedOnAbsolute(
-            rectangle.first_corner.z - rotated_self_position.z + self.radius,
-            rectangle.third_corner.z - rotated_self_position.z - self.radius,
+            rectangle.aabb.min.z - rotated_self_position.z - self.radius,
+            rectangle.aabb.max.z - rotated_self_position.z + self.radius,
         );
         const displacement_vector =
             if (std.math.fabs(displacement_x) < std.math.fabs(displacement_z))
