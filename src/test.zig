@@ -409,16 +409,18 @@ test "Text rendering: truncate text segments" {
     }
 }
 
-test "UnorderedCollection" {
+test "UnorderedCollection: iterator" {
     var collection = UnorderedCollection(u32).create(std.testing.allocator);
     defer collection.destroy();
 
     var iterator = collection.iterator();
     try expect(iterator.next() == null);
 
+    try expect(collection.count() == 0);
     try collection.append(1);
     try collection.append(2);
     try collection.append(3);
+    try expect(collection.count() == 3);
 
     // Basic iteration.
     iterator = collection.iterator();
@@ -461,4 +463,30 @@ test "UnorderedCollection" {
     try expect(iterator.next().?.* == 2);
     try expect(iterator.next().?.* == 3);
     try expect(iterator.next() == null);
+}
+
+test "UnorderedCollection: extra functions" {
+    var collection = UnorderedCollection(u32).create(std.testing.allocator);
+    defer collection.destroy();
+
+    const value_5 = try collection.appendUninitialized();
+    value_5.* = 5;
+
+    var iterator = collection.iterator();
+    try expect(iterator.next().?.* == 5);
+    try expect(iterator.next() == null);
+
+    collection.removeLastAppendedItem();
+    try expect(collection.count() == 0);
+
+    const value_6 = try collection.appendUninitialized();
+    value_6.* = 6;
+    const value_7 = try collection.appendUninitialized();
+    value_7.* = 7;
+
+    try expect(collection.swapRemove(value_6) == value_7);
+    try expect(value_6.* == 7);
+
+    try expect(collection.swapRemove(value_6) == null);
+    try expect(collection.count() == 0);
 }
