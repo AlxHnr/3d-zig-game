@@ -1,15 +1,16 @@
 //! Contains various test cases.
 
+const UnorderedCollection = @import("unordered_collection.zig").UnorderedCollection;
+const collision = @import("collision.zig");
+const math = @import("math.zig");
+const spatial_grid = @import("spatial_grid.zig");
 const std = @import("std");
+const text_rendering = @import("text_rendering.zig");
+const util = @import("util.zig");
+
+const epsilon = math.epsilon;
 const expect = std.testing.expect;
 const expectApproxEqRel = std.testing.expectApproxEqRel;
-
-const collision = @import("collision.zig");
-const util = @import("util.zig");
-const math = @import("math.zig");
-const epsilon = math.epsilon;
-const text_rendering = @import("text_rendering.zig");
-const UnorderedCollection = @import("unordered_collection.zig").UnorderedCollection;
 
 fn expectXZ(vector: ?math.FlatVector, expected_x: f32, expected_z: f32) !void {
     try expect(vector != null);
@@ -489,4 +490,51 @@ test "UnorderedCollection: extra functions" {
 
     try expect(collection.swapRemove(value_6) == null);
     try expect(collection.count() == 0);
+}
+
+test "CellIndex" {
+    const index = spatial_grid.CellIndex.fromPosition(.{ .x = 23.89, .z = -34.54 });
+    try expect(index.x == 3);
+    try expect(index.z == -4);
+}
+
+test "CellRange.countCoveredCells()" {
+    try expect(spatial_grid.CellRange.countCoveredCells(
+        .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } },
+    ) == 1);
+    try expect(spatial_grid.CellRange.countCoveredCells(
+        .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 2 } },
+    ) == 2);
+    try expect(spatial_grid.CellRange.countCoveredCells(
+        .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 2, .z = 2 } },
+    ) == 4);
+    try expect(spatial_grid.CellRange.countCoveredCells(
+        .{ .min = .{ .x = -1, .z = -2 }, .max = .{ .x = 1, .z = 0 } },
+    ) == 9);
+}
+
+test "CellRange.iterator()" {
+    var range = spatial_grid.CellRange{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } };
+    var iterator = range.iterator();
+    var result = iterator.next();
+    try expect(result != null);
+    try expect(result.?.x == 1);
+    try expect(result.?.z == 1);
+    try expect(iterator.next() == null);
+
+    range = spatial_grid.CellRange{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 2, .z = 2 } };
+    iterator = range.iterator();
+    result = iterator.next();
+    try expect(result.?.x == 1);
+    try expect(result.?.z == 1);
+    result = iterator.next();
+    try expect(result.?.x == 2);
+    try expect(result.?.z == 1);
+    result = iterator.next();
+    try expect(result.?.x == 1);
+    try expect(result.?.z == 2);
+    result = iterator.next();
+    try expect(result.?.x == 2);
+    try expect(result.?.z == 2);
+    try expect(iterator.next() == null);
 }
