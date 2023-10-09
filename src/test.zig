@@ -538,3 +538,37 @@ test "CellRange.iterator()" {
     try expect(result.?.z == 2);
     try expect(iterator.next() == null);
 }
+
+test "SpatialGrid: insert and destroy" {
+    var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
+    defer grid.destroy();
+
+    try grid.insert(19, 11, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
+    try grid.insert(20, 12, .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 20, .z = 20 } });
+}
+
+test "SpatialGrid: insert and remove" {
+    var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
+    defer grid.destroy();
+
+    try grid.insert(99, 12, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 14 } });
+    grid.remove(12);
+
+    try grid.insert(19, 11, .{ .min = .{ .x = -40, .z = 20 }, .max = .{ .x = 14, .z = 84 } });
+    try grid.insert(20, 12, .{ .min = .{ .x = -10, .z = 0 }, .max = .{ .x = -1, .z = 3 } });
+    try grid.insert(21, 34, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 23, .z = 32 } });
+    grid.remove(12);
+    grid.remove(34);
+    grid.remove(11);
+}
+
+test "SpatialGrid: insert and remove: update displaced object ids" {
+    var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
+    defer grid.destroy();
+
+    try grid.insert(19, 11, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
+    try grid.insert(20, 12, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
+    try grid.insert(21, 13, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
+    grid.remove(12);
+    grid.remove(11);
+}
