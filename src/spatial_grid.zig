@@ -1,6 +1,7 @@
 const AxisAlignedBoundingBox = @import("collision.zig").AxisAlignedBoundingBox;
 const FlatVector = @import("math.zig").FlatVector;
 const UnorderedCollection = @import("unordered_collection.zig").UnorderedCollection;
+const getOverlap = @import("math.zig").getOverlap;
 const std = @import("std");
 
 /// Collection which stores objects redundantly in spatial bins, using contiguous memory where
@@ -175,27 +176,60 @@ pub const CellRange = struct {
         return @intCast((self.max.x + 1 - self.min.x) * (self.max.z + 1 - self.min.z));
     }
 
+    pub fn countTouchingCells(self: CellRange, other: CellRange) usize {
+        const touching_rows =
+            @max(0, 1 + getOverlap(self.min.z, self.max.z, other.min.z, other.max.z));
+        const touching_columns =
+            @max(0, 1 + getOverlap(self.min.x, self.max.x, other.min.x, other.max.x));
+        return touching_rows * touching_columns;
+    }
+
     pub fn iterator(self: CellRange) Iterator {
-        return .{ .min = self.min, .max = self.max, .current = self.min };
+        return .{ .min = self.min, .max = self.max, .current = null };
     }
 
     const Iterator = struct {
         min: CellIndex,
         max: CellIndex,
-        current: CellIndex,
+        current: ?CellIndex,
 
         pub fn next(self: *Iterator) ?CellIndex {
-            if (self.current.z > self.max.z) {
-                return null;
+            if (self.current) |*current| {
+                current.x += 1;
+                if (current.x > self.max.x) {
+                    current.x = self.min.x;
+                    current.z += 1;
+                }
+                if (current.z > self.max.z) {
+                    return null;
+                }
+                return current.*;
             }
+            self.current = self.min;
+            return self.min;
+        }
 
-            const result = self.current;
-            self.current.x += 1;
-            if (self.current.x > self.max.x) {
-                self.current.x = self.min.x;
-                self.current.z += 1;
+        pub fn isOverlappingWithOnlyOneCell(self: Iterator, range: CellRange) bool {
+            if (self.current) |current| {
+                var overlapping_cells: usize = 0;
+
+                if (current.z > self.min.z) {
+                    const already_traversed_block = .{
+                        .min = self.min,
+                        .max = .{ .x = self.max.x, .z = current.z - 1 },
+                    };
+                    overlapping_cells += range.countTouchingCells(already_traversed_block);
+                }
+
+                const current_rows_block = .{
+                    .min = .{ .x = self.min.x, .z = current.z },
+                    .max = .{ .x = current.x, .z = current.z },
+                };
+                overlapping_cells += range.countTouchingCells(current_rows_block);
+
+                return overlapping_cells == 1;
             }
-            return result;
+            return false;
         }
     };
 };

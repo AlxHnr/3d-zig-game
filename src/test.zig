@@ -548,6 +548,129 @@ test "CellRange.iterator()" {
     try expect(iterator.next() == null);
 }
 
+test "CellRange: count touching cells" {
+    const range1x1 =
+        spatial_grid.CellRange{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } };
+    try expect(range1x1.countTouchingCells(range1x1) == 1);
+
+    const range100x100 =
+        spatial_grid.CellRange{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 99, .z = 99 } };
+    try expect(range1x1.countTouchingCells(range100x100) == 1);
+    try expect(range100x100.countTouchingCells(range100x100) == 10000);
+
+    try expect(range100x100.countTouchingCells(
+        .{ .min = .{ .x = -20, .z = -20 }, .max = .{ .x = 0, .z = 0 } },
+    ) == 1);
+    try expect(range100x100.countTouchingCells(
+        .{ .min = .{ .x = -20, .z = -20 }, .max = .{ .x = 1, .z = 1 } },
+    ) == 4);
+    try expect(range100x100.countTouchingCells(
+        .{ .min = .{ .x = 99, .z = 0 }, .max = .{ .x = 99, .z = 99 } },
+    ) == 100);
+    try expect(range100x100.countTouchingCells(
+        .{ .min = .{ .x = 20, .z = 98 }, .max = .{ .x = 25, .z = 200 } },
+    ) == 12);
+    try expect(range1x1.countTouchingCells(
+        .{ .min = .{ .x = -20, .z = -20 }, .max = .{ .x = 0, .z = 0 } },
+    ) == 0);
+    try expect(range1x1.countTouchingCells(
+        .{ .min = .{ .x = -2, .z = 1 }, .max = .{ .x = 0, .z = 20 } },
+    ) == 0);
+    try expect(range1x1.countTouchingCells(
+        .{ .min = .{ .x = 1, .z = -2 }, .max = .{ .x = 20, .z = 0 } },
+    ) == 0);
+}
+
+test "CellRange.iterator(): overlaps" {
+    var iterator = spatial_grid.CellRange.iterator(
+        .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } },
+    );
+
+    try expect(!iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } },
+    ));
+    try expect(iterator.next() != null);
+    try expect(iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } },
+    ));
+
+    try expect(iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 0, .z = 1 }, .max = .{ .x = 2, .z = 1 } },
+    ));
+    try expect(iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 1, .z = 0 }, .max = .{ .x = 1, .z = 2 } },
+    ));
+    try expect(iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = -20, .z = -20 }, .max = .{ .x = 20, .z = 20 } },
+    ));
+    try expect(!iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = -20, .z = -20 }, .max = .{ .x = 0, .z = 0 } },
+    ));
+
+    iterator = spatial_grid.CellRange.iterator(
+        .{ .min = .{ .x = 20, .z = 20 }, .max = .{ .x = 23, .z = 22 } },
+    );
+    var counter: usize = 0;
+    while (counter < 8) : (counter += 1) {
+        try expect(iterator.next() != null);
+        try expect(!iterator.isOverlappingWithOnlyOneCell(
+            .{ .min = .{ .x = 19, .z = 22 }, .max = .{ .x = 21, .z = 23 } },
+        ));
+    }
+    try expect(iterator.next() != null);
+    try expect(iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 19, .z = 22 }, .max = .{ .x = 21, .z = 23 } },
+    ));
+    try expect(!iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 23, .z = 24 }, .max = .{ .x = 21, .z = 22 } },
+    ));
+    try expect(!iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 22, .z = 22 }, .max = .{ .x = 23, .z = 23 } },
+    ));
+
+    try expect(iterator.next() != null);
+    try expect(!iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 19, .z = 22 }, .max = .{ .x = 21, .z = 23 } },
+    ));
+
+    iterator = spatial_grid.CellRange.iterator(
+        .{ .min = .{ .x = 20, .z = 20 }, .max = .{ .x = 23, .z = 22 } },
+    );
+    counter = 0;
+    while (counter < 8) : (counter += 1) {
+        try expect(iterator.next() != null);
+    }
+    try expect(iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 23, .z = 21 }, .max = .{ .x = 24, .z = 22 } },
+    ));
+    try expect(iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 23, .z = 18 }, .max = .{ .x = 24, .z = 20 } },
+    ));
+    try expect(!iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 22, .z = 18 }, .max = .{ .x = 24, .z = 20 } },
+    ));
+    try expect(iterator.next() != null);
+    try expect(iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 23, .z = 21 }, .max = .{ .x = 24, .z = 22 } },
+    ));
+    try expect(iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 23, .z = 18 }, .max = .{ .x = 24, .z = 20 } },
+    ));
+
+    try expect(!iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 22, .z = 22 }, .max = .{ .x = 23, .z = 23 } },
+    ));
+    try expect(iterator.next() != null);
+    try expect(iterator.next() != null);
+    try expect(iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 22, .z = 22 }, .max = .{ .x = 23, .z = 23 } },
+    ));
+    try expect(iterator.next() != null);
+    try expect(!iterator.isOverlappingWithOnlyOneCell(
+        .{ .min = .{ .x = 22, .z = 22 }, .max = .{ .x = 23, .z = 23 } },
+    ));
+}
+
 test "SpatialGrid: insert and destroy" {
     var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
     defer grid.destroy();
