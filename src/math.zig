@@ -26,6 +26,13 @@ pub fn scaleU16(value: u16, factor: f32) u16 {
     return @as(u16, @intFromFloat(@as(f32, @floatFromInt(value)) * factor));
 }
 
+/// Returns < 0 when there is no overlap. 0 when the edges touch. Overlap length otherwise.
+pub fn getOverlap(a_start: i16, a_end: i16, b_start: i16, b_end: i16) i16 {
+    const intersection_start = @max(a_start, b_start);
+    const intersection_end = @min(a_end, b_end);
+    return intersection_end - intersection_start;
+}
+
 /// Vector on a flat plane with no height information.
 pub const FlatVector = struct {
     x: f32,

@@ -142,6 +142,15 @@ test "Collision between line and point" {
     try expect(collision.lineCollidesWithPoint(line_start, line_start, line_start));
 }
 
+test "Math: section overlap" {
+    try expect(math.getOverlap(0, 20, 30, 40) < 0);
+    try expect(math.getOverlap(30, 40, 0, 20) < 0);
+    try expect(math.getOverlap(0, 20, 20, 40) == 0);
+    try expect(math.getOverlap(20, 40, 0, 20) == 0);
+    try expect(math.getOverlap(1, 3, 2, 70) == 1);
+    try expect(math.getOverlap(2, 70, 1, 3) == 1);
+}
+
 test "Matrix multiplication" {
     const matrix = math.Matrix{ .rows = .{
         .{ 12, 4, 7, 9 },
