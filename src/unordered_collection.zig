@@ -63,6 +63,10 @@ pub fn UnorderedCollection(comptime T: type) type {
             };
         }
 
+        pub fn constIterator(self: *const Self) std.SegmentedList(T, 0).ConstIterator {
+            return self.segments.constIterator(0);
+        }
+
         /// Destroy the current item returned by Iterator.next() and replace it with the last item
         /// in this collection. This will invalidate all pointers to the current item and the last
         /// item.
@@ -77,7 +81,7 @@ pub fn UnorderedCollection(comptime T: type) type {
             it.return_current_item_again = true;
         }
 
-        const Iterator = struct {
+        pub const Iterator = struct {
             segment_iterator: std.SegmentedList(T, 0).Iterator,
             current_item: ?*T,
             return_current_item_again: bool,
@@ -91,5 +95,7 @@ pub fn UnorderedCollection(comptime T: type) type {
                 return self.current_item;
             }
         };
+
+        pub const ConstIterator = std.SegmentedList(T, 0).ConstIterator;
     };
 }
