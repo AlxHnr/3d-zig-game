@@ -45,8 +45,7 @@ pub fn SpatialGrid(comptime T: type) type {
         }
 
         /// Inserts copies of the given object into every cell covered by the specified bounding
-        /// box. The given object will be visited by existing iterators. The same object id should
-        /// not be inserted twice.
+        /// box. Invalidates existing iterators. The same object id should not be inserted twice.
         pub fn insert(
             self: *Self,
             object: T,
@@ -90,7 +89,7 @@ pub fn SpatialGrid(comptime T: type) type {
             }
         }
 
-        // The specified object id must exist in this grid.
+        // The specified object id must exist in this grid. Invalidates existing iterators.
         pub fn remove(self: *Self, object_id: u64) void {
             const key_value_pair = self.object_ids_to_cell_items.fetchRemove(object_id);
             std.debug.assert(key_value_pair != null);
@@ -115,6 +114,51 @@ pub fn SpatialGrid(comptime T: type) type {
             }
             self.allocator.free(cell_references.items);
         }
+
+        /// Will be invalidated by updates to this grid. Objects occupying multiple cells will only
+        /// be visited once.
+        pub fn constIterator(self: *Self, region: AxisAlignedBoundingBox) ConstIterator {
+            return .{
+                .cells = &self.cells,
+                .range_iterator = CellRange.fromAABB(region).iterator(),
+                .cell_iterator = null,
+            };
+        }
+
+        pub const ConstIterator = struct {
+            cells: *const std.AutoHashMap(CellIndex, Cell),
+            range_iterator: CellRange.Iterator,
+            cell_iterator: ?Cell.ConstIterator,
+
+            pub fn next(self: *ConstIterator) ?T {
+                if (self.nextFromCellIterator()) |object| {
+                    return object;
+                }
+                while (self.range_iterator.next()) |cell_index| {
+                    if (self.cells.get(cell_index)) |cell| {
+                        if (cell.count() > 0) {
+                            self.cell_iterator = cell.constIterator();
+                            if (self.nextFromCellIterator()) |object| {
+                                return object;
+                            }
+                        }
+                    }
+                }
+                return null;
+            }
+
+            fn nextFromCellIterator(self: *ConstIterator) ?T {
+                if (self.cell_iterator) |*cell_iterator| {
+                    while (cell_iterator.next()) |item| {
+                        if (self.range_iterator.isOverlappingWithOnlyOneCell(item.cell_range)) {
+                            return item.object;
+                        }
+                    }
+                    self.cell_iterator = null;
+                }
+                return null;
+            }
+        };
 
         const CellItem = struct {
             /// Contains all cells occupied by this item. Used for determining whether this item has

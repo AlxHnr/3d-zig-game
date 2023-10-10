@@ -704,3 +704,62 @@ test "SpatialGrid: insert and remove: update displaced object ids" {
     grid.remove(12);
     grid.remove(11);
 }
+
+test "SpatialGrid: const iterator: basic usage" {
+    var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
+    defer grid.destroy();
+
+    const range = .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } };
+
+    var iterator = grid.constIterator(range);
+    try expect(iterator.next() == null);
+
+    try grid.insert(19, 11, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
+    iterator = grid.constIterator(range);
+    try expect(iterator.next().? == 19);
+    try expect(iterator.next() == null);
+
+    grid.remove(11);
+    iterator = grid.constIterator(range);
+    try expect(iterator.next() == null);
+}
+
+test "SpatialGrid: const iterator: region queries" {
+    var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
+    defer grid.destroy();
+
+    try grid.insert(1, 1, .{ .min = .{ .x = -160, .z = -190 }, .max = .{ .x = -70, .z = -30 } });
+    try grid.insert(2, 2, .{ .min = .{ .x = -120, .z = 70 }, .max = .{ .x = -10, .z = 130 } });
+    try grid.insert(3, 3, .{ .min = .{ .x = 20, .z = 70 }, .max = .{ .x = 80, .z = 130 } });
+    try grid.insert(4, 4, .{ .min = .{ .x = 70, .z = 20 }, .max = .{ .x = 130, .z = 70 } });
+    try grid.insert(5, 5, .{ .min = .{ .x = 80, .z = -130 }, .max = .{ .x = 130, .z = -10 } });
+    try grid.insert(6, 6, .{ .min = .{ .x = 30, .z = -130 }, .max = .{ .x = 130, .z = -10 } });
+
+    const range = .{ .min = .{ .x = -70, .z = -30 }, .max = .{ .x = 90, .z = 90 } };
+    var iterator = grid.constIterator(range);
+    try expect(iterator.next().? == 1);
+    try expect(iterator.next().? == 6);
+    try expect(iterator.next().? == 5);
+    try expect(iterator.next().? == 4);
+    try expect(iterator.next().? == 2);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next() == null);
+
+    grid.remove(5);
+    grid.remove(4);
+    grid.remove(2);
+    iterator = grid.constIterator(range);
+    try expect(iterator.next().? == 1);
+    try expect(iterator.next().? == 6);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next() == null);
+
+    iterator = grid.constIterator(.{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 0, .z = 0 } });
+    try expect(iterator.next() == null);
+
+    grid.remove(1);
+    iterator = grid.constIterator(range);
+    try expect(iterator.next().? == 6);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next() == null);
+}
