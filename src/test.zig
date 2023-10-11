@@ -7,10 +7,10 @@ const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 const util = @import("util.zig");
 
-const cell_side_length = 7;
-const SpatialGrid = @import("spatial_partitioning.zig").SpatialGrid(u32, cell_side_length);
-const CellIndex = @import("spatial_partitioning/cell_index.zig").Index(cell_side_length);
-const CellRange = @import("spatial_partitioning/cell_range.zig").Range(cell_side_length);
+const grid_cell_side_length = 7;
+const SpatialGrid = @import("spatial_partitioning/grid.zig").Grid(u32, grid_cell_side_length);
+const CellIndex = @import("spatial_partitioning/cell_index.zig").Index(grid_cell_side_length);
+const CellRange = @import("spatial_partitioning/cell_range.zig").Range(grid_cell_side_length);
 
 const epsilon = math.epsilon;
 const expect = std.testing.expect;

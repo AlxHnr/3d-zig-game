@@ -1,13 +1,10 @@
-const AxisAlignedBoundingBox = @import("collision.zig").AxisAlignedBoundingBox;
-const FlatVector = @import("math.zig").FlatVector;
-const UnorderedCollection = @import("unordered_collection.zig").UnorderedCollection;
-const getOverlap = @import("math.zig").getOverlap;
+const AxisAlignedBoundingBox = @import("../collision.zig").AxisAlignedBoundingBox;
+const UnorderedCollection = @import("../unordered_collection.zig").UnorderedCollection;
 const std = @import("std");
 
-/// Collection which stores objects redundantly in spatial bins, using contiguous memory where
-/// possible. Allows fast traversal and queries over objects which are spatially close to each
-/// other.
-pub fn SpatialGrid(comptime T: type, comptime cell_side_length: u32) type {
+/// Collection for storing objects redundantly in multiple cells. Allows fast queries over objects
+/// which are spatially close to each other. Uses contiguous memory where possible.
+pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
     return struct {
         allocator: std.mem.Allocator,
         cells: std.AutoHashMap(CellIndex, Cell),
@@ -18,8 +15,8 @@ pub fn SpatialGrid(comptime T: type, comptime cell_side_length: u32) type {
 
         const Self = @This();
         const Cell = UnorderedCollection(CellItem);
-        const CellIndex = @import("spatial_partitioning/cell_index.zig").Index(cell_side_length);
-        const CellRange = @import("spatial_partitioning/cell_range.zig").Range(cell_side_length);
+        const CellIndex = @import("cell_index.zig").Index(cell_side_length);
+        const CellRange = @import("cell_range.zig").Range(cell_side_length);
 
         pub fn create(allocator: std.mem.Allocator) Self {
             return .{
