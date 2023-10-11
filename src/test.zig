@@ -9,6 +9,8 @@ const util = @import("util.zig");
 
 const grid_cell_side_length = 7;
 const SpatialGrid = @import("spatial_partitioning/grid.zig").Grid(u32, grid_cell_side_length);
+const SpatialCollection =
+    @import("spatial_partitioning/collection.zig").Collection(u32, grid_cell_side_length);
 const CellIndex = @import("spatial_partitioning/cell_index.zig").Index(grid_cell_side_length);
 const CellRange = @import("spatial_partitioning/cell_range.zig").Range(grid_cell_side_length);
 
@@ -775,5 +777,47 @@ test "SpatialGrid: const iterator: region queries" {
     iterator = grid.constIterator(range);
     try expect(iterator.next().? == 6);
     try expect(iterator.next().? == 3);
+    try expect(iterator.next() == null);
+}
+
+test "SpatialCollection" {
+    var collection = try SpatialCollection.create(std.testing.allocator);
+    defer collection.destroy();
+
+    try collection.insert(1, 1, .{ .x = -160, .z = -190 });
+    try collection.insert(2, 2, .{ .x = -120, .z = 70 });
+    try collection.insert(3, 3, .{ .x = 20, .z = 70 });
+    try collection.insert(4, 4, .{ .x = 70, .z = 20 });
+    try collection.insert(5, 5, .{ .x = 80, .z = -130 });
+    try collection.insert(6, 6, .{ .x = 20, .z = -130 });
+    try collection.insert(7, 7, .{ .x = 20, .z = -130 });
+
+    var iterator = collection.iterator();
+    try expect(iterator.next().?.* == 1);
+    try expect(iterator.next().?.* == 6);
+    try expect(iterator.next().?.* == 7);
+    try expect(iterator.next().?.* == 5);
+    try expect(iterator.next().?.* == 4);
+    try expect(iterator.next().?.* == 2);
+    try expect(iterator.next().?.* == 3);
+    try expect(iterator.next() == null);
+
+    collection.remove(6);
+    collection.remove(1);
+    collection.remove(3);
+
+    iterator = collection.iterator();
+    try expect(iterator.next().?.* == 7);
+    try expect(iterator.next().?.* == 5);
+    try expect(iterator.next().?.* == 4);
+    try expect(iterator.next().?.* == 2);
+    try expect(iterator.next() == null);
+
+    collection.remove(4);
+    collection.remove(2);
+    collection.remove(7);
+
+    iterator = collection.iterator();
+    try expect(iterator.next().?.* == 5);
     try expect(iterator.next() == null);
 }
