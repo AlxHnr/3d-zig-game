@@ -3,10 +3,14 @@
 const UnorderedCollection = @import("unordered_collection.zig").UnorderedCollection;
 const collision = @import("collision.zig");
 const math = @import("math.zig");
-const spatial_grid = @import("spatial_grid.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 const util = @import("util.zig");
+
+const cell_side_length = 7;
+const SpatialGrid = @import("spatial_partitioning.zig").SpatialGrid(u32, cell_side_length);
+const CellIndex = @import("spatial_partitioning/cell_index.zig").Index(cell_side_length);
+const CellRange = @import("spatial_partitioning/cell_range.zig").Range(cell_side_length);
 
 const epsilon = math.epsilon;
 const expect = std.testing.expect;
@@ -502,28 +506,29 @@ test "UnorderedCollection: extra functions" {
 }
 
 test "CellIndex" {
-    const index = spatial_grid.CellIndex.fromPosition(.{ .x = 23.89, .z = -34.54 });
+    const index = CellIndex.fromPosition(.{ .x = 23.89, .z = -34.54 });
     try expect(index.x == 3);
     try expect(index.z == -4);
 }
 
 test "CellRange.countCoveredCells()" {
-    try expect(spatial_grid.CellRange.countCoveredCells(
+    try expect(CellRange.countCoveredCells(
         .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } },
     ) == 1);
-    try expect(spatial_grid.CellRange.countCoveredCells(
+    try expect(CellRange.countCoveredCells(
         .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 2 } },
     ) == 2);
-    try expect(spatial_grid.CellRange.countCoveredCells(
+    try expect(CellRange.countCoveredCells(
         .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 2, .z = 2 } },
     ) == 4);
-    try expect(spatial_grid.CellRange.countCoveredCells(
+    try expect(CellRange.countCoveredCells(
         .{ .min = .{ .x = -1, .z = -2 }, .max = .{ .x = 1, .z = 0 } },
     ) == 9);
 }
 
 test "CellRange.iterator()" {
-    var range = spatial_grid.CellRange{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } };
+    var range =
+        CellRange{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } };
     var iterator = range.iterator();
     var result = iterator.next();
     try expect(result != null);
@@ -531,7 +536,7 @@ test "CellRange.iterator()" {
     try expect(result.?.z == 1);
     try expect(iterator.next() == null);
 
-    range = spatial_grid.CellRange{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 2, .z = 2 } };
+    range = CellRange{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 2, .z = 2 } };
     iterator = range.iterator();
     result = iterator.next();
     try expect(result.?.x == 1);
@@ -550,11 +555,11 @@ test "CellRange.iterator()" {
 
 test "CellRange: count touching cells" {
     const range1x1 =
-        spatial_grid.CellRange{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } };
+        CellRange{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } };
     try expect(range1x1.countTouchingCells(range1x1) == 1);
 
     const range100x100 =
-        spatial_grid.CellRange{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 99, .z = 99 } };
+        CellRange{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 99, .z = 99 } };
     try expect(range1x1.countTouchingCells(range100x100) == 1);
     try expect(range100x100.countTouchingCells(range100x100) == 10000);
 
@@ -582,7 +587,7 @@ test "CellRange: count touching cells" {
 }
 
 test "CellRange.iterator(): overlaps" {
-    var iterator = spatial_grid.CellRange.iterator(
+    var iterator = CellRange.iterator(
         .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } },
     );
 
@@ -607,7 +612,7 @@ test "CellRange.iterator(): overlaps" {
         .{ .min = .{ .x = -20, .z = -20 }, .max = .{ .x = 0, .z = 0 } },
     ));
 
-    iterator = spatial_grid.CellRange.iterator(
+    iterator = CellRange.iterator(
         .{ .min = .{ .x = 20, .z = 20 }, .max = .{ .x = 23, .z = 22 } },
     );
     var counter: usize = 0;
@@ -633,7 +638,7 @@ test "CellRange.iterator(): overlaps" {
         .{ .min = .{ .x = 19, .z = 22 }, .max = .{ .x = 21, .z = 23 } },
     ));
 
-    iterator = spatial_grid.CellRange.iterator(
+    iterator = CellRange.iterator(
         .{ .min = .{ .x = 20, .z = 20 }, .max = .{ .x = 23, .z = 22 } },
     );
     counter = 0;
@@ -672,7 +677,7 @@ test "CellRange.iterator(): overlaps" {
 }
 
 test "SpatialGrid: insert and destroy" {
-    var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
+    var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
     try grid.insert(19, 11, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
@@ -680,7 +685,7 @@ test "SpatialGrid: insert and destroy" {
 }
 
 test "SpatialGrid: insert and remove" {
-    var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
+    var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
     try grid.insert(99, 12, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 14 } });
@@ -695,7 +700,7 @@ test "SpatialGrid: insert and remove" {
 }
 
 test "SpatialGrid: insert and remove: update displaced object ids" {
-    var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
+    var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
     try grid.insert(19, 11, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
@@ -706,7 +711,7 @@ test "SpatialGrid: insert and remove: update displaced object ids" {
 }
 
 test "SpatialGrid: const iterator: basic usage" {
-    var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
+    var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
     const range = .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } };
@@ -725,7 +730,7 @@ test "SpatialGrid: const iterator: basic usage" {
 }
 
 test "SpatialGrid: const iterator: region queries" {
-    var grid = spatial_grid.SpatialGrid(u32).create(std.testing.allocator);
+    var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
     try grid.insert(1, 1, .{ .min = .{ .x = -160, .z = -190 }, .max = .{ .x = -70, .z = -30 } });

@@ -7,7 +7,7 @@ const std = @import("std");
 /// Collection which stores objects redundantly in spatial bins, using contiguous memory where
 /// possible. Allows fast traversal and queries over objects which are spatially close to each
 /// other.
-pub fn SpatialGrid(comptime T: type) type {
+pub fn SpatialGrid(comptime T: type, comptime cell_side_length: u32) type {
     return struct {
         allocator: std.mem.Allocator,
         cells: std.AutoHashMap(CellIndex, Cell),
@@ -18,6 +18,8 @@ pub fn SpatialGrid(comptime T: type) type {
 
         const Self = @This();
         const Cell = UnorderedCollection(CellItem);
+        const CellIndex = @import("spatial_partitioning/cell_index.zig").Index(cell_side_length);
+        const CellRange = @import("spatial_partitioning/cell_range.zig").Range(cell_side_length);
 
         pub fn create(allocator: std.mem.Allocator) Self {
             return .{
@@ -187,93 +189,3 @@ pub fn SpatialGrid(comptime T: type) type {
         }
     };
 }
-
-/// Side length of a square cell specified in game units.
-const cell_side_length = 7;
-
-pub const CellIndex = struct {
-    x: i16,
-    z: i16,
-
-    pub fn fromPosition(position: FlatVector) CellIndex {
-        return CellIndex{
-            .x = @intFromFloat(position.x / cell_side_length),
-            .z = @intFromFloat(position.z / cell_side_length),
-        };
-    }
-};
-
-/// Range is inclusive. A range from (1, 1) to (2, 2) represent 4 cells.
-pub const CellRange = struct {
-    min: CellIndex,
-    max: CellIndex,
-
-    pub fn fromAABB(aabb: AxisAlignedBoundingBox) CellRange {
-        const min = CellIndex.fromPosition(aabb.min);
-        const max = CellIndex.fromPosition(aabb.max);
-        std.debug.assert(min.x <= max.x);
-        std.debug.assert(min.z <= max.z);
-        return .{ .min = min, .max = max };
-    }
-
-    pub fn countCoveredCells(self: CellRange) usize {
-        return @intCast((self.max.x + 1 - self.min.x) * (self.max.z + 1 - self.min.z));
-    }
-
-    pub fn countTouchingCells(self: CellRange, other: CellRange) usize {
-        const touching_rows =
-            @max(0, 1 + getOverlap(self.min.z, self.max.z, other.min.z, other.max.z));
-        const touching_columns =
-            @max(0, 1 + getOverlap(self.min.x, self.max.x, other.min.x, other.max.x));
-        return touching_rows * touching_columns;
-    }
-
-    pub fn iterator(self: CellRange) Iterator {
-        return .{ .min = self.min, .max = self.max, .current = null };
-    }
-
-    const Iterator = struct {
-        min: CellIndex,
-        max: CellIndex,
-        current: ?CellIndex,
-
-        pub fn next(self: *Iterator) ?CellIndex {
-            if (self.current) |*current| {
-                current.x += 1;
-                if (current.x > self.max.x) {
-                    current.x = self.min.x;
-                    current.z += 1;
-                }
-                if (current.z > self.max.z) {
-                    return null;
-                }
-                return current.*;
-            }
-            self.current = self.min;
-            return self.min;
-        }
-
-        pub fn isOverlappingWithOnlyOneCell(self: Iterator, range: CellRange) bool {
-            if (self.current) |current| {
-                var overlapping_cells: usize = 0;
-
-                if (current.z > self.min.z) {
-                    const already_traversed_block = .{
-                        .min = self.min,
-                        .max = .{ .x = self.max.x, .z = current.z - 1 },
-                    };
-                    overlapping_cells += range.countTouchingCells(already_traversed_block);
-                }
-
-                const current_rows_block = .{
-                    .min = .{ .x = self.min.x, .z = current.z },
-                    .max = .{ .x = current.x, .z = current.z },
-                };
-                overlapping_cells += range.countTouchingCells(current_rows_block);
-
-                return overlapping_cells == 1;
-            }
-            return false;
-        }
-    };
-};
