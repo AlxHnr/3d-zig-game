@@ -3,7 +3,8 @@ const UnorderedCollection = @import("../unordered_collection.zig").UnorderedColl
 const std = @import("std");
 
 /// Collection for storing objects redundantly in multiple cells. Allows fast queries over objects
-/// which are spatially close to each other. Uses contiguous memory where possible.
+/// which are spatially close to each other. Grow-only data structure which uses contiguous memory
+/// where possible.
 pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
     return struct {
         allocator: std.mem.Allocator,
@@ -88,7 +89,8 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             }
         }
 
-        // The specified object id must exist in this grid. Invalidates existing iterators.
+        /// The specified object id must exist in this grid. Invalidates existing iterators.
+        /// Preserves the grids capacity.
         pub fn remove(self: *Self, object_id: u64) void {
             const key_value_pair = self.object_ids_to_cell_items.fetchRemove(object_id);
             std.debug.assert(key_value_pair != null);
