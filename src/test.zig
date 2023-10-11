@@ -508,6 +508,14 @@ test "UnorderedCollection: extra functions" {
 
     try expect(collection.swapRemove(value_6) == null);
     try expect(collection.count() == 0);
+
+    try collection.append(1);
+    try collection.append(2);
+    try collection.append(3);
+    iterator = collection.iterator();
+    collection.resetPreservingCapacity();
+    try expect(iterator.next() == null);
+    try expect(collection.count() == 0);
 }
 
 test "CellIndex" {

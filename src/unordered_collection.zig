@@ -31,6 +31,12 @@ pub fn UnorderedCollection(comptime T: type) type {
             return item;
         }
 
+        /// Empty this collection and invalidate all pointers into it. Existing iterators will
+        /// return null.
+        pub fn resetPreservingCapacity(self: *Self) void {
+            self.segments.clearRetainingCapacity();
+        }
+
         /// Overwrite the given item with the last item in this collection and return the old, now
         /// invalid address of the last item. If the given item points to the last item, it will be
         /// destroyed and null gets returned. Other existing pointers to the given item and to the
