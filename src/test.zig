@@ -511,6 +511,15 @@ test "CellIndex" {
     try expect(index.z == -4);
 }
 
+test "CellIndex.compare()" {
+    try expect(CellIndex.compare(.{ .x = 10, .z = 9 }, .{ .x = 10, .z = 10 }) == .lt);
+    try expect(CellIndex.compare(.{ .x = 100, .z = 9 }, .{ .x = 10, .z = 10 }) == .lt);
+    try expect(CellIndex.compare(.{ .x = 1, .z = 11 }, .{ .x = 10, .z = 10 }) == .gt);
+    try expect(CellIndex.compare(.{ .x = 100, .z = 10 }, .{ .x = 10, .z = 10 }) == .gt);
+    try expect(CellIndex.compare(.{ .x = 1, .z = 10 }, .{ .x = 10, .z = 10 }) == .lt);
+    try expect(CellIndex.compare(.{ .x = 10, .z = 10 }, .{ .x = 10, .z = 10 }) == .eq);
+}
+
 test "CellRange.countCoveredCells()" {
     try expect(CellRange.countCoveredCells(
         .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 1, .z = 1 } },
