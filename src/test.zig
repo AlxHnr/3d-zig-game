@@ -447,23 +447,26 @@ test "UnorderedCollection: iterator" {
 
     // Remove element in the middle.
     iterator = collection.iterator();
-    try expect(iterator.next().?.* == 1);
+    var ptr = iterator.next().?;
+    try expect(ptr.* == 1);
+    _ = collection.swapRemove(ptr);
+    try expect(ptr.* == 3);
     try expect(iterator.next().?.* == 2);
-    collection.swapRemoveCurrentItem(&iterator);
-    try expect(iterator.next().?.* == 3);
     try expect(iterator.next() == null);
 
     // Remove last element.
     iterator = collection.iterator();
-    try expect(iterator.next().?.* == 1);
     try expect(iterator.next().?.* == 3);
-    collection.swapRemoveCurrentItem(&iterator);
+    ptr = iterator.next().?;
+    try expect(ptr.* == 2);
+    _ = collection.swapRemove(ptr);
     try expect(iterator.next() == null);
 
     // Remove only remaining element.
     iterator = collection.iterator();
-    try expect(iterator.next().?.* == 1);
-    collection.swapRemoveCurrentItem(&iterator);
+    ptr = iterator.next().?;
+    try expect(ptr.* == 3);
+    _ = collection.swapRemove(ptr);
     try expect(iterator.next() == null);
 
     // Check collection is empty.

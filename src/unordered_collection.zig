@@ -56,46 +56,14 @@ pub fn UnorderedCollection(comptime T: type) type {
         }
 
         pub fn iterator(self: *Self) Iterator {
-            return .{
-                .segment_iterator = self.segments.iterator(0),
-                .current_item = null,
-                .return_current_item_again = false,
-            };
+            return self.segments.iterator(0);
         }
 
         pub fn constIterator(self: *const Self) std.SegmentedList(T, 0).ConstIterator {
             return self.segments.constIterator(0);
         }
 
-        /// Destroy the current item returned by Iterator.next() and replace it with the last item
-        /// in this collection. This will invalidate all pointers to the current item and the last
-        /// item.
-        pub fn swapRemoveCurrentItem(self: *Self, it: *Iterator) void {
-            std.debug.assert(it.current_item != null);
-            std.debug.assert(it.return_current_item_again == false);
-            if (it.segment_iterator.peek() == null) {
-                _ = self.segments.pop();
-                return;
-            }
-            it.current_item.?.* = self.segments.pop().?;
-            it.return_current_item_again = true;
-        }
-
-        pub const Iterator = struct {
-            segment_iterator: std.SegmentedList(T, 0).Iterator,
-            current_item: ?*T,
-            return_current_item_again: bool,
-
-            pub fn next(self: *Iterator) ?*T {
-                if (self.return_current_item_again) {
-                    self.return_current_item_again = false;
-                    return self.current_item;
-                }
-                self.current_item = self.segment_iterator.next();
-                return self.current_item;
-            }
-        };
-
+        pub const Iterator = std.SegmentedList(T, 0).Iterator;
         pub const ConstIterator = std.SegmentedList(T, 0).ConstIterator;
     };
 }
