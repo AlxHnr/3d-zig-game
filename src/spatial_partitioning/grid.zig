@@ -44,6 +44,15 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             self.cells.deinit();
         }
 
+        /// Reset this grid, including all of its cells, to an empty state. Preserves its allocated
+        /// capacity. Invalidates all existing iterators and pointers to objects in this grid.
+        pub fn resetPreservingCapacity(self: *Self) void {
+            var cell_iterator = self.cells.valueIterator();
+            while (cell_iterator.next()) |cell| {
+                cell.resetPreservingCapacity();
+            }
+        }
+
         /// Inserts copies of the given object into every cell covered by the specified bounding
         /// box. Invalidates existing iterators. The same object id should not be inserted twice.
         pub fn insert(
