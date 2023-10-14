@@ -78,12 +78,26 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
 
         /// Will be invalidated by modifications to this collection.
         pub fn iterator(self: *Self) Iterator {
+            return self.iteratorAdvanced(0, 0);
+        }
+
+        /// Iterates over all items in this collection. Individual cells can be skipped by
+        /// specifying offsets. Empty/non-existing cells are not considered by the offsets. Will be
+        /// invalidated by modifications to this collection.
+        pub fn iteratorAdvanced(
+            self: *Self,
+            /// Cells to skip from the first cell in this collection.
+            offset_from_start: usize,
+            /// Number cells to skip before advancing to the next cell.
+            stride: usize,
+        ) Iterator {
             std.mem.sort(CellIndex, self.ordered_indices.items, {}, lessThan);
             return .{
                 .cells = &self.cells,
                 .cell_iterator = null,
                 .ordered_indices = self.ordered_indices.items,
-                .index = 0,
+                .index = offset_from_start,
+                .step = stride + 1,
             };
         }
 
@@ -92,6 +106,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             cell_iterator: ?UnorderedCollection(T).Iterator,
             ordered_indices: []CellIndex,
             index: usize,
+            step: usize,
 
             /// Returns a mutable pointer for updating objects in-place.
             pub fn next(self: *Iterator) ?*T {
@@ -102,7 +117,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
                 }
                 while (self.index < self.ordered_indices.len) {
                     const cell_index = self.ordered_indices[self.index];
-                    self.index += 1;
+                    self.index += self.step;
 
                     const cell = self.cells.getPtr(cell_index).?;
                     if (cell.count() > 0) {

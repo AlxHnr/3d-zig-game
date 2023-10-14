@@ -791,7 +791,7 @@ test "SpatialGrid: const iterator: region queries" {
     try expect(iterator.next() == null);
 }
 
-test "SpatialCollection" {
+test "SpatialCollection: iterator" {
     var collection = try SpatialCollection.create(std.testing.allocator);
     defer collection.destroy();
 
@@ -830,5 +830,44 @@ test "SpatialCollection" {
 
     iterator = collection.iterator();
     try expect(iterator.next().?.* == 5);
+    try expect(iterator.next() == null);
+}
+
+test "SpatialCollection: iterator: skip cells" {
+    var collection = try SpatialCollection.create(std.testing.allocator);
+    defer collection.destroy();
+
+    try collection.insert(1, 1, .{ .x = -160, .z = -190 });
+    try collection.insert(2, 2, .{ .x = -120, .z = 70 });
+    try collection.insert(3, 3, .{ .x = 20, .z = 70 });
+    try collection.insert(4, 4, .{ .x = 70, .z = 20 });
+    try collection.insert(5, 5, .{ .x = 80, .z = -130 });
+    try collection.insert(6, 6, .{ .x = 20, .z = -130 });
+    try collection.insert(7, 7, .{ .x = 20, .z = -130 });
+
+    var iterator = collection.iteratorAdvanced(4, 0);
+    try expect(iterator.next().?.* == 2);
+    try expect(iterator.next().?.* == 3);
+    try expect(iterator.next() == null);
+
+    iterator = collection.iteratorAdvanced(0, 2);
+    try expect(iterator.next().?.* == 1);
+    try expect(iterator.next().?.* == 4);
+    try expect(iterator.next() == null);
+
+    iterator = collection.iteratorAdvanced(0, 3);
+    try expect(iterator.next().?.* == 1);
+    try expect(iterator.next().?.* == 2);
+    try expect(iterator.next() == null);
+
+    iterator = collection.iteratorAdvanced(2, 2);
+    try expect(iterator.next().?.* == 5);
+    try expect(iterator.next().?.* == 3);
+    try expect(iterator.next() == null);
+
+    iterator = collection.iteratorAdvanced(0, 10000);
+    try expect(iterator.next().?.* == 1);
+    try expect(iterator.next() == null);
+    iterator = collection.iteratorAdvanced(10000, 0);
     try expect(iterator.next() == null);
 }
