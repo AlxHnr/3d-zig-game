@@ -10,6 +10,7 @@ pub fn Index(comptime cell_side_length: u32) type {
     return struct {
         x: i16,
         z: i16,
+        pub const side_length = cell_side_length;
 
         const Self = @This();
 

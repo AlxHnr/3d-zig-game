@@ -11,8 +11,11 @@ const grid_cell_side_length = 7;
 const SpatialGrid = @import("spatial_partitioning/grid.zig").Grid(u32, grid_cell_side_length);
 const SpatialCollection =
     @import("spatial_partitioning/collection.zig").Collection(u32, grid_cell_side_length);
-const CellIndex = @import("spatial_partitioning/cell_index.zig").Index(grid_cell_side_length);
+const CellIndexType = @import("spatial_partitioning/cell_index.zig").Index;
+const CellIndex = CellIndexType(grid_cell_side_length);
 const CellRange = @import("spatial_partitioning/cell_range.zig").Range(grid_cell_side_length);
+const CellLineIterator = @import("spatial_partitioning/cell_line_iterator.zig").Iterator;
+const cellLineIterator = @import("spatial_partitioning/cell_line_iterator.zig").iterator;
 
 const epsilon = math.epsilon;
 const expect = std.testing.expect;
@@ -883,4 +886,103 @@ test "SpatialCollection: iterator: skip cells" {
     try expect(iterator.next() == null);
     iterator = collection.iteratorAdvanced(10000, 0);
     try expect(iterator.next() == null);
+}
+
+fn testCellLineIterator(
+    comptime cell_side_length: u32,
+    iterator: *CellLineIterator(CellIndexType(cell_side_length)),
+    expected_indices: []const CellIndexType(cell_side_length),
+) !void {
+    var index: usize = 0;
+    while (iterator.next()) |cell_index| : (index += 1) {
+        try expect(index < expected_indices.len);
+        try expect(cell_index.compare(expected_indices[index]) == .eq);
+    }
+    try expect(index == expected_indices.len);
+}
+
+test "Cell line iterator" {
+    const cell_size = 5;
+    const CellType = CellIndexType(cell_size);
+
+    var iterator = cellLineIterator(CellType, .{ .x = 3, .z = -3 }, .{ .x = 3, .z = -3 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{.{ .x = 0, .z = 0 }});
+
+    iterator = cellLineIterator(CellType, .{ .x = 5, .z = 5 }, .{ .x = 0, .z = 5 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = 1, .z = 1 }, .{ .x = 0, .z = 1 },
+    });
+
+    iterator = cellLineIterator(CellType, .{ .x = 3, .z = -3 }, .{ .x = 70, .z = -9 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = 0, .z = 0 },   .{ .x = 1, .z = 0 },   .{ .x = 2, .z = 0 },
+        .{ .x = 3, .z = 0 },   .{ .x = 4, .z = 0 },   .{ .x = 5, .z = 0 },
+        .{ .x = 5, .z = -1 },  .{ .x = 6, .z = -1 },  .{ .x = 7, .z = -1 },
+        .{ .x = 8, .z = -1 },  .{ .x = 9, .z = -1 },  .{ .x = 10, .z = -1 },
+        .{ .x = 11, .z = -1 }, .{ .x = 12, .z = -1 }, .{ .x = 13, .z = -1 },
+        .{ .x = 14, .z = -1 },
+    });
+
+    iterator = cellLineIterator(CellType, .{ .x = 3, .z = -3 }, .{ .x = 43, .z = -11 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = 0, .z = 0 },  .{ .x = 1, .z = 0 },  .{ .x = 2, .z = 0 },
+        .{ .x = 2, .z = -1 }, .{ .x = 3, .z = -1 }, .{ .x = 4, .z = -1 },
+        .{ .x = 5, .z = -1 }, .{ .x = 6, .z = -1 }, .{ .x = 7, .z = -1 },
+        .{ .x = 7, .z = -2 }, .{ .x = 8, .z = -2 },
+    });
+
+    // Previous test in reverse direction.
+    iterator = cellLineIterator(CellType, .{ .x = 43, .z = -11 }, .{ .x = 3, .z = -3 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = 8, .z = -2 }, .{ .x = 7, .z = -2 }, .{ .x = 7, .z = -1 },
+        .{ .x = 6, .z = -1 }, .{ .x = 5, .z = -1 }, .{ .x = 4, .z = -1 },
+        .{ .x = 3, .z = -1 }, .{ .x = 2, .z = -1 }, .{ .x = 2, .z = 0 },
+        .{ .x = 1, .z = 0 },  .{ .x = 0, .z = 0 },
+    });
+
+    // 3x3 diagonal traversal in all directions.
+    iterator = cellLineIterator(CellType, .{ .x = 15, .z = 15 }, .{ .x = 25, .z = 25 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = 3, .z = 3 }, .{ .x = 4, .z = 3 }, .{ .x = 4, .z = 4 },
+        .{ .x = 5, .z = 4 }, .{ .x = 5, .z = 5 },
+    });
+    iterator = cellLineIterator(CellType, .{ .x = 25, .z = 25 }, .{ .x = 15, .z = 15 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = 5, .z = 5 }, .{ .x = 4, .z = 5 }, .{ .x = 4, .z = 4 },
+        .{ .x = 3, .z = 4 }, .{ .x = 3, .z = 3 },
+    });
+    iterator = cellLineIterator(CellType, .{ .x = 25, .z = 15 }, .{ .x = 15, .z = 25 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = 5, .z = 3 }, .{ .x = 4, .z = 3 }, .{ .x = 4, .z = 4 },
+        .{ .x = 3, .z = 4 }, .{ .x = 3, .z = 5 },
+    });
+    iterator = cellLineIterator(CellType, .{ .x = 15, .z = 25 }, .{ .x = 25, .z = 15 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = 3, .z = 5 }, .{ .x = 4, .z = 5 }, .{ .x = 4, .z = 4 },
+        .{ .x = 5, .z = 4 }, .{ .x = 5, .z = 3 },
+    });
+
+    // 3x4 diagnoal traversal.
+    iterator = cellLineIterator(CellType, .{ .x = 15, .z = 15 }, .{ .x = 25, .z = 30 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = 3, .z = 3 }, .{ .x = 3, .z = 4 }, .{ .x = 4, .z = 4 },
+        .{ .x = 4, .z = 5 }, .{ .x = 5, .z = 5 }, .{ .x = 5, .z = 6 },
+    });
+
+    // Long line downwards.
+    iterator = cellLineIterator(CellType, .{ .x = -6, .z = -3 }, .{ .x = -10.001, .z = 46 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = -1, .z = 0 }, .{ .x = -1, .z = 1 },  .{ .x = -1, .z = 2 },
+        .{ .x = -1, .z = 3 }, .{ .x = -1, .z = 4 },  .{ .x = -1, .z = 5 },
+        .{ .x = -1, .z = 6 }, .{ .x = -1, .z = 7 },  .{ .x = -1, .z = 8 },
+        .{ .x = -1, .z = 9 }, .{ .x = -1, .z = 10 }, .{ .x = -2, .z = 10 },
+    });
+    // Long line upwards.
+    iterator = cellLineIterator(CellType, .{ .x = -10.001, .z = 46 }, .{ .x = -6, .z = -3 });
+    try testCellLineIterator(cell_size, &iterator, &[_]CellType{
+        .{ .x = -2, .z = 9 }, .{ .x = -1, .z = 9 }, .{ .x = -1, .z = 8 },
+        .{ .x = -1, .z = 7 }, .{ .x = -1, .z = 6 }, .{ .x = -1, .z = 5 },
+        .{ .x = -1, .z = 4 }, .{ .x = -1, .z = 3 }, .{ .x = -1, .z = 2 },
+        .{ .x = -1, .z = 1 }, .{ .x = -1, .z = 0 },
+    });
 }
