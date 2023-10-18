@@ -97,6 +97,19 @@ pub const Rectangle = struct {
         };
     }
 
+    /// Returned bounding box may be larger than the rotated rectangle.
+    pub fn getOuterBoundingBoxInGameCoordinates(self: Rectangle) AxisAlignedBoundingBox {
+        const corners = self.getCornersInGameCoordinates();
+        var result = .{ .min = corners[0], .max = corners[0] };
+        for (corners[1..]) |corner| {
+            result.min.x = @min(result.min.x, corner.x);
+            result.min.z = @min(result.min.z, corner.z);
+            result.max.x = @max(result.max.x, corner.x);
+            result.max.z = @max(result.max.z, corner.z);
+        }
+        return result;
+    }
+
     fn collidesWithRotatedPoint(self: Rectangle, rotated_point: math.FlatVector) bool {
         return self.aabb.collidesWithPoint(rotated_point);
     }
@@ -197,6 +210,13 @@ pub const Circle = struct {
             math.FlatVector{ .x = 0, .z = displacement_z };
 
         return rectangle.inverse_rotation.rotate(displacement_vector);
+    }
+
+    pub fn getOuterBoundingBoxInGameCoordinates(self: Circle) AxisAlignedBoundingBox {
+        return .{
+            .min = .{ .x = self.position.x - self.radius, .z = self.position.z - self.radius },
+            .max = .{ .x = self.position.x + self.radius, .z = self.position.z + self.radius },
+        };
     }
 
     fn getSmallestValueBasedOnAbsolute(a: f32, b: f32) f32 {
