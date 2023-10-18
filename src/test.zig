@@ -986,3 +986,92 @@ test "Cell line iterator" {
         .{ .x = -1, .z = 1 }, .{ .x = -1, .z = 0 },
     });
 }
+
+test "SpatialGrid: const straight line iterator" {
+    var grid = SpatialGrid.create(std.testing.allocator);
+    defer grid.destroy();
+
+    const factor = @as(f32, @floatFromInt(grid_cell_side_length)) * 0.4;
+    try grid.insert(1, 1, .{
+        .min = .{ .x = -16 * factor, .z = -19 * factor },
+        .max = .{ .x = -7 * factor, .z = -3 * factor },
+    });
+    try grid.insert(2, 2, .{
+        .min = .{ .x = -12 * factor, .z = 7 * factor },
+        .max = .{ .x = -1 * factor, .z = 13 * factor },
+    });
+    try grid.insert(3, 3, .{
+        .min = .{ .x = 2 * factor, .z = 7 * factor },
+        .max = .{ .x = 8 * factor, .z = 13 * factor },
+    });
+    try grid.insert(4, 4, .{
+        .min = .{ .x = 7 * factor, .z = 2 * factor },
+        .max = .{ .x = 13 * factor, .z = 7 * factor },
+    });
+    try grid.insert(5, 5, .{
+        .min = .{ .x = 8 * factor, .z = -13 * factor },
+        .max = .{ .x = 13 * factor, .z = -1 * factor },
+    });
+    try grid.insert(6, 6, .{
+        .min = .{ .x = 3 * factor, .z = -13 * factor },
+        .max = .{ .x = 13 * factor, .z = -1 * factor },
+    });
+    try grid.insert(7, 7, .{
+        .min = .{ .x = 3 * factor, .z = -13 * factor },
+        .max = .{ .x = 13 * factor, .z = -1 * factor },
+    });
+
+    var iterator = grid.constIteratorStraightLine(
+        .{ .x = 0 * factor, .z = 0 * factor },
+        .{ .x = 0 * factor, .z = 0 * factor },
+    );
+    try expect(iterator.next() == null);
+    iterator = grid.constIteratorStraightLine(
+        .{ .x = -7000 * factor, .z = 3000 * factor },
+        .{ .x = -7000 * factor, .z = 3000 * factor },
+    );
+    try expect(iterator.next() == null);
+
+    iterator = grid.constIteratorStraightLine(
+        .{ .x = -9 * factor, .z = -4.5 * factor },
+        .{ .x = 12 * factor, .z = 10 * factor },
+    );
+    try expect(iterator.next().? == 1);
+    try expect(iterator.next().? == 1);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next().? == 4);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next() == null);
+
+    iterator = grid.constIteratorStraightLine(
+        .{ .x = -2 * factor, .z = -2 * factor },
+        .{ .x = 12 * factor, .z = 15 * factor },
+    );
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next().? == 4);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next().? == 3);
+    try expect(iterator.next() == null);
+
+    iterator = grid.constIteratorStraightLine(
+        .{ .x = -7 * factor, .z = 7 * factor },
+        .{ .x = 3 * factor, .z = -1 * factor },
+    );
+    try expect(iterator.next().? == 2);
+    try expect(iterator.next().? == 2);
+    try expect(iterator.next().? == 6);
+    try expect(iterator.next().? == 7);
+    try expect(iterator.next() == null);
+
+    iterator = grid.constIteratorStraightLine(
+        .{ .x = 0 * factor, .z = 0 * factor },
+        .{ .x = 3 * factor, .z = -1 * factor },
+    );
+    try expect(iterator.next().? == 6);
+    try expect(iterator.next().? == 7);
+    try expect(iterator.next() == null);
+}

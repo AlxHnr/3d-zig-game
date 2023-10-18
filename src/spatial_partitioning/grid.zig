@@ -1,5 +1,7 @@
 const AxisAlignedBoundingBox = @import("../collision.zig").AxisAlignedBoundingBox;
+const FlatVector = @import("../math.zig").FlatVector;
 const UnorderedCollection = @import("../unordered_collection.zig").UnorderedCollection;
+const cell_line_iterator = @import("cell_line_iterator.zig");
 const std = @import("std");
 
 /// Collection for storing objects redundantly in multiple cells. Allows fast queries over objects
@@ -135,6 +137,20 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             };
         }
 
+        /// Visit all cells trough which the specified line passes. Objects occupying multiple cells
+        /// may be visited multiple times. Will be invalidated by updates to the grid.
+        pub fn constIteratorStraightLine(
+            self: *Self,
+            line_start: FlatVector,
+            line_end: FlatVector,
+        ) ConstIteratorStraightLine {
+            return .{
+                .cells = &self.cells,
+                .index_iterator = cell_line_iterator.iterator(CellIndex, line_start, line_end),
+                .cell_iterator = null,
+            };
+        }
+
         pub const ConstIterator = struct {
             cells: *const std.AutoHashMap(CellIndex, Cell),
             range_iterator: CellRange.Iterator,
@@ -146,11 +162,9 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
                 }
                 while (self.range_iterator.next()) |cell_index| {
                     if (self.cells.get(cell_index)) |cell| {
-                        if (cell.count() > 0) {
-                            self.cell_iterator = cell.constIterator();
-                            if (self.nextFromCellIterator()) |object| {
-                                return object;
-                            }
+                        self.cell_iterator = cell.constIterator();
+                        if (self.nextFromCellIterator()) |object| {
+                            return object;
                         }
                     }
                 }
@@ -163,6 +177,37 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
                         if (self.range_iterator.isOverlappingWithOnlyOneCell(item.cell_range)) {
                             return item.object;
                         }
+                    }
+                    self.cell_iterator = null;
+                }
+                return null;
+            }
+        };
+
+        pub const ConstIteratorStraightLine = struct {
+            cells: *const std.AutoHashMap(CellIndex, Cell),
+            index_iterator: cell_line_iterator.Iterator(CellIndex),
+            cell_iterator: ?Cell.ConstIterator,
+
+            pub fn next(self: *ConstIteratorStraightLine) ?T {
+                if (self.nextFromCellIterator()) |object| {
+                    return object;
+                }
+                while (self.index_iterator.next()) |cell_index| {
+                    if (self.cells.get(cell_index)) |cell| {
+                        self.cell_iterator = cell.constIterator();
+                        if (self.nextFromCellIterator()) |object| {
+                            return object;
+                        }
+                    }
+                }
+                return null;
+            }
+
+            fn nextFromCellIterator(self: *ConstIteratorStraightLine) ?T {
+                if (self.cell_iterator) |*cell_iterator| {
+                    if (cell_iterator.next()) |item| {
+                        return item.object;
                     }
                     self.cell_iterator = null;
                 }
