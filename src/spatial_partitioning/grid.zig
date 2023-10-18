@@ -129,7 +129,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
 
         /// Will be invalidated by updates to this grid. Objects occupying multiple cells will only
         /// be visited once.
-        pub fn constIterator(self: *Self, region: AxisAlignedBoundingBox) ConstIterator {
+        pub fn constIterator(self: *const Self, region: AxisAlignedBoundingBox) ConstIterator {
             return .{
                 .cells = &self.cells,
                 .range_iterator = CellRange.fromAABB(region).iterator(),
@@ -140,7 +140,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
         /// Visit all cells trough which the specified line passes. Objects occupying multiple cells
         /// may be visited multiple times. Will be invalidated by updates to the grid.
         pub fn constIteratorStraightLine(
-            self: *Self,
+            self: *const Self,
             line_start: FlatVector,
             line_end: FlatVector,
         ) ConstIteratorStraightLine {
@@ -161,7 +161,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
                     return object;
                 }
                 while (self.range_iterator.next()) |cell_index| {
-                    if (self.cells.get(cell_index)) |cell| {
+                    if (self.cells.getPtr(cell_index)) |cell| {
                         self.cell_iterator = cell.constIterator();
                         if (self.nextFromCellIterator()) |object| {
                             return object;
@@ -194,7 +194,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
                     return object;
                 }
                 while (self.index_iterator.next()) |cell_index| {
-                    if (self.cells.get(cell_index)) |cell| {
+                    if (self.cells.getPtr(cell_index)) |cell| {
                         self.cell_iterator = cell.constIterator();
                         if (self.nextFromCellIterator()) |object| {
                             return object;
