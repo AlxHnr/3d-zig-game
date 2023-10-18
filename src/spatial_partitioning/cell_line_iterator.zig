@@ -32,7 +32,6 @@ pub fn iterator(
             .x = if (direction.x < 0) -1 else 1,
             .z = if (direction.z < 0) -1 else 1,
         },
-        .is_finished = false,
         .step_lengths_to_next_axis = step_lengths_to_next_axis,
         .distance_to_next_axis = distance_to_next_axis,
     };
@@ -43,24 +42,23 @@ pub fn Iterator(comptime CellIndex: type) type {
         current: CellIndex,
         last: CellIndex,
         step: struct { x: i2, z: i2 },
-        is_finished: bool,
         step_lengths_to_next_axis: math.FlatVector,
         distance_to_next_axis: math.FlatVector,
 
         const Self = @This();
 
         pub fn next(self: *Self) ?CellIndex {
-            if (self.is_finished) {
+            if (self.step.x == 0 and self.step.z == 0) {
                 return null;
             }
-            // `self.last` may be off by a single step, so check if we have surpassed it.
-            self.is_finished =
-                ((self.step.x < 0 and self.current.x <= self.last.x) or
-                (self.step.x > 0 and self.current.x >= self.last.x)) and
-                ((self.step.z < 0 and self.current.z <= self.last.z) or
-                (self.step.z > 0 and self.current.z >= self.last.z));
 
             const result = self.current;
+            if (result.x == self.last.x) {
+                self.step.x = 0;
+            }
+            if (result.z == self.last.z) {
+                self.step.z = 0;
+            }
             if (self.distance_to_next_axis.z < self.distance_to_next_axis.x) {
                 self.distance_to_next_axis.z += self.step_lengths_to_next_axis.z;
                 self.current.z += self.step.z;

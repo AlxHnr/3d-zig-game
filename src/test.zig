@@ -962,7 +962,7 @@ test "Cell line iterator" {
         .{ .x = 5, .z = 4 }, .{ .x = 5, .z = 3 },
     });
 
-    // 3x4 diagnoal traversal.
+    // 3x4 diagonal traversal.
     iterator = cellLineIterator(CellType, .{ .x = 15, .z = 15 }, .{ .x = 25, .z = 30 });
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = 3, .z = 3 }, .{ .x = 3, .z = 4 }, .{ .x = 4, .z = 4 },
@@ -972,10 +972,10 @@ test "Cell line iterator" {
     // Long line downwards.
     iterator = cellLineIterator(CellType, .{ .x = -6, .z = -3 }, .{ .x = -10.001, .z = 46 });
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
-        .{ .x = -1, .z = 0 }, .{ .x = -1, .z = 1 },  .{ .x = -1, .z = 2 },
-        .{ .x = -1, .z = 3 }, .{ .x = -1, .z = 4 },  .{ .x = -1, .z = 5 },
-        .{ .x = -1, .z = 6 }, .{ .x = -1, .z = 7 },  .{ .x = -1, .z = 8 },
-        .{ .x = -1, .z = 9 }, .{ .x = -1, .z = 10 }, .{ .x = -2, .z = 10 },
+        .{ .x = -1, .z = 0 }, .{ .x = -1, .z = 1 }, .{ .x = -1, .z = 2 },
+        .{ .x = -1, .z = 3 }, .{ .x = -1, .z = 4 }, .{ .x = -1, .z = 5 },
+        .{ .x = -1, .z = 6 }, .{ .x = -1, .z = 7 }, .{ .x = -1, .z = 8 },
+        .{ .x = -1, .z = 9 }, .{ .x = -1, .z = 9 }, .{ .x = -2, .z = 9 },
     });
     // Long line upwards.
     iterator = cellLineIterator(CellType, .{ .x = -10.001, .z = 46 }, .{ .x = -6, .z = -3 });
