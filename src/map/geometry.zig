@@ -9,6 +9,7 @@ const rendering = @import("../rendering.zig");
 const meshes = @import("../meshes.zig");
 const math = @import("../math.zig");
 const ThirdPersonCamera = @import("../third_person_camera.zig").Camera;
+const SpatialGrid = @import("../spatial_partitioning/grid.zig").Grid;
 
 pub const Geometry = struct {
     allocator: std.mem.Allocator,
@@ -25,6 +26,11 @@ pub const Geometry = struct {
     wall_renderer: rendering.WallRenderer,
     walls_have_changed: bool,
 
+    spatial_wall_index: struct {
+        all: SpatialGrid(collision.Rectangle, spatial_grid_cell_size),
+        solid: SpatialGrid(collision.Rectangle, spatial_grid_cell_size),
+    },
+
     /// Floors in this array will be rendered last to first without overpainting one another. This
     /// leads to the last floor in the array being shown above all others.
     floors: std.ArrayList(Floor),
@@ -35,6 +41,8 @@ pub const Geometry = struct {
     billboard_objects: std.ArrayList(BillboardObject),
     billboard_renderer: rendering.BillboardRenderer,
     billboards_have_changed: bool,
+
+    const spatial_grid_cell_size = 20;
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !Geometry {
@@ -53,6 +61,10 @@ pub const Geometry = struct {
             },
             .wall_renderer = wall_renderer,
             .walls_have_changed = false,
+            .spatial_wall_index = .{
+                .all = SpatialGrid(collision.Rectangle, spatial_grid_cell_size).create(allocator),
+                .solid = SpatialGrid(collision.Rectangle, spatial_grid_cell_size).create(allocator),
+            },
             .floors = std.ArrayList(Floor).init(allocator),
             .floor_animation_state = animation.FourStepCycle.create(),
             .floor_renderer = floor_renderer,
@@ -69,6 +81,9 @@ pub const Geometry = struct {
 
         self.floor_renderer.destroy();
         self.floors.deinit();
+
+        self.spatial_wall_index.solid.destroy();
+        self.spatial_wall_index.all.destroy();
 
         self.wall_renderer.destroy();
         self.walls.translucent.deinit();
@@ -262,6 +277,30 @@ pub const Geometry = struct {
             start_position,
             end_position,
         );
+        errdefer if (Wall.isFence(wall_type)) {
+            _ = self.walls.translucent.pop();
+        } else {
+            _ = self.walls.solid.pop();
+        };
+
+        try self.spatial_wall_index.all.insert(
+            wall.boundaries,
+            wall.object_id,
+            wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
+        );
+        errdefer self.spatial_wall_index.all.remove(wall.object_id);
+
+        if (!Wall.isFence(wall_type)) {
+            try self.spatial_wall_index.solid.insert(
+                wall.boundaries,
+                wall.object_id,
+                wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
+            );
+        }
+        errdefer if (!Wall.isFence(wall_type)) {
+            self.spatial_wall_index.solid.remove(wall.object_id);
+        };
+
         self.walls_have_changed = true;
         return wall.object_id;
     }
@@ -272,7 +311,7 @@ pub const Geometry = struct {
         object_id: u64,
         start_position: math.FlatVector,
         end_position: math.FlatVector,
-    ) void {
+    ) !void {
         if (self.findWall(object_id)) |wall| {
             const tint = wall.tint;
             const wall_type = wall.wall_type;
@@ -284,6 +323,21 @@ pub const Geometry = struct {
             );
             wall.tint = tint;
             self.walls_have_changed = true;
+
+            self.spatial_wall_index.all.remove(object_id);
+            try self.spatial_wall_index.all.insert(
+                wall.boundaries,
+                wall.object_id,
+                wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
+            );
+            if (!Wall.isFence(wall.wall_type)) {
+                self.spatial_wall_index.solid.remove(object_id);
+                try self.spatial_wall_index.solid.insert(
+                    wall.boundaries,
+                    wall.object_id,
+                    wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
+                );
+            }
         }
     }
 
@@ -361,6 +415,8 @@ pub const Geometry = struct {
         for (self.walls.solid.items, 0..) |*wall, index| {
             if (wall.object_id == object_id) {
                 _ = self.walls.solid.orderedRemove(index);
+                self.spatial_wall_index.all.remove(object_id);
+                self.spatial_wall_index.solid.remove(object_id);
                 self.walls_have_changed = true;
                 return;
             }
@@ -368,6 +424,7 @@ pub const Geometry = struct {
         for (self.walls.translucent.items, 0..) |*wall, index| {
             if (wall.object_id == object_id) {
                 _ = self.walls.translucent.orderedRemove(index);
+                self.spatial_wall_index.all.remove(object_id);
                 self.walls_have_changed = true;
                 return;
             }
@@ -475,13 +532,17 @@ pub const Geometry = struct {
         var found_collision = false;
         var displaced_circle = circle;
 
+        const spatial_index = if (ignore_fences)
+            &self.spatial_wall_index.solid
+        else
+            &self.spatial_wall_index.all;
+
         // Move displaced_circle out of all walls.
-        for (self.walls.solid.items) |wall| {
-            updateDisplacedCircle(wall, &displaced_circle, &found_collision);
-        }
-        if (!ignore_fences) {
-            for (self.walls.translucent.items) |wall| {
-                updateDisplacedCircle(wall, &displaced_circle, &found_collision);
+        var iterator = spatial_index.constIterator(circle.getOuterBoundingBoxInGameCoordinates());
+        while (iterator.next()) |boundaries| {
+            if (displaced_circle.collidesWithRectangle(boundaries)) |displacement_vector| {
+                displaced_circle.position = displaced_circle.position.add(displacement_vector);
+                found_collision = true;
             }
         }
 
@@ -493,8 +554,9 @@ pub const Geometry = struct {
 
     /// Check if two points are separated by a solid wall. Fences are not solid.
     pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVector, b: math.FlatVector) bool {
-        for (self.walls.solid.items) |wall| {
-            if (wall.boundaries.collidesWithLine(a, b)) {
+        var iterator = self.spatial_wall_index.solid.constIteratorStraightLine(a, b);
+        while (iterator.next()) |boundaries| {
+            if (boundaries.collidesWithLine(a, b)) {
                 return true;
             }
         }
@@ -531,15 +593,6 @@ pub const Geometry = struct {
             }
         }
         return null;
-    }
-
-    /// If the given wall collides with the circle, move the circle out of the wall and set
-    /// found_collision to true. Without a collision this boolean will remain unchanged.
-    fn updateDisplacedCircle(wall: Wall, circle: *collision.Circle, found_collision: *bool) void {
-        if (circle.collidesWithRectangle(wall.boundaries)) |displacement_vector| {
-            circle.position = circle.position.add(displacement_vector);
-            found_collision.* = true;
-        }
     }
 
     fn getCloserRayCollision(

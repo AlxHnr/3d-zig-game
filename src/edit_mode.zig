@@ -51,11 +51,11 @@ pub const State = struct {
         map: *Map,
         mouse_ray: collision.Ray3d,
         camera_direction: math.FlatVector,
-    ) void {
+    ) !void {
         switch (self.mode) {
             .insert_objects => {
                 if (cast3DRayToGround(mouse_ray)) |ground_position| {
-                    self.updateCurrentlyInsertedObject(map, ground_position, camera_direction);
+                    try self.updateCurrentlyInsertedObject(map, ground_position, camera_direction);
                 }
             },
             .delete_objects => {
@@ -192,11 +192,11 @@ pub const State = struct {
         map: *Map,
         object_end_position: math.FlatVector,
         camera_direction: math.FlatVector,
-    ) void {
+    ) !void {
         if (self.currently_edited_object) |object| {
             switch (self.object_type_to_insert.used_field) {
                 .wall => {
-                    map.geometry
+                    try map.geometry
                         .updateWall(object.object_id, object.start_position, object_end_position);
                 },
                 .floor => {

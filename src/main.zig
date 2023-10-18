@@ -122,7 +122,7 @@ const ProgramContext = struct {
             mouse_position.y,
             self.screen_dimensions,
         );
-        self.edit_mode_state.updateCurrentActionTarget(
+        try self.edit_mode_state.updateCurrentActionTarget(
             self.game_context.getMutableMap(),
             ray,
             self.game_context.getCameraDirection().toFlatVector(),
