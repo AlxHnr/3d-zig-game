@@ -1,15 +1,15 @@
+const Error = @import("../error.zig").Error;
+const ThirdPersonCamera = @import("../third_person_camera.zig").Camera;
 const animation = @import("../animation.zig");
 const collision = @import("../collision.zig");
-const std = @import("std");
-const util = @import("../util.zig");
-const textures = @import("../textures.zig");
 const gl = @import("gl");
-const Error = @import("../error.zig").Error;
-const rendering = @import("../rendering.zig");
-const meshes = @import("../meshes.zig");
 const math = @import("../math.zig");
-const ThirdPersonCamera = @import("../third_person_camera.zig").Camera;
-const SpatialGrid = @import("../spatial_partitioning/grid.zig").Grid;
+const meshes = @import("../meshes.zig");
+const rendering = @import("../rendering.zig");
+const spatial_partitioning = @import("../spatial_partitioning/grid.zig");
+const std = @import("std");
+const textures = @import("../textures.zig");
+const util = @import("../util.zig");
 
 pub const Geometry = struct {
     allocator: std.mem.Allocator,
@@ -26,10 +26,7 @@ pub const Geometry = struct {
     wall_renderer: rendering.WallRenderer,
     walls_have_changed: bool,
 
-    spatial_wall_index: struct {
-        all: SpatialGrid(collision.Rectangle, spatial_grid_cell_size),
-        solid: SpatialGrid(collision.Rectangle, spatial_grid_cell_size),
-    },
+    spatial_wall_index: struct { all: SpatialGrid, solid: SpatialGrid },
 
     /// Floors in this array will be rendered last to first without overpainting one another. This
     /// leads to the last floor in the array being shown above all others.
@@ -43,6 +40,7 @@ pub const Geometry = struct {
     billboards_have_changed: bool,
 
     const spatial_grid_cell_size = 20;
+    const SpatialGrid = spatial_partitioning.Grid(collision.Rectangle, spatial_grid_cell_size);
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !Geometry {
@@ -62,8 +60,8 @@ pub const Geometry = struct {
             .wall_renderer = wall_renderer,
             .walls_have_changed = false,
             .spatial_wall_index = .{
-                .all = SpatialGrid(collision.Rectangle, spatial_grid_cell_size).create(allocator),
-                .solid = SpatialGrid(collision.Rectangle, spatial_grid_cell_size).create(allocator),
+                .all = SpatialGrid.create(allocator),
+                .solid = SpatialGrid.create(allocator),
             },
             .floors = std.ArrayList(Floor).init(allocator),
             .floor_animation_state = animation.FourStepCycle.create(),
@@ -283,19 +281,11 @@ pub const Geometry = struct {
             _ = self.walls.solid.pop();
         };
 
-        try self.spatial_wall_index.all.insertIntoArea(
-            wall.boundaries,
-            wall.object_id,
-            wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
-        );
+        try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
         errdefer self.spatial_wall_index.all.remove(wall.object_id);
 
         if (!Wall.isFence(wall_type)) {
-            try self.spatial_wall_index.solid.insertIntoArea(
-                wall.boundaries,
-                wall.object_id,
-                wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
-            );
+            try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
         }
         errdefer if (!Wall.isFence(wall_type)) {
             self.spatial_wall_index.solid.remove(wall.object_id);
@@ -325,18 +315,10 @@ pub const Geometry = struct {
             self.walls_have_changed = true;
 
             self.spatial_wall_index.all.remove(object_id);
-            try self.spatial_wall_index.all.insertIntoArea(
-                wall.boundaries,
-                wall.object_id,
-                wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
-            );
+            try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
             if (!Wall.isFence(wall.wall_type)) {
                 self.spatial_wall_index.solid.remove(object_id);
-                try self.spatial_wall_index.solid.insertIntoArea(
-                    wall.boundaries,
-                    wall.object_id,
-                    wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
-                );
+                try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
             }
         }
     }
@@ -561,6 +543,14 @@ pub const Geometry = struct {
             }
         }
         return false;
+    }
+
+    fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !void {
+        try grid.insertIntoArea(
+            wall.boundaries,
+            wall.object_id,
+            wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
+        );
     }
 
     fn findWall(self: *Geometry, object_id: u64) ?*Wall {
