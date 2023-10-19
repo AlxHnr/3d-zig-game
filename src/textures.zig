@@ -50,7 +50,7 @@ pub const TileableArrayTexture = struct {
 
         for (std.enums.values(LayerId), 0..) |value, index| {
             var path_buffer: [64]u8 = undefined;
-            const texture_path = try std.fmt.bufPrintZ(path_buffer[0..], "assets/{s}.png", .{
+            const texture_path = try std.fmt.bufPrintZ(&path_buffer, "assets/{s}.png", .{
                 @tagName(value),
             });
 

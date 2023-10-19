@@ -349,7 +349,7 @@ const ChoiceBox = struct {
     pub fn destroy(self: *ChoiceBox, allocator: std.mem.Allocator) void {
         allocator.destroy(self.split_widget);
         allocator.free(self.widget_list);
-        freeAllTextBlocks(allocator, self.text_blocks[0..]);
+        freeAllTextBlocks(allocator, self.text_blocks);
     }
 
     // Returns true if this dialog is still needed.
