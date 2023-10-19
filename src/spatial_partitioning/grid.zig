@@ -75,6 +75,31 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             try self.insertRaw(object, object_id, &iterator, cell_range.countCoveredCells());
         }
 
+        /// Insert copies of the given object into every cell which intersects with the edges/sides
+        /// of the specified polygon. A cell which intersects with multiple edges will still contain
+        /// only one single copy. The first and last vertex of the polygon represent an edge.
+        /// Invalidates existing iterators. The same object id should not be inserted twice.
+        pub fn insertIntoPolygonBorders(
+            self: *Self,
+            object: T,
+            object_id: u64,
+            polygon_vertices: []const FlatVector,
+        ) !void {
+            var indices = std.AutoHashMap(CellIndex, void).init(self.allocator);
+            defer indices.deinit();
+
+            for (polygon_vertices, 1..) |vertex, next_index| {
+                const next_vertex = polygon_vertices[@mod(next_index, polygon_vertices.len)];
+                var iterator = cell_line_iterator.iterator(CellIndex, vertex, next_vertex);
+                while (iterator.next()) |cell_index| {
+                    try indices.put(cell_index, {});
+                }
+            }
+
+            var iterator = KeyIteratorWrapper{ .iterator = indices.keyIterator() };
+            try self.insertRaw(object, object_id, &iterator, indices.count());
+        }
+
         /// The specified object id must exist in this grid. Invalidates existing iterators.
         /// Preserves the grids capacity.
         pub fn remove(self: *Self, object_id: u64) void {
@@ -198,6 +223,18 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
                 }
             }
         }
+
+        /// Dereferences results from the wrapped iterator.
+        const KeyIteratorWrapper = struct {
+            iterator: std.AutoHashMap(CellIndex, void).KeyIterator,
+
+            fn next(self: *KeyIteratorWrapper) ?CellIndex {
+                if (self.iterator.next()) |ptr| {
+                    return ptr.*;
+                }
+                return null;
+            }
+        };
 
         fn ConstBaseIterator(comptime IndexIterator: type) type {
             return struct {

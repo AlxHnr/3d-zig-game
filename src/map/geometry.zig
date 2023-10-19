@@ -546,10 +546,10 @@ pub const Geometry = struct {
     }
 
     fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !void {
-        try grid.insertIntoArea(
+        try grid.insertIntoPolygonBorders(
             wall.boundaries,
             wall.object_id,
-            wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
+            &wall.boundaries.getCornersInGameCoordinates(),
         );
     }
 
