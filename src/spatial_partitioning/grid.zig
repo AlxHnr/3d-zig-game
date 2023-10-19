@@ -71,43 +71,8 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             area: AxisAlignedBoundingBox,
         ) !void {
             const cell_range = CellRange.fromAABB(area);
-
-            const cell_reference_list = .{
-                .items = try self.allocator.alloc(CellReference, cell_range.countCoveredCells()),
-            };
-            errdefer self.allocator.free(cell_reference_list.items);
-
-            try self.object_ids_to_cell_references.putNoClobber(object_id, cell_reference_list);
-            errdefer _ = self.object_ids_to_cell_references.remove(object_id);
-
-            var cell_counter: usize = 0;
-            errdefer self.destroyPartialReferencesDuringInsert(
-                cell_reference_list.items[0..cell_counter],
-            );
-
-            var it = cell_range.iterator();
-            while (it.next()) |cell_index| : (cell_counter += 1) {
-                const cell = try self.cells.getOrPut(cell_index);
-                if (!cell.found_existing) {
-                    cell.value_ptr.* = UnorderedCollection(T).create(self.allocator);
-                }
-                errdefer if (!cell.found_existing) {
-                    cell.value_ptr.destroy();
-                    _ = self.cells.remove(cell_index);
-                };
-
-                const object_ptr = try cell.value_ptr.appendUninitialized();
-                errdefer cell.value_ptr.removeLastAppendedItem();
-                object_ptr.* = object;
-
-                try self.object_ptrs_to_object_ids.putNoClobber(object_ptr, object_id);
-                errdefer _ = self.object_ptrs_to_object_ids.remove(object_ptr);
-
-                cell_reference_list.items[cell_counter] = .{
-                    .cell_index = cell_index,
-                    .object_ptr = object_ptr,
-                };
-            }
+            var iterator = cell_range.iterator();
+            try self.insertRaw(object, object_id, &iterator, cell_range.countCoveredCells());
         }
 
         /// The specified object id must exist in this grid. Invalidates existing iterators.
@@ -170,6 +135,53 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
 
         const CellReference = struct { cell_index: CellIndex, object_ptr: *T };
         const CellReferenceList = struct { items: []CellReference };
+
+        fn insertRaw(
+            self: *Self,
+            object: T,
+            object_id: u64,
+            /// Iterator which returns all indices into which a copy of the given object should be
+            /// inserted.
+            cell_index_iterator: anytype,
+            /// Total amount of indices returned by `cell_index_iterator`.
+            total_cell_count: usize,
+        ) !void {
+            const cell_reference_list = .{
+                .items = try self.allocator.alloc(CellReference, total_cell_count),
+            };
+            errdefer self.allocator.free(cell_reference_list.items);
+
+            try self.object_ids_to_cell_references.putNoClobber(object_id, cell_reference_list);
+            errdefer _ = self.object_ids_to_cell_references.remove(object_id);
+
+            var cell_counter: usize = 0;
+            errdefer self.destroyPartialReferencesDuringInsert(
+                cell_reference_list.items[0..cell_counter],
+            );
+
+            while (cell_index_iterator.next()) |cell_index| : (cell_counter += 1) {
+                const cell = try self.cells.getOrPut(cell_index);
+                if (!cell.found_existing) {
+                    cell.value_ptr.* = UnorderedCollection(T).create(self.allocator);
+                }
+                errdefer if (!cell.found_existing) {
+                    cell.value_ptr.destroy();
+                    _ = self.cells.remove(cell_index);
+                };
+
+                const object_ptr = try cell.value_ptr.appendUninitialized();
+                errdefer cell.value_ptr.removeLastAppendedItem();
+                object_ptr.* = object;
+
+                try self.object_ptrs_to_object_ids.putNoClobber(object_ptr, object_id);
+                errdefer _ = self.object_ptrs_to_object_ids.remove(object_ptr);
+
+                cell_reference_list.items[cell_counter] = .{
+                    .cell_index = cell_index,
+                    .object_ptr = object_ptr,
+                };
+            }
+        }
 
         fn destroyPartialReferencesDuringInsert(
             self: *Self,
