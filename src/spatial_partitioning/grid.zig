@@ -61,15 +61,16 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             }
         }
 
-        /// Inserts copies of the given object into every cell covered by the specified bounding
-        /// box. Invalidates existing iterators. The same object id should not be inserted twice.
-        pub fn insert(
+        /// Insert copies of the given object into every cell which intersects with the specified
+        /// bounding box. Invalidates existing iterators. The same object id should not be inserted
+        /// twice.
+        pub fn insertIntoArea(
             self: *Self,
             object: T,
             object_id: u64,
-            object_bounding_box: AxisAlignedBoundingBox,
+            area: AxisAlignedBoundingBox,
         ) !void {
-            const cell_range = CellRange.fromAABB(object_bounding_box);
+            const cell_range = CellRange.fromAABB(area);
 
             const cell_reference_list = .{
                 .items = try self.allocator.alloc(CellReference, cell_range.countCoveredCells()),
@@ -135,21 +136,21 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
 
         /// Will be invalidated by updates to this grid. Objects occupying multiple cells will only
         /// be visited once.
-        pub fn constIterator(self: *const Self, region: AxisAlignedBoundingBox) ConstIterator {
+        pub fn areaIterator(self: *const Self, area: AxisAlignedBoundingBox) ConstAreaIterator {
             return .{
                 .cells = &self.cells,
-                .range_iterator = CellRange.fromAABB(region).iterator(),
+                .range_iterator = CellRange.fromAABB(area).iterator(),
                 .cell_iterator = null,
             };
         }
 
         /// Visit all cells trough which the specified line passes. Objects occupying multiple cells
         /// may be visited multiple times. Will be invalidated by updates to the grid.
-        pub fn constIteratorStraightLine(
+        pub fn straightLineIterator(
             self: *const Self,
             line_start: FlatVector,
             line_end: FlatVector,
-        ) ConstIteratorStraightLine {
+        ) ConstStraightLineIterator {
             return .{
                 .cells = &self.cells,
                 .index_iterator = cell_line_iterator.iterator(CellIndex, line_start, line_end),
@@ -157,12 +158,12 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             };
         }
 
-        pub const ConstIterator = struct {
+        pub const ConstAreaIterator = struct {
             cells: *const std.AutoHashMap(CellIndex, Cell),
             range_iterator: CellRange.Iterator,
             cell_iterator: ?Cell.ConstIterator,
 
-            pub fn next(self: *ConstIterator) ?T {
+            pub fn next(self: *ConstAreaIterator) ?T {
                 if (self.nextFromCellIterator()) |object| {
                     return object;
                 }
@@ -177,7 +178,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
                 return null;
             }
 
-            fn nextFromCellIterator(self: *ConstIterator) ?T {
+            fn nextFromCellIterator(self: *ConstAreaIterator) ?T {
                 if (self.cell_iterator) |*cell_iterator| {
                     while (cell_iterator.next()) |item| {
                         if (self.range_iterator.isOverlappingWithOnlyOneCell(item.cell_range)) {
@@ -190,12 +191,12 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             }
         };
 
-        pub const ConstIteratorStraightLine = struct {
+        pub const ConstStraightLineIterator = struct {
             cells: *const std.AutoHashMap(CellIndex, Cell),
             index_iterator: cell_line_iterator.Iterator(CellIndex),
             cell_iterator: ?Cell.ConstIterator,
 
-            pub fn next(self: *ConstIteratorStraightLine) ?T {
+            pub fn next(self: *ConstStraightLineIterator) ?T {
                 if (self.nextFromCellIterator()) |object| {
                     return object;
                 }
@@ -210,7 +211,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
                 return null;
             }
 
-            fn nextFromCellIterator(self: *ConstIteratorStraightLine) ?T {
+            fn nextFromCellIterator(self: *ConstStraightLineIterator) ?T {
                 if (self.cell_iterator) |*cell_iterator| {
                     if (cell_iterator.next()) |item| {
                         return item.object;

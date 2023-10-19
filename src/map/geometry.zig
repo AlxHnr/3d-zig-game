@@ -283,7 +283,7 @@ pub const Geometry = struct {
             _ = self.walls.solid.pop();
         };
 
-        try self.spatial_wall_index.all.insert(
+        try self.spatial_wall_index.all.insertIntoArea(
             wall.boundaries,
             wall.object_id,
             wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
@@ -291,7 +291,7 @@ pub const Geometry = struct {
         errdefer self.spatial_wall_index.all.remove(wall.object_id);
 
         if (!Wall.isFence(wall_type)) {
-            try self.spatial_wall_index.solid.insert(
+            try self.spatial_wall_index.solid.insertIntoArea(
                 wall.boundaries,
                 wall.object_id,
                 wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
@@ -325,14 +325,14 @@ pub const Geometry = struct {
             self.walls_have_changed = true;
 
             self.spatial_wall_index.all.remove(object_id);
-            try self.spatial_wall_index.all.insert(
+            try self.spatial_wall_index.all.insertIntoArea(
                 wall.boundaries,
                 wall.object_id,
                 wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
             );
             if (!Wall.isFence(wall.wall_type)) {
                 self.spatial_wall_index.solid.remove(object_id);
-                try self.spatial_wall_index.solid.insert(
+                try self.spatial_wall_index.solid.insertIntoArea(
                     wall.boundaries,
                     wall.object_id,
                     wall.boundaries.getOuterBoundingBoxInGameCoordinates(),
@@ -538,7 +538,7 @@ pub const Geometry = struct {
             &self.spatial_wall_index.all;
 
         // Move displaced_circle out of all walls.
-        var iterator = spatial_index.constIterator(circle.getOuterBoundingBoxInGameCoordinates());
+        var iterator = spatial_index.areaIterator(circle.getOuterBoundingBoxInGameCoordinates());
         while (iterator.next()) |boundaries| {
             if (displaced_circle.collidesWithRectangle(boundaries)) |displacement_vector| {
                 displaced_circle.position = displaced_circle.position.add(displacement_vector);
@@ -554,7 +554,7 @@ pub const Geometry = struct {
 
     /// Check if two points are separated by a solid wall. Fences are not solid.
     pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVector, b: math.FlatVector) bool {
-        var iterator = self.spatial_wall_index.solid.constIteratorStraightLine(a, b);
+        var iterator = self.spatial_wall_index.solid.straightLineIterator(a, b);
         while (iterator.next()) |boundaries| {
             if (boundaries.collidesWithLine(a, b)) {
                 return true;
