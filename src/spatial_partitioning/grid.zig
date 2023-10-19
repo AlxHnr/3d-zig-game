@@ -139,10 +139,12 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
         pub fn areaIterator(self: *const Self, area: AxisAlignedBoundingBox) ConstAreaIterator {
             return .{
                 .cells = &self.cells,
-                .range_iterator = CellRange.fromAABB(area).iterator(),
+                .index_iterator = CellRange.fromAABB(area).iterator(),
                 .cell_iterator = null,
             };
         }
+
+        pub const ConstAreaIterator = ConstBaseIterator(CellRange.Iterator);
 
         /// Visit all cells trough which the specified line passes. Objects occupying multiple cells
         /// may be visited multiple times. Will be invalidated by updates to the grid.
@@ -158,67 +160,9 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             };
         }
 
-        pub const ConstAreaIterator = struct {
-            cells: *const std.AutoHashMap(CellIndex, Cell),
-            range_iterator: CellRange.Iterator,
-            cell_iterator: ?Cell.ConstIterator,
-
-            pub fn next(self: *ConstAreaIterator) ?T {
-                if (self.nextFromCellIterator()) |object| {
-                    return object;
-                }
-                while (self.range_iterator.next()) |cell_index| {
-                    if (self.cells.getPtr(cell_index)) |cell| {
-                        self.cell_iterator = cell.constIterator();
-                        if (self.nextFromCellIterator()) |object| {
-                            return object;
-                        }
-                    }
-                }
-                return null;
-            }
-
-            fn nextFromCellIterator(self: *ConstAreaIterator) ?T {
-                if (self.cell_iterator) |*cell_iterator| {
-                    if (cell_iterator.next()) |item| {
-                        return item.object;
-                    }
-                    self.cell_iterator = null;
-                }
-                return null;
-            }
-        };
-
-        pub const ConstStraightLineIterator = struct {
-            cells: *const std.AutoHashMap(CellIndex, Cell),
-            index_iterator: cell_line_iterator.Iterator(CellIndex),
-            cell_iterator: ?Cell.ConstIterator,
-
-            pub fn next(self: *ConstStraightLineIterator) ?T {
-                if (self.nextFromCellIterator()) |object| {
-                    return object;
-                }
-                while (self.index_iterator.next()) |cell_index| {
-                    if (self.cells.getPtr(cell_index)) |cell| {
-                        self.cell_iterator = cell.constIterator();
-                        if (self.nextFromCellIterator()) |object| {
-                            return object;
-                        }
-                    }
-                }
-                return null;
-            }
-
-            fn nextFromCellIterator(self: *ConstStraightLineIterator) ?T {
-                if (self.cell_iterator) |*cell_iterator| {
-                    if (cell_iterator.next()) |item| {
-                        return item.object;
-                    }
-                    self.cell_iterator = null;
-                }
-                return null;
-            }
-        };
+        pub const ConstStraightLineIterator = ConstBaseIterator(
+            cell_line_iterator.Iterator(CellIndex),
+        );
 
         const CellItem = struct {
             /// Contains all cells occupied by this item. Used for determining whether this item has
@@ -244,6 +188,39 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
                     _ = self.cells.remove(cell_reference.index);
                 }
             }
+        }
+
+        fn ConstBaseIterator(comptime IndexIterator: type) type {
+            return struct {
+                cells: *const std.AutoHashMap(CellIndex, Cell),
+                index_iterator: IndexIterator,
+                cell_iterator: ?Cell.ConstIterator,
+
+                pub fn next(self: *@This()) ?T {
+                    if (self.nextFromCellIterator()) |object| {
+                        return object;
+                    }
+                    while (self.index_iterator.next()) |cell_index| {
+                        if (self.cells.getPtr(cell_index)) |cell| {
+                            self.cell_iterator = cell.constIterator();
+                            if (self.nextFromCellIterator()) |object| {
+                                return object;
+                            }
+                        }
+                    }
+                    return null;
+                }
+
+                fn nextFromCellIterator(self: *@This()) ?T {
+                    if (self.cell_iterator) |*cell_iterator| {
+                        if (cell_iterator.next()) |item| {
+                            return item.object;
+                        }
+                        self.cell_iterator = null;
+                    }
+                    return null;
+                }
+            };
         }
     };
 }
