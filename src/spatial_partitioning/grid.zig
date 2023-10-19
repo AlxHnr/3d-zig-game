@@ -134,8 +134,8 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             self.allocator.free(cell_references.items);
         }
 
-        /// Will be invalidated by updates to this grid. Objects occupying multiple cells will only
-        /// be visited once.
+        /// Visit all cells intersecting with the specified area. Objects occupying multiple cells
+        /// may be visited multiple times. Will be invalidated by updates to this grid.
         pub fn areaIterator(self: *const Self, area: AxisAlignedBoundingBox) ConstAreaIterator {
             return .{
                 .cells = &self.cells,
@@ -180,10 +180,8 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
 
             fn nextFromCellIterator(self: *ConstAreaIterator) ?T {
                 if (self.cell_iterator) |*cell_iterator| {
-                    while (cell_iterator.next()) |item| {
-                        if (self.range_iterator.isOverlappingWithOnlyOneCell(item.cell_range)) {
-                            return item.object;
-                        }
+                    if (cell_iterator.next()) |item| {
+                        return item.object;
                     }
                     self.cell_iterator = null;
                 }

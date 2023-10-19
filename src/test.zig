@@ -735,6 +735,17 @@ test "SpatialGrid: insert and remove: update displaced object ids" {
     grid.remove(11);
 }
 
+fn testAreaIterator(
+    iterator: *SpatialGrid.ConstAreaIterator,
+    expected_numbers: []const usize,
+) !void {
+    var index: usize = 0;
+    while (iterator.next()) |value| : (index += 1) {
+        try expect(value == expected_numbers[index]);
+    }
+    try expect(index == expected_numbers.len);
+}
+
 test "SpatialGrid: const iterator: basic usage" {
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
@@ -746,8 +757,10 @@ test "SpatialGrid: const iterator: basic usage" {
 
     try grid.insertIntoArea(19, 11, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
     iterator = grid.areaIterator(range);
-    try expect(iterator.next().? == 19);
-    try expect(iterator.next() == null);
+    try testAreaIterator(&iterator, &[_]usize{
+        19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19,
+        19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19,
+    });
 
     grid.remove(11);
     iterator = grid.areaIterator(range);
@@ -767,31 +780,34 @@ test "SpatialGrid: const iterator: region queries" {
 
     const range = .{ .min = .{ .x = -70, .z = -30 }, .max = .{ .x = 90, .z = 90 } };
     var iterator = grid.areaIterator(range);
-    try expect(iterator.next().? == 1);
-    try expect(iterator.next().? == 6);
-    try expect(iterator.next().? == 5);
-    try expect(iterator.next().? == 4);
-    try expect(iterator.next().? == 2);
-    try expect(iterator.next().? == 3);
-    try expect(iterator.next() == null);
+    try testAreaIterator(&iterator, &[_]usize{
+        1, 6, 6, 6, 6, 6, 6, 6, 5, 6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 5, 6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 5,
+        6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 5, 6, 5, 6, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+        4, 4, 4, 4, 4, 4, 4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 3, 4, 4, 2,
+        2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3,
+        3, 3, 3, 3, 3, 3, 3, 3,
+    });
 
     grid.remove(5);
     grid.remove(4);
     grid.remove(2);
     iterator = grid.areaIterator(range);
-    try expect(iterator.next().? == 1);
-    try expect(iterator.next().? == 6);
-    try expect(iterator.next().? == 3);
-    try expect(iterator.next() == null);
+    try testAreaIterator(&iterator, &[_]usize{
+        1, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+        3, 3, 3, 3, 3,
+    });
 
     iterator = grid.areaIterator(.{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 0, .z = 0 } });
     try expect(iterator.next() == null);
 
     grid.remove(1);
     iterator = grid.areaIterator(range);
-    try expect(iterator.next().? == 6);
-    try expect(iterator.next().? == 3);
-    try expect(iterator.next() == null);
+    try testAreaIterator(&iterator, &[_]usize{
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+        3, 3, 3, 3,
+    });
 }
 
 test "SpatialGrid: reset to empty state." {
