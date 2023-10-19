@@ -49,6 +49,12 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
         /// Reset this grid, including all of its cells, to an empty state. Preserves its allocated
         /// capacity. Invalidates all existing iterators and pointers to objects in this grid.
         pub fn resetPreservingCapacity(self: *Self) void {
+            self.cell_items_to_object_ids.clearRetainingCapacity();
+            var ref_iterator = self.object_ids_to_cell_items.valueIterator();
+            while (ref_iterator.next()) |cell_references| {
+                self.allocator.free(cell_references.items);
+            }
+            self.object_ids_to_cell_items.clearRetainingCapacity();
             var cell_iterator = self.cells.valueIterator();
             while (cell_iterator.next()) |cell| {
                 cell.resetPreservingCapacity();
