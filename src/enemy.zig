@@ -51,13 +51,13 @@ pub const Enemy = struct {
     const health_bar_height = health_bar_scale * 6;
 
     pub fn create(
-        object_id_generator: *ObjectIdGenerator,
         position: math.FlatVector,
         config: Config,
         spritesheet: SpriteSheetTexture,
+        shared_context: *SharedContext,
     ) Enemy {
         const character = GameCharacter.create(
-            object_id_generator,
+            &shared_context.object_id_generator,
             position,
             config.height / spritesheet.getSpriteAspectRatio(config.sprite),
             config.height,
@@ -101,9 +101,9 @@ pub const Enemy = struct {
             .map = &map,
         };
         switch (self.state) {
-            .spawning => self.handleSpawningState(context),
-            .idle => self.handleIdleState(context),
-            .attacking => self.handleAttackingState(context),
+            .spawning => self.state = .{ .idle = IdleState.create(context) },
+            .idle => |*state| state.handleElapsedTick(self, context),
+            .attacking => |*state| state.handleElapsedTick(self, context),
             else => {},
         }
     }
@@ -243,85 +243,19 @@ pub const Enemy = struct {
             .health = self.character.health,
         };
     }
-
-    /// Return true if the tick was not consumed completely.
-    fn consumeTick(tick: *u32) bool {
-        if (tick.* == 0) {
-            return false;
-        }
-        tick.* -= 1;
-        return true;
-    }
-
-    fn isSeeingTarget(self: *Enemy, context: TickContextPointers, aggro_radius: f32) bool {
-        var self_circle = self.character.moving_circle;
-        self_circle.radius += aggro_radius;
-
-        if (self_circle.hasCollidedWith(context.main_character.moving_circle)) |positions| {
-            return !context.map.geometry.isSolidWallBetweenPoints(positions.self, positions.other);
-        }
-        return false;
-    }
-
-    const TickContextPointers = struct {
-        shared_context: *SharedContext,
-        main_character: *const GameCharacter,
-        map: *const Map,
-    };
-
-    fn handleSpawningState(self: *Enemy, _: TickContextPointers) void {
-        self.state = .{ .idle = .{ .ticks_remaining = 0 } };
-    }
-
-    fn handleIdleState(self: *Enemy, context: TickContextPointers) void {
-        if (self.isSeeingTarget(context, self.aggro_radius.idle)) {
-            self.state = .{ .attacking = undefined };
-            return;
-        }
-        if (consumeTick(&self.state.idle.ticks_remaining)) {
-            return;
-        }
-
-        var rng = context.shared_context.rng.random();
-        if (rng.boolean()) { // Walk.
-            const direction = std.math.degreesToRadians(f32, 360 * rng.float(f32));
-            const forward = math.FlatVector{ .x = 0, .z = -1 };
-            self.character.acceleration_direction = forward.rotate(direction);
-            self.character.movement_speed = self.movement_speed.idle;
-            self.state.idle.ticks_remaining =
-                rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(4));
-        } else { // Stand still.
-            self.character.acceleration_direction = math.FlatVector.zero;
-            self.state.idle.ticks_remaining =
-                rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(20));
-        }
-    }
-
-    fn handleAttackingState(self: *Enemy, context: TickContextPointers) void {
-        if (!self.isSeeingTarget(context, self.aggro_radius.attacking)) {
-            self.state = .{ .idle = .{ .ticks_remaining = 0 } };
-            return;
-        }
-
-        const offset_to_target = context.main_character.moving_circle.getPosition()
-            .subtract(self.character.moving_circle.getPosition());
-        const distance_to_target = offset_to_target.lengthSquared();
-        const min_distance_to_target = self.character.moving_circle.radius +
-            context.main_character.moving_circle.radius;
-        if (distance_to_target > min_distance_to_target * min_distance_to_target) {
-            self.character.movement_speed = self.movement_speed.attacking;
-            self.character.acceleration_direction = offset_to_target.normalize();
-        } else {
-            self.character.acceleration_direction = math.FlatVector.zero;
-        }
-    }
 };
 
 const State = union(enum) {
     spawning: void,
-    idle: struct { ticks_remaining: u32 },
-    attacking: void,
+    idle: IdleState,
+    attacking: AttackingState,
     dead: void,
+};
+
+const TickContextPointers = struct {
+    shared_context: *SharedContext,
+    main_character: *const GameCharacter,
+    map: *const Map,
 };
 
 const ValuesForRendering = struct {
@@ -346,3 +280,128 @@ const ValuesForRendering = struct {
         };
     }
 };
+
+const IdleState = struct {
+    ticks_until_movement: u32,
+    visibility_checker: VisibilityChecker(visibility_check_interval),
+
+    const standing_interval = simulation.secondsToTicks(20);
+    const visibility_check_interval = simulation.millisecondsToTicks(200);
+
+    fn create(context: TickContextPointers) IdleState {
+        var visibility_checker = VisibilityChecker(visibility_check_interval).create(false);
+
+        // Add some variance in case many monsters spawn at the same time. This prevents them
+        // from doing expensive checks during the same tick and evens out CPU load.
+        var rng = context.shared_context.rng.random();
+        visibility_checker.ticks_remaining = rng.intRangeAtMost(u32, 0, visibility_check_interval);
+        return .{ .ticks_until_movement = 0, .visibility_checker = visibility_checker };
+    }
+
+    fn handleElapsedTick(self: *IdleState, enemy: *Enemy, context: TickContextPointers) void {
+        const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
+            context,
+            enemy.*,
+            enemy.aggro_radius.idle,
+        );
+        if (is_seeing_main_character) {
+            enemy.state = .{ .attacking = AttackingState.create() };
+            return;
+        }
+        if (consumeTick(&self.ticks_until_movement)) {
+            return;
+        }
+
+        var rng = context.shared_context.rng.random();
+        if (rng.boolean()) { // Walk.
+            const direction = std.math.degreesToRadians(f32, 360 * rng.float(f32));
+            const forward = math.FlatVector{ .x = 0, .z = -1 };
+            enemy.character.acceleration_direction = forward.rotate(direction);
+            enemy.character.movement_speed = enemy.movement_speed.idle;
+            self.ticks_until_movement = rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(4));
+        } else {
+            enemy.character.acceleration_direction = math.FlatVector.zero;
+            self.ticks_until_movement = rng.intRangeAtMost(u32, 0, standing_interval);
+        }
+    }
+};
+
+const AttackingState = struct {
+    visibility_checker: VisibilityChecker(visibility_check_interval),
+
+    const visibility_check_interval = simulation.millisecondsToTicks(2000);
+
+    fn create() AttackingState {
+        return .{
+            .visibility_checker = VisibilityChecker(visibility_check_interval).create(true),
+        };
+    }
+
+    fn handleElapsedTick(self: *AttackingState, enemy: *Enemy, context: TickContextPointers) void {
+        const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
+            context,
+            enemy.*,
+            enemy.aggro_radius.attacking,
+        );
+        if (!is_seeing_main_character) {
+            enemy.state = .{ .idle = IdleState.create(context) };
+            return;
+        }
+
+        const offset_to_target = context.main_character.moving_circle.getPosition()
+            .subtract(enemy.character.moving_circle.getPosition());
+        const distance_to_target = offset_to_target.lengthSquared();
+        const min_distance_to_target = enemy.character.moving_circle.radius +
+            context.main_character.moving_circle.radius;
+        if (distance_to_target > min_distance_to_target * min_distance_to_target) {
+            enemy.character.movement_speed = enemy.movement_speed.attacking;
+            enemy.character.acceleration_direction = offset_to_target.normalize();
+        } else {
+            enemy.character.acceleration_direction = math.FlatVector.zero;
+        }
+    }
+};
+
+/// Return true if the tick was not consumed completely.
+fn consumeTick(tick: *u32) bool {
+    if (tick.* == 0) {
+        return false;
+    }
+    tick.* -= 1;
+    return true;
+}
+
+fn VisibilityChecker(comptime tick_interval: u32) type {
+    return struct {
+        ticks_remaining: u32,
+        is_seeing: bool,
+
+        const Self = @This();
+
+        fn create(initial_value: bool) Self {
+            return .{ .ticks_remaining = tick_interval, .is_seeing = initial_value };
+        }
+
+        fn isSeeingMainCharacter(
+            self: *Self,
+            context: TickContextPointers,
+            enemy: Enemy,
+            aggro_radius: f32,
+        ) bool {
+            if (consumeTick(&self.ticks_remaining)) {
+                return self.is_seeing;
+            }
+            self.ticks_remaining = tick_interval;
+
+            var enemy_boundaries = enemy.character.moving_circle;
+            enemy_boundaries.radius += aggro_radius;
+            if (enemy_boundaries.hasCollidedWith(context.main_character.moving_circle)) |positions| {
+                self.is_seeing =
+                    !context.map.geometry.isSolidWallBetweenPoints(positions.self, positions.other);
+            } else {
+                self.is_seeing = false;
+            }
+            return self.is_seeing;
+        }
+    };
+}

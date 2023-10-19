@@ -56,13 +56,13 @@ pub const Context = struct {
         while (counter < 1000) : (counter += 1) {
             try shared_context.enemies.append(
                 Enemy.create(
-                    &shared_context.object_id_generator,
                     .{
                         .x = -shared_context.rng.random().float(f32) * 100 - 50,
                         .z = shared_context.rng.random().float(f32) * 500,
                     },
                     enemy_presets.floating_eye,
                     spritesheet,
+                    &shared_context,
                 ),
             );
         }
