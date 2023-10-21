@@ -1,5 +1,6 @@
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
+const SharedContext = @import("shared_context.zig").SharedContext;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const animation = @import("animation.zig");
@@ -119,9 +120,9 @@ pub const MovingCircle = struct {
     /// Returns the position of `self` during the substep at which the collision occurred.
     pub fn hasCollidedWithCircle(self: MovingCircle, other: collision.Circle) ?math.FlatVector {
         for (self.trace) |position| {
-            const boundaries = .{ .position = position, .radius = self.radius };
+            const boundaries = collision.Circle{ .position = position, .radius = self.radius };
             if (boundaries.collidesWithCircle(other)) {
-                return boundaries;
+                return boundaries.position;
             }
         }
         return null;
@@ -292,16 +293,23 @@ pub const Player = struct {
         self.setTurningDirection(turning_direction);
     }
 
-    pub fn processElapsedTick(self: *Player, map: Map) void {
+    pub fn processElapsedTick(self: *Player, map: Map, context: *SharedContext) void {
         self.values_from_previous_tick = self.getValuesForRendering();
         self.character.processElapsedTick(map);
+        self.gem_count += context.gem_collection.processCollision(.{
+            .id = self.character.object_id,
+            .moving_circle = self.character.moving_circle,
+            .height = self.character.height,
+        }, map.geometry);
+
         self.orientation -= self.turning_direction * rotation_per_tick;
         self.camera.processElapsedTick(
             self.character.moving_circle.getPosition(),
             self.orientation,
         );
-        self.animation_cycle
-            .processElapsedTick(self.character.moving_circle.velocity.length() * 0.75);
+        self.animation_cycle.processElapsedTick(
+            self.character.moving_circle.velocity.length() * 0.75,
+        );
     }
 
     pub fn getBillboardData(
