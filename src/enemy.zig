@@ -54,10 +54,8 @@ pub const Enemy = struct {
         position: math.FlatVector,
         config: Config,
         spritesheet: SpriteSheetTexture,
-        shared_context: *SharedContext,
     ) Enemy {
         const character = GameCharacter.create(
-            &shared_context.object_id_generator,
             position,
             config.height / spritesheet.getSpriteAspectRatio(config.sprite),
             config.height,

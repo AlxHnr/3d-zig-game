@@ -65,7 +65,6 @@ pub const Context = struct {
                     },
                     enemy_presets.floating_eye,
                     spritesheet,
-                    &shared_context,
                 ),
             );
         }
@@ -81,7 +80,6 @@ pub const Context = struct {
             .interval_between_previous_and_current_tick = 1,
             .frame_timer = try std.time.Timer.start(),
             .main_character = game_unit.Player.create(
-                &shared_context.object_id_generator,
                 0,
                 0,
                 spritesheet.getSpriteAspectRatio(.player_back_frame_1),

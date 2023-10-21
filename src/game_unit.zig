@@ -130,7 +130,6 @@ pub const MovingCircle = struct {
 };
 
 pub const GameCharacter = struct {
-    object_id: u64,
     moving_circle: MovingCircle,
     acceleration_direction: math.FlatVector,
     height: f32,
@@ -140,7 +139,6 @@ pub const GameCharacter = struct {
     pub const Health = struct { current: u32, max: u32 };
 
     pub fn create(
-        object_id_generator: *ObjectIdGenerator,
         position: math.FlatVector,
         width: f32,
         height: f32,
@@ -148,7 +146,6 @@ pub const GameCharacter = struct {
         max_health: u32,
     ) GameCharacter {
         return .{
-            .object_id = object_id_generator.makeNewId(),
             .moving_circle = MovingCircle.create(
                 position,
                 width / 2,
@@ -201,14 +198,12 @@ pub const Player = struct {
     const min_velocity_for_animation = simulation.kphToGameUnitsPerTick(2);
 
     pub fn create(
-        object_id_generator: *ObjectIdGenerator,
         starting_position_x: f32,
         starting_position_z: f32,
         spritesheet_frame_ratio: f32,
     ) Player {
         const in_game_height = 1.8;
         const character = GameCharacter.create(
-            object_id_generator,
             .{ .x = starting_position_x, .z = starting_position_z },
             in_game_height / spritesheet_frame_ratio,
             in_game_height,
