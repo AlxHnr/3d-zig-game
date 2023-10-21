@@ -21,6 +21,7 @@ const TickTimer = @import("simulation.zig").TickTimer;
 pub const Context = struct {
     tick_timer: TickTimer,
     interval_between_previous_and_current_tick: f32,
+    frame_timer: std.time.Timer,
     main_character: game_unit.Player,
     /// Prevents walls from covering the player.
     max_camera_distance: ?f32,
@@ -35,6 +36,9 @@ pub const Context = struct {
     billboard_buffer: []rendering.SpriteData,
 
     hud: Hud,
+
+    // Prevents the engine from hanging if ticks take too long and catching up becomes impossible.
+    const max_frame_time = std.time.ns_per_s / 10;
 
     pub fn create(allocator: std.mem.Allocator, map_file_path: []const u8) !Context {
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);
@@ -76,6 +80,7 @@ pub const Context = struct {
         return .{
             .tick_timer = try TickTimer.start(60),
             .interval_between_previous_and_current_tick = 1,
+            .frame_timer = try std.time.Timer.start(),
             .main_character = game_unit.Player.create(
                 &shared_context.object_id_generator,
                 0,
@@ -126,12 +131,15 @@ pub const Context = struct {
     }
 
     pub fn handleElapsedFrame(self: *Context) void {
+        self.frame_timer.reset();
         if (self.shared_context.dialog_controller.hasOpenDialogs()) {
             self.main_character.markAllButtonsAsReleased();
         }
         self.main_character.applyCurrentInput(self.interval_between_previous_and_current_tick);
 
         const lap_result = self.tick_timer.lap();
+        self.interval_between_previous_and_current_tick = lap_result.next_tick_progress;
+
         var tick_counter: u64 = 0;
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             self.map.processElapsedTick();
@@ -145,8 +153,11 @@ pub const Context = struct {
                 );
             }
             self.shared_context.dialog_controller.processElapsedTick();
+            if (self.frame_timer.read() > max_frame_time) {
+                self.interval_between_previous_and_current_tick = 1;
+                break;
+            }
         }
-        self.interval_between_previous_and_current_tick = lap_result.next_tick_progress;
 
         const ray_wall_collision = self.map.geometry.cast3DRayToWalls(
             self.main_character.getCamera(self.interval_between_previous_and_current_tick)
