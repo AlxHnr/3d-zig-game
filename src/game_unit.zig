@@ -25,34 +25,26 @@ pub const InputButton = enum {
 pub const MovingCircle = struct {
     radius: f32,
     velocity: math.FlatVector,
-    wall_collision_behaviour: WallCollisionBehaviour,
-
+    pass_trough_fences: bool,
     /// Contains the position of this object during the substeps of the last tick. The values are
     /// ordered from old to new. The last value contains the current position.
     trace: [4]math.FlatVector,
-
-    pub const WallCollisionBehaviour = enum {
-        apply_wall_friction,
-        slide,
-        slide_and_pass_trough_fences,
-    };
 
     pub fn create(
         position: math.FlatVector,
         radius: f32,
         velocity: math.FlatVector,
-        wall_collision_behaviour: WallCollisionBehaviour,
+        pass_trough_fences: bool,
     ) MovingCircle {
         var trace: [4]math.FlatVector = undefined;
         for (&trace) |*point| {
             point.* = position;
         }
-
         return .{
             .radius = radius,
             .velocity = velocity,
-            .wall_collision_behaviour = wall_collision_behaviour,
             .trace = trace,
+            .pass_trough_fences = pass_trough_fences,
         };
     }
 
@@ -66,7 +58,6 @@ pub const MovingCircle = struct {
             return;
         }
         const direction = self.velocity.normalize();
-        const ignore_fences = self.wall_collision_behaviour == .slide_and_pass_trough_fences;
         const start_position = self.getPosition();
 
         // Max applicable velocity (limit) per tick is `radius * self.traces.len`.
@@ -75,14 +66,17 @@ pub const MovingCircle = struct {
         var boundaries = collision.Circle{ .position = start_position, .radius = self.radius };
         while (remaining_velocity > math.epsilon and index < self.trace.len) : (index += 1) {
             const substep_length = @min(remaining_velocity, self.radius);
-            const substep = direction.scale(substep_length);
             remaining_velocity -= substep_length;
 
-            boundaries.position = boundaries.position.add(substep);
-            if (map.geometry.collidesWithCircle(boundaries, ignore_fences)) |displacement_vector| {
+            var substep = direction.scale(substep_length);
+            if (map.geometry.collidesWithCircle(boundaries, self.pass_trough_fences)) |displacement_vector| {
                 boundaries.position = boundaries.position.add(displacement_vector);
-                self.applyWallFriction(displacement_vector);
+                const friction = 1 + std.math
+                    .clamp(direction.dotProduct(displacement_vector.normalize()), -1, 0);
+                self.velocity = self.velocity.scale(friction);
+                substep = substep.scale(friction);
             }
+            boundaries.position = boundaries.position.add(substep);
             self.trace[index] = boundaries.position;
         }
 
@@ -132,19 +126,6 @@ pub const MovingCircle = struct {
         }
         return null;
     }
-
-    fn applyWallFriction(self: *MovingCircle, displacement_vector: math.FlatVector) void {
-        if (self.wall_collision_behaviour != .apply_wall_friction) {
-            return;
-        }
-        const dot_product = std.math.clamp(self.velocity.normalize()
-            .dotProduct(displacement_vector.normalize()), -1, 1);
-        const moving_against_displacement_vector =
-            self.velocity.dotProduct(displacement_vector) < 0;
-        if (moving_against_displacement_vector) {
-            self.velocity = self.velocity.scale(1 + dot_product);
-        }
-    }
 };
 
 pub const GameCharacter = struct {
@@ -171,7 +152,7 @@ pub const GameCharacter = struct {
                 position,
                 width / 2,
                 math.FlatVector.zero,
-                .apply_wall_friction,
+                false,
             ),
             .acceleration_direction = math.FlatVector.zero,
             .height = height,
