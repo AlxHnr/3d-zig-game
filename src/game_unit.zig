@@ -195,6 +195,10 @@ pub const Player = struct {
     input_state: std.EnumArray(InputButton, bool),
     values_from_previous_tick: ValuesForRendering,
 
+    const full_rotation = std.math.degreesToRadians(f32, 360);
+    const rotation_per_tick = full_rotation / simulation.millisecondsToTicks(f32, 1700);
+    const min_velocity_for_animation = simulation.kphToGameUnitsPerTick(2);
+
     pub fn create(
         object_id_generator: *ObjectIdGenerator,
         starting_position_x: f32,
@@ -288,9 +292,6 @@ pub const Player = struct {
         self.setTurningDirection(turning_direction);
     }
 
-    const full_rotation = std.math.degreesToRadians(f32, 360);
-    const rotation_per_tick = full_rotation / simulation.millisecondsToTicks(f32, 1700);
-
     pub fn processElapsedTick(self: *Player, map: Map) void {
         self.values_from_previous_tick = self.getValuesForRendering();
         self.character.processElapsedTick(map);
@@ -312,8 +313,6 @@ pub const Player = struct {
             self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         );
-
-        const min_velocity_for_animation = @as(f32, 0.0012) / simulation.timeDeltaFactor(f32);
         const animation_frame = if (state_to_render.velocity.length() < min_velocity_for_animation)
             1
         else

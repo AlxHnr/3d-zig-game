@@ -5,7 +5,6 @@ const std = @import("std");
 /// speed up the game at runtime, see `TickTimer.start()` in `game_context.zig`.
 pub const tickrate = 60;
 
-
 /// Lap timer for measuring elapsed ticks.
 pub const TickTimer = struct {
     timer: std.time.Timer,
@@ -45,11 +44,6 @@ pub const TickTimer = struct {
         next_tick_progress: f32,
     };
 };
-
-/// Returns a value to multiply constants with, allowing them to adapt to the tickrate.
-pub fn timeDeltaFactor(comptime T: type) T {
-    return @as(T, std.time.ms_per_s) / @as(T, tickrate);
-}
 
 pub fn millisecondsToTicks(comptime T: type, milliseconds: T) T {
     return milliseconds / @as(T, std.time.ms_per_s) * @as(T, tickrate);
