@@ -1,3 +1,11 @@
+const Enemy = @import("enemy.zig").Enemy;
+const Hud = @import("hud.zig").Hud;
+const Map = @import("map/map.zig").Map;
+const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
+const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const SharedContext = @import("shared_context.zig").SharedContext;
+const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
+const TickTimer = @import("simulation.zig").TickTimer;
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const dialog = @import("dialog.zig");
@@ -8,15 +16,6 @@ const math = @import("math.zig");
 const rendering = @import("rendering.zig");
 const std = @import("std");
 const textures = @import("textures.zig");
-
-const Enemy = @import("enemy.zig").Enemy;
-const Hud = @import("hud.zig").Hud;
-const Map = @import("map/map.zig").Map;
-const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
-const ScreenDimensions = @import("util.zig").ScreenDimensions;
-const SharedContext = @import("shared_context.zig").SharedContext;
-const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
-const TickTimer = @import("simulation.zig").TickTimer;
 
 pub const Context = struct {
     tick_timer: TickTimer,
