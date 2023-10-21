@@ -1,11 +1,10 @@
 //! Contains the fundamentals of tick-based time and simulation handling.
 const std = @import("std");
 
-/// Tickrate to which the entire game and all its hard-coded values have been tuned to. This value
-/// is not related to the actual simulation speed and only specifies a base value to which
-/// everything else in the game relates to. To slow down or speed up the game, see
-/// `TickTimer.start()` in `game_context.zig`.
-pub const engine_base_ticks_per_second = 60;
+/// This constant specifies a base value to which everything in the game relates to. To slow down or
+/// speed up the game at runtime, see `TickTimer.start()` in `game_context.zig`.
+pub const tickrate = 60;
+
 
 /// Lap timer for measuring elapsed ticks.
 pub const TickTimer = struct {
@@ -47,16 +46,21 @@ pub const TickTimer = struct {
     };
 };
 
-pub fn millisecondsToTicks(milliseconds: anytype) @TypeOf(milliseconds) {
-    return milliseconds / std.time.ms_per_s * engine_base_ticks_per_second;
+/// Returns a value to multiply constants with, allowing them to adapt to the tickrate.
+pub fn timeDeltaFactor(comptime T: type) T {
+    return @as(T, std.time.ms_per_s) / @as(T, tickrate);
 }
 
-pub fn secondsToTicks(seconds: anytype) @TypeOf(seconds) {
-    return millisecondsToTicks(seconds * std.time.ms_per_s);
+pub fn millisecondsToTicks(comptime T: type, milliseconds: T) T {
+    return milliseconds / @as(T, std.time.ms_per_s) * @as(T, tickrate);
+}
+
+pub fn secondsToTicks(comptime T: type, seconds: T) T {
+    return millisecondsToTicks(T, seconds * @as(T, std.time.ms_per_s));
 }
 
 pub fn kphToGameUnitsPerTick(kilometers_per_hour: f32) f32 {
     const meters_per_kilometer = 1000;
     return kilometers_per_hour * meters_per_kilometer /
-        std.time.s_per_hour / engine_base_ticks_per_second;
+        std.time.s_per_hour / tickrate;
 }

@@ -161,12 +161,15 @@ pub const GameCharacter = struct {
         };
     }
 
+    const stop_factor =
+        @max(0, 0.9 - std.math.pow(f32, std.math.e, -0.03 * (simulation.tickrate - 5)));
+
     pub fn processElapsedTick(self: *GameCharacter, map: Map) void {
         self.moving_circle.processElapsedTick(map);
 
         const is_accelerating = self.acceleration_direction.length() > math.epsilon;
         if (is_accelerating) {
-            const acceleration = self.movement_speed / 5.0;
+            const acceleration = self.movement_speed / simulation.millisecondsToTicks(f32, 84);
             self.moving_circle.velocity =
                 self.moving_circle.velocity.add(self.acceleration_direction.scale(acceleration));
             if (self.moving_circle.velocity.lengthSquared() >
@@ -176,7 +179,7 @@ pub const GameCharacter = struct {
                     self.moving_circle.velocity.normalize().scale(self.movement_speed);
             }
         } else {
-            self.moving_circle.velocity = self.moving_circle.velocity.scale(0.7);
+            self.moving_circle.velocity = self.moving_circle.velocity.scale(stop_factor);
         }
     }
 };
@@ -287,16 +290,14 @@ pub const Player = struct {
         self.setTurningDirection(turning_direction);
     }
 
+    const full_rotation = std.math.degreesToRadians(f32, 360);
+    const rotation_per_tick = full_rotation / simulation.millisecondsToTicks(f32, 1700);
+
     pub fn processElapsedTick(self: *Player, map: Map) void {
         self.values_from_previous_tick = self.getValuesForRendering();
         self.character.processElapsedTick(map);
-
-        const max_rotation_per_tick = std.math.degreesToRadians(f32, 3.5);
-        const rotation_angle = -(self.turning_direction * max_rotation_per_tick);
-        self.orientation = @mod(
-            self.orientation + rotation_angle,
-            std.math.degreesToRadians(f32, 360),
-        );
+        const rotation_angle = -(self.turning_direction * rotation_per_tick);
+        self.orientation = @mod(self.orientation + rotation_angle, full_rotation);
         self.camera.processElapsedTick(
             self.character.moving_circle.getPosition(),
             getLookingDirection(self.orientation),
@@ -315,9 +316,8 @@ pub const Player = struct {
             interval_between_previous_and_current_tick,
         );
 
-        const min_velocity_for_animation = 0.02;
-        const animation_frame =
-            if (state_to_render.velocity.length() < min_velocity_for_animation)
+        const min_velocity_for_animation = @as(f32, 0.0012) / simulation.timeDeltaFactor(f32);
+        const animation_frame = if (state_to_render.velocity.length() < min_velocity_for_animation)
             1
         else
             state_to_render.animation_cycle.getFrame();

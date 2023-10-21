@@ -1,7 +1,8 @@
-const std = @import("std");
-const math = @import("math.zig");
-const collision = @import("collision.zig");
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const collision = @import("collision.zig");
+const math = @import("math.zig");
+const simulation = @import("simulation.zig");
+const std = @import("std");
 
 /// Camera which smoothly follows an object and auto-rotates across the Y axis.
 pub const Camera = struct {
@@ -15,7 +16,7 @@ pub const Camera = struct {
     /// This value will be approached by processElapsedTick().
     target_angle_from_ground: f32,
 
-    const target_follow_speed = 0.15;
+    const target_follow_speed = 0.009 * simulation.timeDeltaFactor(f32);
     const default_angle_from_ground = std.math.degreesToRadians(f32, 10);
     const default_distance_from_object = 10;
 
@@ -176,9 +177,17 @@ pub const Camera = struct {
     ) math.Vector3d {
         const camera_offset = self.position.subtract(self.target_position);
         const object_back_direction = target_object_looking_direction.negate();
-        const rotation_step = target_follow_speed * camera_offset.toFlatVector()
+        const rotation_to_object_direction = camera_offset.toFlatVector()
             .computeRotationToOtherVector(object_back_direction);
-        return camera_offset.rotate(math.Vector3d.y_axis, rotation_step);
+        const rotation_step = target_follow_speed * rotation_to_object_direction;
+        return camera_offset.rotate(
+            math.Vector3d.y_axis,
+            // Prevent overshooting the required rotation step.
+            if (std.math.fabs(rotation_step) > std.math.fabs(rotation_to_object_direction))
+                rotation_to_object_direction
+            else
+                rotation_step,
+        );
     }
 
     fn updateCameraDistanceFromObject(self: *Camera) void {

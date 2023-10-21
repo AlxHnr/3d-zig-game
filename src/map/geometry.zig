@@ -6,6 +6,7 @@ const gl = @import("gl");
 const math = @import("../math.zig");
 const meshes = @import("../meshes.zig");
 const rendering = @import("../rendering.zig");
+const simulation = @import("../simulation.zig");
 const spatial_partitioning = @import("../spatial_partitioning/grid.zig");
 const std = @import("std");
 const textures = @import("../textures.zig");
@@ -164,7 +165,7 @@ pub const Geometry = struct {
     }
 
     pub fn processElapsedTick(self: *Geometry) void {
-        self.floor_animation_state.processElapsedTick(0.02);
+        self.floor_animation_state.processElapsedTick(1 / simulation.millisecondsToTicks(f32, 800));
     }
 
     /// Returned result must be freed with freeSerializableData().

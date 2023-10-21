@@ -5,7 +5,6 @@ const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
-const TickTimer = @import("simulation.zig").TickTimer;
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const dialog = @import("dialog.zig");
@@ -14,11 +13,12 @@ const game_unit = @import("game_unit.zig");
 const gems = @import("gems.zig");
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
+const simulation = @import("simulation.zig");
 const std = @import("std");
 const textures = @import("textures.zig");
 
 pub const Context = struct {
-    tick_timer: TickTimer,
+    tick_timer: simulation.TickTimer,
     interval_between_previous_and_current_tick: f32,
     frame_timer: std.time.Timer,
     main_character: game_unit.Player,
@@ -77,7 +77,7 @@ pub const Context = struct {
         errdefer hud.destroy(allocator);
 
         return .{
-            .tick_timer = try TickTimer.start(60),
+            .tick_timer = try simulation.TickTimer.start(simulation.tickrate),
             .interval_between_previous_and_current_tick = 1,
             .frame_timer = try std.time.Timer.start(),
             .main_character = game_unit.Player.create(

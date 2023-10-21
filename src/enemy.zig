@@ -285,8 +285,8 @@ const IdleState = struct {
     ticks_until_movement: u32,
     visibility_checker: VisibilityChecker(visibility_check_interval),
 
-    const standing_interval = simulation.secondsToTicks(20);
-    const visibility_check_interval = simulation.millisecondsToTicks(200);
+    const standing_interval = simulation.secondsToTicks(u32, 20);
+    const visibility_check_interval = simulation.millisecondsToTicks(u32, 200);
 
     fn create(context: TickContextPointers) IdleState {
         var visibility_checker = VisibilityChecker(visibility_check_interval).create(false);
@@ -318,7 +318,8 @@ const IdleState = struct {
             const forward = math.FlatVector{ .x = 0, .z = -1 };
             enemy.character.acceleration_direction = forward.rotate(direction);
             enemy.character.movement_speed = enemy.movement_speed.idle;
-            self.ticks_until_movement = rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(4));
+            self.ticks_until_movement =
+                rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(u32, 4));
         } else {
             enemy.character.acceleration_direction = math.FlatVector.zero;
             self.ticks_until_movement = rng.intRangeAtMost(u32, 0, standing_interval);
@@ -329,7 +330,7 @@ const IdleState = struct {
 const AttackingState = struct {
     visibility_checker: VisibilityChecker(visibility_check_interval),
 
-    const visibility_check_interval = simulation.millisecondsToTicks(2000);
+    const visibility_check_interval = simulation.millisecondsToTicks(u32, 2000);
 
     fn create() AttackingState {
         return .{
