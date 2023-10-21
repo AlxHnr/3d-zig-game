@@ -196,8 +196,6 @@ pub const Context = struct {
         self.shared_context.gem_collection.populateBillboardData(
             self.billboard_buffer[0..gems_to_render],
             self.spritesheet,
-            &.{self.main_character
-                .getLerpedCollisionObject(self.interval_between_previous_and_current_tick)},
             self.interval_between_previous_and_current_tick,
         );
         var start: usize = gems_to_render;

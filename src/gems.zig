@@ -4,15 +4,8 @@ const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const collision = @import("collision.zig");
 const math = @import("math.zig");
+const simulation = @import("simulation.zig");
 const std = @import("std");
-
-pub const CollisionObject = struct {
-    /// Unique identifier, distinct from all other collision objects.
-    id: u64,
-    moving_circle: MovingCircle,
-    /// Height of the object colliding with the gem. Needed for animations.
-    height: f32,
-};
 
 pub const Collection = struct {
     gems: std.ArrayList(InterpolatableGem),
@@ -56,7 +49,6 @@ pub const Collection = struct {
         self: Collection,
         data: []SpriteData,
         spritesheet: SpriteSheetTexture,
-        collision_objects: []const CollisionObject,
         interval_between_previous_and_current_tick: f32,
     ) void {
         std.debug.assert(self.gems.items.len <= data.len);
@@ -64,7 +56,7 @@ pub const Collection = struct {
             data[index] = gem_states.state_at_previous_tick.lerp(
                 gem_states.state_at_next_tick,
                 interval_between_previous_and_current_tick,
-            ).getBillboardData(collision_objects, spritesheet);
+            ).getBillboardData(spritesheet);
         }
     }
 
@@ -80,12 +72,12 @@ pub const Collection = struct {
     /// Count how many gems collide with the given object. All colliding gems will be consumed.
     pub fn processCollision(
         self: *Collection,
-        collision_object: CollisionObject,
+        other: MovingCircle,
         map_geometry: MapGeometry,
     ) usize {
         var gems_collected: usize = 0;
         for (self.gems.items) |*gem| {
-            if (gem.state_at_next_tick.processCollision(collision_object, map_geometry)) {
+            if (gem.state_at_next_tick.processCollision(other, map_geometry)) {
                 gems_collected = gems_collected + 1;
             }
         }
@@ -97,15 +89,12 @@ const Gem = struct {
     /// Width of the gem in the game world.
     width: f32,
     boundaries: collision.Circle,
-
-    /// This value will progress from 0 to 1. Only then the following values will be considered.
+    /// This value will progress from 0 to 1.
     spawn_animation_progress: f32,
-
     /// This value will progress from 0 to 1 when the object gets picked up.
     pickup_animation_progress: ?f32,
-    /// Contains the id of the object which collided with this gem. Only used when
-    /// pickup_animation_progress is not null.
-    collided_object_id: u64,
+
+    const animation_speed = simulation.kphToGameUnitsPerTick(10);
 
     fn create(position: math.FlatVector) Gem {
         return Gem{
@@ -116,7 +105,6 @@ const Gem = struct {
             },
             .spawn_animation_progress = 0,
             .pickup_animation_progress = null,
-            .collided_object_id = 0,
         };
     }
 
@@ -136,18 +124,10 @@ const Gem = struct {
                 null
             else
                 math.lerp(self_progress, other_progress, t),
-            .collided_object_id = if (t < 0.5)
-                self.collided_object_id
-            else
-                other.collided_object_id,
         };
     }
 
-    fn getBillboardData(
-        self: Gem,
-        collision_objects: []const CollisionObject,
-        spritesheet: SpriteSheetTexture,
-    ) SpriteData {
+    fn getBillboardData(self: Gem, spritesheet: SpriteSheetTexture) SpriteData {
         const source = spritesheet.getSpriteTexcoords(.gem);
         const sprite_aspect_ratio = spritesheet.getSpriteAspectRatio(.gem);
         var billboard_data = SpriteData{
@@ -173,25 +153,9 @@ const Gem = struct {
                 .z = self.boundaries.position.z,
             };
         } else if (self.pickup_animation_progress) |progress| {
-            const lerp_destination = for (collision_objects) |object| {
-                if (object.id == self.collided_object_id) {
-                    break math.Vector3d{
-                        .x = object.moving_circle.getPosition().x,
-                        .y = object.height / 2,
-                        .z = object.moving_circle.getPosition().z,
-                    };
-                }
-            } else self.boundaries.position.toVector3d();
-
-            const lerp_start = math.Vector3d{
-                .x = self.boundaries.position.x,
-                .y = self.width * sprite_aspect_ratio / 2,
-                .z = self.boundaries.position.z,
-            };
-            const lerped_position = lerp_start.lerp(lerp_destination, progress);
-            billboard_data.position.x = lerped_position.x;
-            billboard_data.position.y = lerped_position.y;
-            billboard_data.position.z = lerped_position.z;
+            billboard_data.position.x = self.boundaries.position.x;
+            billboard_data.position.y = self.width * sprite_aspect_ratio / 2;
+            billboard_data.position.z = self.boundaries.position.z;
             billboard_data.size.w = self.width * (1 - progress);
             billboard_data.size.h = billboard_data.size.w * sprite_aspect_ratio;
         }
@@ -200,28 +164,23 @@ const Gem = struct {
 
     fn processElapsedTick(self: *Gem) void {
         if (self.spawn_animation_progress < 1) {
-            self.spawn_animation_progress = self.spawn_animation_progress + 0.02;
+            self.spawn_animation_progress += animation_speed;
         } else if (self.pickup_animation_progress) |*progress| {
-            progress.* = progress.* + 0.02;
+            progress.* += animation_speed;
         }
     }
 
     /// If a collision was found it will return true and start the pickup animation.
-    fn processCollision(
-        self: *Gem,
-        collision_object: CollisionObject,
-        map_geometry: MapGeometry,
-    ) bool {
+    fn processCollision(self: *Gem, other: MovingCircle, map_geometry: MapGeometry) bool {
         if (self.spawn_animation_progress < 1 or
             self.pickup_animation_progress != null)
         {
             return false;
         }
 
-        if (collision_object.moving_circle.hasCollidedWithCircle(self.boundaries)) |position| {
+        if (other.hasCollidedWithCircle(self.boundaries)) |position| {
             if (!map_geometry.isSolidWallBetweenPoints(self.boundaries.position, position)) {
                 self.pickup_animation_progress = 0;
-                self.collided_object_id = collision_object.id;
                 return true;
             }
         }

@@ -296,11 +296,8 @@ pub const Player = struct {
     pub fn processElapsedTick(self: *Player, map: Map, context: *SharedContext) void {
         self.values_from_previous_tick = self.getValuesForRendering();
         self.character.processElapsedTick(map);
-        self.gem_count += context.gem_collection.processCollision(.{
-            .id = self.character.object_id,
-            .moving_circle = self.character.moving_circle,
-            .height = self.character.height,
-        }, map.geometry);
+        self.gem_count +=
+            context.gem_collection.processCollision(self.character.moving_circle, map.geometry);
 
         self.orientation -= self.turning_direction * rotation_per_tick;
         self.camera.processElapsedTick(
@@ -345,21 +342,6 @@ pub const Player = struct {
             self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         ).camera;
-    }
-
-    pub fn getLerpedCollisionObject(
-        self: Player,
-        interval_between_previous_and_current_tick: f32,
-    ) gems.CollisionObject {
-        const state = self.values_from_previous_tick.lerp(
-            self.getValuesForRendering(),
-            interval_between_previous_and_current_tick,
-        );
-        return .{
-            .id = self.character.object_id,
-            .moving_circle = self.character.moving_circle,
-            .height = state.height,
-        };
     }
 
     fn setTurningDirection(self: *Player, turning_direction: f32) void {
