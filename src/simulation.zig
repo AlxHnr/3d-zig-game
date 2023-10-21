@@ -2,7 +2,9 @@
 const std = @import("std");
 
 /// This constant specifies a base value to which everything in the game relates to. To slow down or
-/// speed up the game at runtime, see `TickTimer.start()` in `game_context.zig`.
+/// speed up the game at runtime, use `TickTimer.start()`. Increasing the tickrate will also
+/// increase the applied wall friction and the velocity limit. Huge tickrates can break movement by
+/// causing substeps to be shorter than `math.epsilon`.
 pub const tickrate = 60;
 
 /// Lap timer for measuring elapsed ticks.
