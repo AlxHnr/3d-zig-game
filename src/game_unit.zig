@@ -211,10 +211,8 @@ pub const Player = struct {
             100,
         );
         const orientation = 0;
-        const camera = ThirdPersonCamera.create(
-            character.moving_circle.getPosition(),
-            getLookingDirection(orientation),
-        );
+        const camera =
+            ThirdPersonCamera.create(character.moving_circle.getPosition(), orientation);
         const animation_cycle = animation.FourStepCycle.create();
         return .{
             .character = character,
@@ -296,11 +294,10 @@ pub const Player = struct {
     pub fn processElapsedTick(self: *Player, map: Map) void {
         self.values_from_previous_tick = self.getValuesForRendering();
         self.character.processElapsedTick(map);
-        const rotation_angle = -(self.turning_direction * rotation_per_tick);
-        self.orientation = @mod(self.orientation + rotation_angle, full_rotation);
+        self.orientation -= self.turning_direction * rotation_per_tick;
         self.camera.processElapsedTick(
             self.character.moving_circle.getPosition(),
-            getLookingDirection(self.orientation),
+            self.orientation,
         );
         self.animation_cycle
             .processElapsedTick(self.character.moving_circle.velocity.length() * 0.75);
@@ -360,10 +357,6 @@ pub const Player = struct {
 
     fn setTurningDirection(self: *Player, turning_direction: f32) void {
         self.turning_direction = std.math.clamp(turning_direction, -1, 1);
-    }
-
-    fn getLookingDirection(orientation: f32) math.FlatVector {
-        return .{ .x = std.math.sin(orientation), .z = std.math.cos(orientation) };
     }
 
     fn getValuesForRendering(self: Player) ValuesForRendering {

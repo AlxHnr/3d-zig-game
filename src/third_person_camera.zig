@@ -6,8 +6,8 @@ const std = @import("std");
 
 /// Camera which smoothly follows an object and auto-rotates across the Y axis.
 pub const Camera = struct {
-    position: math.Vector3d,
     target_position: math.Vector3d,
+    target_orientation: f32,
 
     distance_from_object: f32,
     /// This value will be approached by processElapsedTick().
@@ -16,26 +16,15 @@ pub const Camera = struct {
     /// This value will be approached by processElapsedTick().
     target_angle_from_ground: f32,
 
-    const target_follow_speed = 0.009 * simulation.timeDeltaFactor(f32);
+    const target_follow_speed = simulation.kphToGameUnitsPerTick(32.4);
     const default_angle_from_ground = std.math.degreesToRadians(f32, 10);
     const default_distance_from_object = 10;
 
     /// Initialize the camera to look down at the given object from behind.
-    pub fn create(
-        target_object_position: math.FlatVector,
-        target_object_looking_direction: math.FlatVector,
-    ) Camera {
-        const direction_to_camera = target_object_looking_direction.negate();
-        const camera_right = direction_to_camera.rotateRightBy90Degrees().toVector3d();
-        const offset_from_object =
-            direction_to_camera
-            .toVector3d()
-            .rotate(camera_right, default_angle_from_ground)
-            .scale(default_distance_from_object);
-
-        return Camera{
-            .position = add3dHeight(target_object_position).add(offset_from_object),
-            .target_position = add3dHeight(target_object_position),
+    pub fn create(target_position: math.FlatVector, target_orientation: f32) Camera {
+        return .{
+            .target_position = add3dHeight(target_position),
+            .target_orientation = target_orientation,
             .distance_from_object = default_distance_from_object,
             .target_distance_from_object = default_distance_from_object,
             .angle_from_ground = default_angle_from_ground,
@@ -45,9 +34,9 @@ pub const Camera = struct {
 
     /// Interpolate between this cameras state and another cameras state.
     pub fn lerp(self: Camera, other: Camera, t: f32) Camera {
-        return Camera{
-            .position = self.position.lerp(other.position, t),
+        return .{
             .target_position = self.target_position.lerp(other.target_position, t),
+            .target_orientation = math.lerp(self.target_orientation, other.target_orientation, t),
             .distance_from_object = math.lerp(
                 self.distance_from_object,
                 other.distance_from_object,
@@ -78,7 +67,7 @@ pub const Camera = struct {
     }
 
     pub fn getDirectionToTarget(self: Camera) math.Vector3d {
-        return self.target_position.subtract(self.position).normalize();
+        return self.target_position.subtract(self.getPosition()).normalize();
     }
 
     pub fn increaseDistanceToObject(self: *Camera, offset: f32) void {
@@ -129,90 +118,45 @@ pub const Camera = struct {
     pub fn get3DRayFromTargetToSelf(self: Camera) collision.Ray3d {
         return .{
             .start_position = self.target_position,
-            .direction = self.position.subtract(self.target_position).normalize(),
+            .direction = self.getPosition().subtract(self.target_position).normalize(),
         };
     }
 
     pub fn processElapsedTick(
         self: *Camera,
-        target_object_position: math.FlatVector,
-        target_object_looking_direction: math.FlatVector,
+        target_position: math.FlatVector,
+        target_orientation: f32,
     ) void {
-        self.updateAngleFromGround();
-        const y_rotated_camera_offset =
-            self.computeYRotatedCameraOffset(target_object_looking_direction);
-        self.target_position = self.target_position.lerp(
-            add3dHeight(target_object_position),
-            target_follow_speed,
-        );
-        self.position = self.target_position.add(y_rotated_camera_offset);
-        self.updateCameraDistanceFromObject();
+        var targeted_values = self.*;
+        targeted_values.angle_from_ground = self.target_angle_from_ground;
+        targeted_values.distance_from_object = self.target_distance_from_object;
+        targeted_values.target_position = add3dHeight(target_position);
+        targeted_values.target_orientation = target_orientation;
+        self.* = self.lerp(targeted_values, target_follow_speed);
     }
 
-    fn updateAngleFromGround(self: *Camera) void {
-        if (math.isEqual(self.angle_from_ground, self.target_angle_from_ground)) {
-            return;
-        }
-        self.angle_from_ground = math.lerp(
-            self.angle_from_ground,
-            self.target_angle_from_ground,
-            target_follow_speed,
-        );
-
-        const camera_offset = self.position.subtract(self.target_position);
-        const flat_camera_direction = camera_offset.toFlatVector().normalize();
-        const rotation_axis = flat_camera_direction.rotateRightBy90Degrees();
-        const rotated_camera_direction =
-            flat_camera_direction.toVector3d().rotate(
-            rotation_axis.toVector3d(),
-            self.angle_from_ground,
-        );
-        self.position =
-            self.target_position.add(rotated_camera_direction.scale(self.distance_from_object));
-    }
-
-    fn computeYRotatedCameraOffset(
-        self: Camera,
-        target_object_looking_direction: math.FlatVector,
-    ) math.Vector3d {
-        const camera_offset = self.position.subtract(self.target_position);
-        const object_back_direction = target_object_looking_direction.negate();
-        const rotation_to_object_direction = camera_offset.toFlatVector()
-            .computeRotationToOtherVector(object_back_direction);
-        const rotation_step = target_follow_speed * rotation_to_object_direction;
-        return camera_offset.rotate(
-            math.Vector3d.y_axis,
-            // Prevent overshooting the required rotation step.
-            if (std.math.fabs(rotation_step) > std.math.fabs(rotation_to_object_direction))
-                rotation_to_object_direction
-            else
-                rotation_step,
-        );
-    }
-
-    fn updateCameraDistanceFromObject(self: *Camera) void {
-        if (math.isEqual(self.distance_from_object, self.target_distance_from_object)) {
-            return;
-        }
-        self.distance_from_object = math.lerp(
-            self.distance_from_object,
-            self.target_distance_from_object,
-            target_follow_speed,
-        );
-
-        const camera_offset = self.position.subtract(self.target_position);
-        const rescaled_camera_offset = camera_offset.normalize().scale(self.distance_from_object);
-        self.position = self.target_position.add(rescaled_camera_offset);
+    pub fn getPosition(self: Camera) math.Vector3d {
+        const target_looking_direction = math.FlatVector{
+            .x = std.math.sin(self.target_orientation),
+            .z = std.math.cos(self.target_orientation),
+        };
+        const direction_to_camera = target_looking_direction.negate();
+        const camera_right = direction_to_camera.rotateRightBy90Degrees().toVector3d();
+        const offset_from_object = direction_to_camera
+            .toVector3d()
+            .rotate(camera_right, self.angle_from_ground)
+            .scale(self.distance_from_object);
+        return self.target_position.add(offset_from_object);
     }
 
     /// Add a Y offset to the specified target so it is rendered in the bottom part of the screen.
-    fn add3dHeight(target_object_position: math.FlatVector) math.Vector3d {
-        return target_object_position.toVector3d().add(math.Vector3d.y_axis.scale(3));
+    fn add3dHeight(target_position: math.FlatVector) math.Vector3d {
+        return target_position.toVector3d().add(math.Vector3d.y_axis.scale(3));
     }
 
     /// Takes an optional distance limit to prevent walls from covering the cameras target object.
     fn getViewMatrix(self: Camera, max_distance_from_target: ?f32) math.Matrix {
-        const direction_to_camera = self.position.subtract(self.target_position).normalize();
+        const direction_to_camera = self.getPosition().subtract(self.target_position).normalize();
         const right_direction = math.Vector3d.y_axis.crossProduct(direction_to_camera).normalize();
         const up_direction = direction_to_camera.crossProduct(right_direction).normalize();
         const adjusted_camera_position =
@@ -241,7 +185,7 @@ pub const Camera = struct {
     }
 
     fn getAdjustedCameraPosition(self: Camera, max_distance_from_target: ?f32) math.Vector3d {
-        const offset_from_target = self.position.subtract(self.target_position);
+        const offset_from_target = self.getPosition().subtract(self.target_position);
         const max_distance = max_distance_from_target orelse offset_from_target.length();
         const distance = @min(offset_from_target.length(), max_distance);
         const prevent_seeing_trough_walls_factor = 0.95;

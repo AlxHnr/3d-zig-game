@@ -119,7 +119,7 @@ pub const Enemy = struct {
         );
 
         const distance_from_camera = values_to_render.position
-            .toVector3d().subtract(camera.position).lengthSquared();
+            .toVector3d().subtract(camera.getPosition()).lengthSquared();
         const max_text_render_distance = values_to_render.height * 15;
         const max_health_render_distance = values_to_render.height * 35;
         self.prepared_render_data = .{
