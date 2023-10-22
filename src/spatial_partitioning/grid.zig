@@ -11,34 +11,37 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
     return struct {
         allocator: std.mem.Allocator,
         cells: std.AutoHashMap(CellIndex, UnorderedCollection(T)),
-        /// Maps object ids to references of all cells containing copies of the object.
-        object_ids_to_cell_references: std.AutoHashMap(u64, CellReferenceList),
-        /// Counterpart to previous table.
-        object_ptrs_to_object_ids: std.AutoHashMap(*const T, u64),
+        /// References all cells containing copies of the same object.
+        back_references: std.TailQueue([]BackReference),
+        /// Allows each individual object copy to be traced back to all cells the object occupies.
+        object_ptr_to_back_references: std.AutoHashMap(*const T, *BackReferenceNode),
 
         const Self = @This();
         const CellIndex = @import("cell_index.zig").Index(cell_side_length);
         const CellRange = @import("cell_range.zig").Range(cell_side_length);
+        const BackReference = struct { cell_index: CellIndex, object_ptr: *T };
+        const BackReferenceNode = std.TailQueue([]BackReference).Node;
+
+        /// Returned to the user of this grid to reference inserted objects. Can be used for
+        /// removing objects from the grid.
+        pub const ObjectHandle = opaque {};
 
         pub fn create(allocator: std.mem.Allocator) Self {
             return .{
                 .allocator = allocator,
                 .cells = std.AutoHashMap(CellIndex, UnorderedCollection(T)).init(allocator),
-                .object_ids_to_cell_references = std.AutoHashMap(u64, CellReferenceList)
+                .back_references = .{},
+                .object_ptr_to_back_references = std.AutoHashMap(*const T, *BackReferenceNode)
                     .init(allocator),
-                .object_ptrs_to_object_ids = std.AutoHashMap(*const T, u64).init(allocator),
             };
         }
 
         pub fn destroy(self: *Self) void {
-            self.object_ptrs_to_object_ids.deinit();
-
-            var ref_iterator = self.object_ids_to_cell_references.valueIterator();
-            while (ref_iterator.next()) |cell_references| {
-                self.allocator.free(cell_references.items);
+            self.object_ptr_to_back_references.deinit();
+            while (self.back_references.popFirst()) |back_references| {
+                self.allocator.free(back_references.data);
+                self.allocator.destroy(back_references);
             }
-            self.object_ids_to_cell_references.deinit();
-
             var cell_iterator = self.cells.valueIterator();
             while (cell_iterator.next()) |cell| {
                 cell.destroy();
@@ -49,12 +52,11 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
         /// Reset this grid, including all of its cells, to an empty state. Preserves its allocated
         /// capacity. Invalidates all existing iterators and pointers to objects in this grid.
         pub fn resetPreservingCapacity(self: *Self) void {
-            self.object_ptrs_to_object_ids.clearRetainingCapacity();
-            var ref_iterator = self.object_ids_to_cell_references.valueIterator();
-            while (ref_iterator.next()) |cell_references| {
-                self.allocator.free(cell_references.items);
+            self.object_ptr_to_back_references.clearRetainingCapacity();
+            while (self.back_references.popFirst()) |back_references| {
+                self.allocator.free(back_references.data);
+                self.allocator.destroy(back_references);
             }
-            self.object_ids_to_cell_references.clearRetainingCapacity();
             var cell_iterator = self.cells.valueIterator();
             while (cell_iterator.next()) |cell| {
                 cell.resetPreservingCapacity();
@@ -62,29 +64,28 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
         }
 
         /// Insert copies of the given object into every cell which intersects with the specified
-        /// bounding box. Invalidates existing iterators. The same object id should not be inserted
-        /// twice.
+        /// bounding box. Invalidates existing iterators. The returned handle can be ignored and is
+        /// only needed for optionally removing the inserted object from the grid.
         pub fn insertIntoArea(
             self: *Self,
             object: T,
-            object_id: u64,
             area: AxisAlignedBoundingBox,
-        ) !void {
+        ) !*ObjectHandle {
             const cell_range = CellRange.fromAABB(area);
             var iterator = cell_range.iterator();
-            try self.insertRaw(object, object_id, &iterator, cell_range.countCoveredCells());
+            return try self.insertRaw(object, &iterator, cell_range.countCoveredCells());
         }
 
         /// Insert copies of the given object into every cell which intersects with the edges/sides
         /// of the specified polygon. A cell which intersects with multiple edges will still contain
         /// only one single copy. The first and last vertex of the polygon represent an edge.
-        /// Invalidates existing iterators. The same object id should not be inserted twice.
+        /// Invalidates existing iterators. The returned handle can be ignored and is only needed
+        /// for optionally removing the inserted object from the grid.
         pub fn insertIntoPolygonBorders(
             self: *Self,
             object: T,
-            object_id: u64,
             polygon_vertices: []const FlatVector,
-        ) !void {
+        ) !*ObjectHandle {
             var indices = std.AutoHashMap(CellIndex, void).init(self.allocator);
             defer indices.deinit();
 
@@ -97,35 +98,32 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             }
 
             var iterator = KeyIteratorWrapper{ .iterator = indices.keyIterator() };
-            try self.insertRaw(object, object_id, &iterator, indices.count());
+            return try self.insertRaw(object, &iterator, indices.count());
         }
 
-        /// The specified object id must exist in this grid. Invalidates existing iterators.
-        /// Preserves the grids capacity.
-        pub fn remove(self: *Self, object_id: u64) void {
-            const key_value_pair = self.object_ids_to_cell_references.fetchRemove(object_id);
-            std.debug.assert(key_value_pair != null);
-            const cell_references = key_value_pair.?.value;
-
-            for (cell_references.items) |cell_reference| {
-                const cell = self.cells.getPtr(cell_reference.cell_index).?;
-                if (cell.swapRemove(cell_reference.object_ptr)) |displaced_item_address| {
-                    const displaced_object_id =
-                        self.object_ptrs_to_object_ids.fetchRemove(displaced_item_address).?.value;
-                    self.object_ptrs_to_object_ids.getPtr(cell_reference.object_ptr).?.* =
-                        displaced_object_id;
-                    const items =
-                        self.object_ids_to_cell_references.get(displaced_object_id).?.items;
-                    for (items) |*reference_to_displaced_object| {
-                        if (reference_to_displaced_object.object_ptr == displaced_item_address) {
-                            reference_to_displaced_object.object_ptr = cell_reference.object_ptr;
+        /// Remove the object specified by the given handle. Will destroy the handle and invalidate
+        /// all existing iterators. Preserves the grids capacity.
+        pub fn remove(self: *Self, handle: *ObjectHandle) void {
+            const back_reference_node = @as(*BackReferenceNode, @alignCast(@ptrCast(handle)));
+            for (back_reference_node.data) |back_reference| {
+                const cell = self.cells.getPtr(back_reference.cell_index).?;
+                if (cell.swapRemove(back_reference.object_ptr)) |displaced_object_ptr| {
+                    const displaced_handle = self.object_ptr_to_back_references
+                        .fetchRemove(displaced_object_ptr).?.value;
+                    self.object_ptr_to_back_references
+                        .getPtr(back_reference.object_ptr).?.* = displaced_handle;
+                    for (displaced_handle.data) |*reference_to_displaced_object| {
+                        if (reference_to_displaced_object.object_ptr == displaced_object_ptr) {
+                            reference_to_displaced_object.object_ptr = back_reference.object_ptr;
                         }
                     }
                 } else {
-                    _ = self.object_ptrs_to_object_ids.remove(cell_reference.object_ptr);
+                    _ = self.object_ptr_to_back_references.remove(back_reference.object_ptr);
                 }
             }
-            self.allocator.free(cell_references.items);
+            self.back_references.remove(back_reference_node);
+            self.allocator.free(back_reference_node.data);
+            self.allocator.destroy(back_reference_node);
         }
 
         /// Visit all cells intersecting with the specified area. Objects occupying multiple cells
@@ -158,30 +156,27 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             cell_line_iterator.Iterator(CellIndex),
         );
 
-        const CellReference = struct { cell_index: CellIndex, object_ptr: *T };
-        const CellReferenceList = struct { items: []CellReference };
-
         fn insertRaw(
             self: *Self,
             object: T,
-            object_id: u64,
             /// Iterator which returns all indices into which a copy of the given object should be
             /// inserted.
             cell_index_iterator: anytype,
             /// Total amount of indices returned by `cell_index_iterator`.
             total_cell_count: usize,
-        ) !void {
-            const cell_reference_list = .{
-                .items = try self.allocator.alloc(CellReference, total_cell_count),
+        ) !*ObjectHandle {
+            var back_reference_node = try self.allocator.create(BackReferenceNode);
+            errdefer self.allocator.destroy(back_reference_node);
+            back_reference_node.* = .{
+                .data = try self.allocator.alloc(BackReference, total_cell_count),
             };
-            errdefer self.allocator.free(cell_reference_list.items);
-
-            try self.object_ids_to_cell_references.putNoClobber(object_id, cell_reference_list);
-            errdefer _ = self.object_ids_to_cell_references.remove(object_id);
+            errdefer self.allocator.free(back_reference_node.data);
+            self.back_references.append(back_reference_node);
+            errdefer self.back_references.remove(back_reference_node);
 
             var cell_counter: usize = 0;
             errdefer self.destroyPartialReferencesDuringInsert(
-                cell_reference_list.items[0..cell_counter],
+                back_reference_node.data[0..cell_counter],
             );
 
             while (cell_index_iterator.next()) |cell_index| : (cell_counter += 1) {
@@ -198,28 +193,29 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
                 errdefer cell.value_ptr.removeLastAppendedItem();
                 object_ptr.* = object;
 
-                try self.object_ptrs_to_object_ids.putNoClobber(object_ptr, object_id);
-                errdefer _ = self.object_ptrs_to_object_ids.remove(object_ptr);
+                try self.object_ptr_to_back_references
+                    .putNoClobber(object_ptr, back_reference_node);
+                errdefer _ = self.object_ptr_to_back_references.remove(object_ptr);
 
-                cell_reference_list.items[cell_counter] = .{
-                    .cell_index = cell_index,
-                    .object_ptr = object_ptr,
-                };
+                back_reference_node.data[cell_counter] =
+                    .{ .cell_index = cell_index, .object_ptr = object_ptr };
             }
+
+            return @ptrCast(back_reference_node);
         }
 
         fn destroyPartialReferencesDuringInsert(
             self: *Self,
-            cell_references: []CellReference,
+            back_references: []BackReference,
         ) void {
-            for (cell_references) |cell_reference| {
-                _ = self.object_ptrs_to_object_ids.remove(cell_reference.object_ptr);
+            for (back_references) |back_reference| {
+                _ = self.object_ptr_to_back_references.remove(back_reference.object_ptr);
 
-                const cell = self.cells.getPtr(cell_reference.cell_index).?;
+                const cell = self.cells.getPtr(back_reference.cell_index).?;
                 cell.removeLastAppendedItem();
                 if (cell.count() == 0) {
                     cell.destroy();
-                    _ = self.cells.remove(cell_reference.cell_index);
+                    _ = self.cells.remove(back_reference.cell_index);
                 }
             }
         }

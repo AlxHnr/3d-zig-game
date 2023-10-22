@@ -705,34 +705,40 @@ test "SpatialGrid: insert and destroy" {
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    try grid.insertIntoArea(19, 11, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
-    try grid.insertIntoArea(20, 12, .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 20, .z = 20 } });
+    _ = try grid.insertIntoArea(19, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
+    _ = try grid.insertIntoArea(20, .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 20, .z = 20 } });
 }
 
 test "SpatialGrid: insert and remove" {
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    try grid.insertIntoArea(99, 12, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 14 } });
-    grid.remove(12);
+    var handle_12 =
+        try grid.insertIntoArea(99, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 14 } });
+    grid.remove(handle_12);
 
-    try grid.insertIntoArea(19, 11, .{ .min = .{ .x = -40, .z = 20 }, .max = .{ .x = 14, .z = 84 } });
-    try grid.insertIntoArea(20, 12, .{ .min = .{ .x = -10, .z = 0 }, .max = .{ .x = -1, .z = 3 } });
-    try grid.insertIntoArea(21, 34, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 23, .z = 32 } });
-    grid.remove(12);
-    grid.remove(34);
-    grid.remove(11);
+    const handle_11 =
+        try grid.insertIntoArea(19, .{ .min = .{ .x = -40, .z = 20 }, .max = .{ .x = 14, .z = 84 } });
+    handle_12 =
+        try grid.insertIntoArea(20, .{ .min = .{ .x = -10, .z = 0 }, .max = .{ .x = -1, .z = 3 } });
+    const handle_34 =
+        try grid.insertIntoArea(21, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 23, .z = 32 } });
+    grid.remove(handle_12);
+    grid.remove(handle_34);
+    grid.remove(handle_11);
 }
 
 test "SpatialGrid: insert and remove: update displaced object ids" {
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    try grid.insertIntoArea(19, 11, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
-    try grid.insertIntoArea(20, 12, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
-    try grid.insertIntoArea(21, 13, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
-    grid.remove(12);
-    grid.remove(11);
+    const handle_11 =
+        try grid.insertIntoArea(19, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
+    const handle_12 =
+        try grid.insertIntoArea(20, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
+    _ = try grid.insertIntoArea(21, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
+    grid.remove(handle_12);
+    grid.remove(handle_11);
 }
 
 fn testAreaIterator(
@@ -755,14 +761,15 @@ test "SpatialGrid: const iterator: basic usage" {
     var iterator = grid.areaIterator(range);
     try expect(iterator.next() == null);
 
-    try grid.insertIntoArea(19, 11, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
+    const handle_11 =
+        try grid.insertIntoArea(19, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
     iterator = grid.areaIterator(range);
     try testAreaIterator(&iterator, &[_]usize{
         19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19,
         19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19,
     });
 
-    grid.remove(11);
+    grid.remove(handle_11);
     iterator = grid.areaIterator(range);
     try expect(iterator.next() == null);
 }
@@ -771,12 +778,14 @@ test "SpatialGrid: const iterator: region queries" {
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    try grid.insertIntoArea(1, 1, .{ .min = .{ .x = -160, .z = -190 }, .max = .{ .x = -70, .z = -30 } });
-    try grid.insertIntoArea(2, 2, .{ .min = .{ .x = -120, .z = 70 }, .max = .{ .x = -10, .z = 130 } });
-    try grid.insertIntoArea(3, 3, .{ .min = .{ .x = 20, .z = 70 }, .max = .{ .x = 80, .z = 130 } });
-    try grid.insertIntoArea(4, 4, .{ .min = .{ .x = 70, .z = 20 }, .max = .{ .x = 130, .z = 70 } });
-    try grid.insertIntoArea(5, 5, .{ .min = .{ .x = 80, .z = -130 }, .max = .{ .x = 130, .z = -10 } });
-    try grid.insertIntoArea(6, 6, .{ .min = .{ .x = 30, .z = -130 }, .max = .{ .x = 130, .z = -10 } });
+    const handles = .{
+        try grid.insertIntoArea(1, .{ .min = .{ .x = -160, .z = -190 }, .max = .{ .x = -70, .z = -30 } }),
+        try grid.insertIntoArea(2, .{ .min = .{ .x = -120, .z = 70 }, .max = .{ .x = -10, .z = 130 } }),
+        try grid.insertIntoArea(3, .{ .min = .{ .x = 20, .z = 70 }, .max = .{ .x = 80, .z = 130 } }),
+        try grid.insertIntoArea(4, .{ .min = .{ .x = 70, .z = 20 }, .max = .{ .x = 130, .z = 70 } }),
+        try grid.insertIntoArea(5, .{ .min = .{ .x = 80, .z = -130 }, .max = .{ .x = 130, .z = -10 } }),
+        try grid.insertIntoArea(6, .{ .min = .{ .x = 30, .z = -130 }, .max = .{ .x = 130, .z = -10 } }),
+    };
 
     const range = .{ .min = .{ .x = -70, .z = -30 }, .max = .{ .x = 90, .z = 90 } };
     var iterator = grid.areaIterator(range);
@@ -788,9 +797,9 @@ test "SpatialGrid: const iterator: region queries" {
         3, 3, 3, 3, 3, 3, 3, 3,
     });
 
-    grid.remove(5);
-    grid.remove(4);
-    grid.remove(2);
+    grid.remove(handles[4]);
+    grid.remove(handles[3]);
+    grid.remove(handles[1]);
     iterator = grid.areaIterator(range);
     try testAreaIterator(&iterator, &[_]usize{
         1, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
@@ -801,7 +810,7 @@ test "SpatialGrid: const iterator: region queries" {
     iterator = grid.areaIterator(.{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 0, .z = 0 } });
     try expect(iterator.next() == null);
 
-    grid.remove(1);
+    grid.remove(handles[0]);
     iterator = grid.areaIterator(range);
     try testAreaIterator(&iterator, &[_]usize{
         6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
@@ -816,8 +825,8 @@ test "SpatialGrid: reset to empty state." {
 
     const range = .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } };
 
-    try grid.insertIntoArea(0, 0, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
-    try grid.insertIntoArea(1, 1, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
+    _ = try grid.insertIntoArea(0, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
+    _ = try grid.insertIntoArea(1, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
     grid.resetPreservingCapacity();
     var iterator = grid.areaIterator(range);
     try expect(iterator.next() == null);
@@ -1008,31 +1017,31 @@ test "SpatialGrid: const straight line iterator" {
     defer grid.destroy();
 
     const factor = @as(f32, @floatFromInt(grid_cell_side_length)) * 0.4;
-    try grid.insertIntoArea(1, 1, .{
+    _ = try grid.insertIntoArea(1, .{
         .min = .{ .x = -16 * factor, .z = -19 * factor },
         .max = .{ .x = -7 * factor, .z = -3 * factor },
     });
-    try grid.insertIntoArea(2, 2, .{
+    _ = try grid.insertIntoArea(2, .{
         .min = .{ .x = -12 * factor, .z = 7 * factor },
         .max = .{ .x = -1 * factor, .z = 13 * factor },
     });
-    try grid.insertIntoArea(3, 3, .{
+    _ = try grid.insertIntoArea(3, .{
         .min = .{ .x = 2 * factor, .z = 7 * factor },
         .max = .{ .x = 8 * factor, .z = 13 * factor },
     });
-    try grid.insertIntoArea(4, 4, .{
+    _ = try grid.insertIntoArea(4, .{
         .min = .{ .x = 7 * factor, .z = 2 * factor },
         .max = .{ .x = 13 * factor, .z = 7 * factor },
     });
-    try grid.insertIntoArea(5, 5, .{
+    _ = try grid.insertIntoArea(5, .{
         .min = .{ .x = 8 * factor, .z = -13 * factor },
         .max = .{ .x = 13 * factor, .z = -1 * factor },
     });
-    try grid.insertIntoArea(6, 6, .{
+    _ = try grid.insertIntoArea(6, .{
         .min = .{ .x = 3 * factor, .z = -13 * factor },
         .max = .{ .x = 13 * factor, .z = -1 * factor },
     });
-    try grid.insertIntoArea(7, 7, .{
+    _ = try grid.insertIntoArea(7, .{
         .min = .{ .x = 3 * factor, .z = -13 * factor },
         .max = .{ .x = 13 * factor, .z = -1 * factor },
     });

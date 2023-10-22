@@ -282,15 +282,12 @@ pub const Geometry = struct {
             _ = self.walls.solid.pop();
         };
 
-        try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
-        errdefer self.spatial_wall_index.all.remove(wall.object_id);
-
+        errdefer self.removeWallFromSpatialGrid(wall);
+        wall.grid_handles.all = try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
         if (!Wall.isFence(wall_type)) {
-            try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
+            wall.grid_handles.solid =
+                try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
         }
-        errdefer if (!Wall.isFence(wall_type)) {
-            self.spatial_wall_index.solid.remove(wall.object_id);
-        };
 
         self.walls_have_changed = true;
         return wall.object_id;
@@ -304,22 +301,22 @@ pub const Geometry = struct {
         end_position: math.FlatVector,
     ) !void {
         if (self.findWall(object_id)) |wall| {
-            const tint = wall.tint;
-            const wall_type = wall.wall_type;
+            var old_wall = wall.*;
             wall.* = Wall.create(
                 object_id,
-                wall_type,
+                old_wall.wall_type,
                 start_position,
                 end_position,
             );
-            wall.tint = tint;
+            wall.tint = old_wall.tint;
             self.walls_have_changed = true;
 
-            self.spatial_wall_index.all.remove(object_id);
-            try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
+            self.removeWallFromSpatialGrid(&old_wall);
+            wall.grid_handles.all =
+                try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
             if (!Wall.isFence(wall.wall_type)) {
-                self.spatial_wall_index.solid.remove(object_id);
-                try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
+                wall.grid_handles.solid =
+                    try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
             }
         }
     }
@@ -397,17 +394,16 @@ pub const Geometry = struct {
     pub fn removeObject(self: *Geometry, object_id: u64) void {
         for (self.walls.solid.items, 0..) |*wall, index| {
             if (wall.object_id == object_id) {
+                self.removeWallFromSpatialGrid(wall);
                 _ = self.walls.solid.orderedRemove(index);
-                self.spatial_wall_index.all.remove(object_id);
-                self.spatial_wall_index.solid.remove(object_id);
                 self.walls_have_changed = true;
                 return;
             }
         }
         for (self.walls.translucent.items, 0..) |*wall, index| {
             if (wall.object_id == object_id) {
+                self.removeWallFromSpatialGrid(wall);
                 _ = self.walls.translucent.orderedRemove(index);
-                self.spatial_wall_index.all.remove(object_id);
                 self.walls_have_changed = true;
                 return;
             }
@@ -546,12 +542,22 @@ pub const Geometry = struct {
         return false;
     }
 
-    fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !void {
-        try grid.insertIntoPolygonBorders(
+    fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !*SpatialGrid.ObjectHandle {
+        return try grid.insertIntoPolygonBorders(
             wall.boundaries,
-            wall.object_id,
             &wall.boundaries.getCornersInGameCoordinates(),
         );
+    }
+
+    fn removeWallFromSpatialGrid(self: *Geometry, wall: *Wall) void {
+        if (wall.grid_handles.all) |handle| {
+            self.spatial_wall_index.all.remove(handle);
+            wall.grid_handles.all = null;
+        }
+        if (!Wall.isFence(wall.wall_type) and wall.grid_handles.solid != null) {
+            self.spatial_wall_index.solid.remove(wall.grid_handles.solid.?);
+            wall.grid_handles.solid = null;
+        }
     }
 
     fn findWall(self: *Geometry, object_id: u64) ?*Wall {
@@ -736,6 +742,11 @@ const Wall = struct {
     boundaries: collision.Rectangle,
     tint: util.Color,
 
+    grid_handles: struct {
+        all: ?*Geometry.SpatialGrid.ObjectHandle,
+        solid: ?*Geometry.SpatialGrid.ObjectHandle,
+    },
+
     /// Values used to generate this wall.
     start_position: math.FlatVector,
     end_position: math.FlatVector,
@@ -775,6 +786,7 @@ const Wall = struct {
                 length,
             ),
             .wall_type = wall_type,
+            .grid_handles = .{ .all = null, .solid = null },
             .start_position = start_position,
             .end_position = end_position,
         };
