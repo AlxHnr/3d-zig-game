@@ -63,7 +63,7 @@ pub const Context = struct {
                         .x = -shared_context.rng.random().float(f32) * 100 - 50,
                         .z = shared_context.rng.random().float(f32) * 500,
                     },
-                    enemy_presets.floating_eye,
+                    &enemy_presets.floating_eye,
                     spritesheet,
                 ),
             );

@@ -20,10 +20,6 @@ pub const Config = struct {
     sprite: SpriteSheetTexture.SpriteId,
     movement_speed: IdleAndAttackingValues,
     aggro_radius: IdleAndAttackingValues,
-
-    // Every member below this line is duplicating the values in `game_unit.GameCharacter` and does
-    // not need to be replicated in `Enemy`.
-
     height: f32,
     max_health: u32,
 
@@ -31,11 +27,7 @@ pub const Config = struct {
 };
 
 pub const Enemy = struct {
-    /// Non-owning slice.
-    name: []const u8,
-    sprite: SpriteSheetTexture.SpriteId,
-    movement_speed: Config.IdleAndAttackingValues,
-    aggro_radius: Config.IdleAndAttackingValues,
+    config: *const Config,
     character: GameCharacter,
     state: State,
 
@@ -52,7 +44,8 @@ pub const Enemy = struct {
 
     pub fn create(
         position: math.FlatVector,
-        config: Config,
+        /// Returned object will keep a reference to this config.
+        config: *const Config,
         spritesheet: SpriteSheetTexture,
     ) Enemy {
         const character = GameCharacter.create(
@@ -69,11 +62,8 @@ pub const Enemy = struct {
             .health = character.health,
         };
         return .{
+            .config = config,
             .character = character,
-            .name = config.name,
-            .sprite = config.sprite,
-            .movement_speed = config.movement_speed,
-            .aggro_radius = config.aggro_radius,
             .state = .{ .spawning = undefined },
             .values_from_previous_tick = render_values,
             .prepared_render_data = .{
@@ -152,7 +142,7 @@ pub const Enemy = struct {
             self.prepared_render_data.values.position,
             self.prepared_render_data.values.radius,
             self.prepared_render_data.values.height,
-            self.sprite,
+            self.config.sprite,
             spritesheet,
         );
 
@@ -186,7 +176,7 @@ pub const Enemy = struct {
     }
 
     fn getNameText(self: Enemy) [1]text_rendering.TextSegment {
-        return .{.{ .color = Color.white, .text = self.name }};
+        return .{.{ .color = Color.white, .text = self.config.name }};
     }
 
     pub fn populateHealthbarBillboardData(
@@ -300,7 +290,7 @@ const IdleState = struct {
         const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
             context,
             enemy.*,
-            enemy.aggro_radius.idle,
+            enemy.config.aggro_radius.idle,
         );
         if (is_seeing_main_character) {
             enemy.state = .{ .attacking = AttackingState.create() };
@@ -315,7 +305,7 @@ const IdleState = struct {
             const direction = std.math.degreesToRadians(f32, 360 * rng.float(f32));
             const forward = math.FlatVector{ .x = 0, .z = -1 };
             enemy.character.acceleration_direction = forward.rotate(direction);
-            enemy.character.movement_speed = enemy.movement_speed.idle;
+            enemy.character.movement_speed = enemy.config.movement_speed.idle;
             self.ticks_until_movement =
                 rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(u32, 4));
         } else {
@@ -340,7 +330,7 @@ const AttackingState = struct {
         const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
             context,
             enemy.*,
-            enemy.aggro_radius.attacking,
+            enemy.config.aggro_radius.attacking,
         );
         if (!is_seeing_main_character) {
             enemy.state = .{ .idle = IdleState.create(context) };
@@ -353,7 +343,7 @@ const AttackingState = struct {
         const min_distance_to_target = enemy.character.moving_circle.radius +
             context.main_character.moving_circle.radius;
         if (distance_to_target > min_distance_to_target * min_distance_to_target) {
-            enemy.character.movement_speed = enemy.movement_speed.attacking;
+            enemy.character.movement_speed = enemy.config.movement_speed.attacking;
             enemy.character.acceleration_direction = offset_to_target.normalize();
         } else {
             enemy.character.acceleration_direction = math.FlatVector.zero;
