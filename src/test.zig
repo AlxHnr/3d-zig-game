@@ -915,6 +915,25 @@ test "SpatialCollection: iterator: skip cells" {
     try expect(iterator.next() == null);
 }
 
+test "SpatialCollection: update displaced back references" {
+    var collection = try SpatialCollection.create(std.testing.allocator);
+    defer collection.destroy();
+
+    const handles = .{
+        try collection.insert(0, .{ .x = 0, .z = 10 }),
+        try collection.insert(1, .{ .x = 0, .z = 10 }),
+        try collection.insert(2, .{ .x = 0, .z = 10 }),
+    };
+    collection.remove(handles[0]);
+    _ = try collection.insert(3, .{ .x = 0, .z = 10 });
+    collection.remove(handles[2]);
+
+    var iterator = collection.iterator();
+    try expect(iterator.next().?.* == 3);
+    try expect(iterator.next().?.* == 1);
+    try expect(iterator.next() == null);
+}
+
 fn testCellLineIterator(
     comptime cell_side_length: u32,
     iterator: *CellLineIterator(CellIndexType(cell_side_length)),

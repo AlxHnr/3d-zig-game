@@ -9,6 +9,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
         allocator: std.mem.Allocator,
         cells: CellMap,
         ordered_indices: std.ArrayList(CellIndex),
+        object_ptr_to_back_references: std.AutoHashMap(*const T, *BackReference),
 
         const Self = @This();
         const CellIndex = @import("cell_index.zig").Index(cell_side_length);
@@ -17,20 +18,28 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
 
         /// Returned to the user of this collection to reference inserted objects. Can be used for
         /// removing objects from the collection.
-        pub const ObjectHandle = BackReference;
+        pub const ObjectHandle = opaque {};
 
         pub fn create(allocator: std.mem.Allocator) !Self {
             return .{
                 .allocator = allocator,
                 .cells = CellMap.init(allocator),
                 .ordered_indices = std.ArrayList(CellIndex).init(allocator),
+                .object_ptr_to_back_references = std.AutoHashMap(*const T, *BackReference)
+                    .init(allocator),
             };
         }
 
         pub fn destroy(self: *Self) void {
+            var ptr_to_reference_iterator = self.object_ptr_to_back_references.valueIterator();
+            while (ptr_to_reference_iterator.next()) |back_reference| {
+                self.allocator.destroy(back_reference.*);
+            }
+            self.object_ptr_to_back_references.deinit();
+
             self.ordered_indices.deinit();
-            var it = self.cells.valueIterator();
-            while (it.next()) |collection| {
+            var cell_iterator = self.cells.valueIterator();
+            while (cell_iterator.next()) |collection| {
                 collection.destroy();
             }
             self.cells.deinit();
@@ -38,7 +47,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
 
         /// Inserts the given object into the collection. Invalidates existing iterators. The same
         /// object id should not be inserted twice.
-        pub fn insert(self: *Self, object: T, position: FlatVector) !ObjectHandle {
+        pub fn insert(self: *Self, object: T, position: FlatVector) !*ObjectHandle {
             const cell_index = CellIndex.fromPosition(position);
 
             const cell = try self.cells.getOrPut(cell_index);
@@ -57,13 +66,31 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             errdefer cell.value_ptr.removeLastAppendedItem();
             object_ptr.* = object;
 
-            return .{ .index = cell_index, .object_ptr = object_ptr };
+            const back_reference = try self.allocator.create(BackReference);
+            errdefer self.allocator.destroy(back_reference);
+            back_reference.* = .{ .index = cell_index, .object_ptr = object_ptr };
+
+            try self.object_ptr_to_back_references.putNoClobber(object_ptr, back_reference);
+            errdefer self.object_ptr_to_back_references.remove(object_ptr);
+
+            return @ptrCast(back_reference);
         }
 
         /// Remove the object specified by the given handle. Will destroy the handle and invalidate
         /// all existing iterators. Preserves the collections capacity.
-        pub fn remove(self: *Self, handle: ObjectHandle) void {
-            _ = self.cells.getPtr(handle.index).?.swapRemove(handle.object_ptr);
+        pub fn remove(self: *Self, handle: *ObjectHandle) void {
+            const back_reference = @as(*BackReference, @alignCast(@ptrCast(handle)));
+            const cell = self.cells.getPtr(back_reference.index).?;
+            if (cell.swapRemove(back_reference.object_ptr)) |displaced_object_ptr| {
+                const displaced_back_reference =
+                    self.object_ptr_to_back_references.fetchRemove(displaced_object_ptr).?.value;
+                displaced_back_reference.object_ptr = back_reference.object_ptr;
+                self.object_ptr_to_back_references.getPtr(back_reference.object_ptr).?.* =
+                    displaced_back_reference;
+            } else {
+                _ = self.object_ptr_to_back_references.remove(back_reference.object_ptr);
+            }
+            self.allocator.destroy(back_reference);
         }
 
         /// Will be invalidated by modifications to this collection.
