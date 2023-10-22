@@ -10,6 +10,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
         cells: CellMap,
         ordered_indices: std.ArrayList(CellIndex),
         object_ptr_to_back_references: std.AutoHashMap(*const T, *BackReference),
+        back_reference_pool: std.heap.MemoryPool(BackReference),
 
         const Self = @This();
         const CellIndex = @import("cell_index.zig").Index(cell_side_length);
@@ -27,16 +28,13 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
                 .ordered_indices = std.ArrayList(CellIndex).init(allocator),
                 .object_ptr_to_back_references = std.AutoHashMap(*const T, *BackReference)
                     .init(allocator),
+                .back_reference_pool = std.heap.MemoryPool(BackReference).init(allocator),
             };
         }
 
         pub fn destroy(self: *Self) void {
-            var ptr_to_reference_iterator = self.object_ptr_to_back_references.valueIterator();
-            while (ptr_to_reference_iterator.next()) |back_reference| {
-                self.allocator.destroy(back_reference.*);
-            }
+            self.back_reference_pool.deinit();
             self.object_ptr_to_back_references.deinit();
-
             self.ordered_indices.deinit();
             var cell_iterator = self.cells.valueIterator();
             while (cell_iterator.next()) |collection| {
@@ -66,8 +64,8 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             errdefer cell.value_ptr.removeLastAppendedItem();
             object_ptr.* = object;
 
-            const back_reference = try self.allocator.create(BackReference);
-            errdefer self.allocator.destroy(back_reference);
+            const back_reference = try self.back_reference_pool.create();
+            errdefer self.back_reference_pool.destroy(back_reference);
             back_reference.* = .{ .index = cell_index, .object_ptr = object_ptr };
 
             try self.object_ptr_to_back_references.putNoClobber(object_ptr, back_reference);
@@ -90,7 +88,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             } else {
                 _ = self.object_ptr_to_back_references.remove(back_reference.object_ptr);
             }
-            self.allocator.destroy(back_reference);
+            self.back_reference_pool.destroy(back_reference);
         }
 
         /// Will be invalidated by modifications to this collection.
