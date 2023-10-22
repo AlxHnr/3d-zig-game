@@ -836,13 +836,15 @@ test "SpatialCollection: iterator" {
     var collection = try SpatialCollection.create(std.testing.allocator);
     defer collection.destroy();
 
-    try collection.insert(1, 1, .{ .x = -160, .z = -190 });
-    try collection.insert(2, 2, .{ .x = -120, .z = 70 });
-    try collection.insert(3, 3, .{ .x = 20, .z = 70 });
-    try collection.insert(4, 4, .{ .x = 70, .z = 20 });
-    try collection.insert(5, 5, .{ .x = 80, .z = -130 });
-    try collection.insert(6, 6, .{ .x = 20, .z = -130 });
-    try collection.insert(7, 7, .{ .x = 20, .z = -130 });
+    const handles = .{
+        try collection.insert(1, .{ .x = -160, .z = -190 }),
+        try collection.insert(2, .{ .x = -120, .z = 70 }),
+        try collection.insert(3, .{ .x = 20, .z = 70 }),
+        try collection.insert(4, .{ .x = 70, .z = 20 }),
+        try collection.insert(5, .{ .x = 80, .z = -130 }),
+        try collection.insert(6, .{ .x = 20, .z = -130 }),
+        try collection.insert(7, .{ .x = 20, .z = -130 }),
+    };
 
     var iterator = collection.iterator();
     try expect(iterator.next().?.* == 1);
@@ -854,9 +856,9 @@ test "SpatialCollection: iterator" {
     try expect(iterator.next().?.* == 3);
     try expect(iterator.next() == null);
 
-    collection.remove(6);
-    collection.remove(1);
-    collection.remove(3);
+    collection.remove(handles[5]);
+    collection.remove(handles[0]);
+    collection.remove(handles[2]);
 
     iterator = collection.iterator();
     try expect(iterator.next().?.* == 7);
@@ -865,9 +867,9 @@ test "SpatialCollection: iterator" {
     try expect(iterator.next().?.* == 2);
     try expect(iterator.next() == null);
 
-    collection.remove(4);
-    collection.remove(2);
-    collection.remove(7);
+    collection.remove(handles[3]);
+    collection.remove(handles[1]);
+    collection.remove(handles[6]);
 
     iterator = collection.iterator();
     try expect(iterator.next().?.* == 5);
@@ -878,13 +880,13 @@ test "SpatialCollection: iterator: skip cells" {
     var collection = try SpatialCollection.create(std.testing.allocator);
     defer collection.destroy();
 
-    try collection.insert(1, 1, .{ .x = -160, .z = -190 });
-    try collection.insert(2, 2, .{ .x = -120, .z = 70 });
-    try collection.insert(3, 3, .{ .x = 20, .z = 70 });
-    try collection.insert(4, 4, .{ .x = 70, .z = 20 });
-    try collection.insert(5, 5, .{ .x = 80, .z = -130 });
-    try collection.insert(6, 6, .{ .x = 20, .z = -130 });
-    try collection.insert(7, 7, .{ .x = 20, .z = -130 });
+    _ = try collection.insert(1, .{ .x = -160, .z = -190 });
+    _ = try collection.insert(2, .{ .x = -120, .z = 70 });
+    _ = try collection.insert(3, .{ .x = 20, .z = 70 });
+    _ = try collection.insert(4, .{ .x = 70, .z = 20 });
+    _ = try collection.insert(5, .{ .x = 80, .z = -130 });
+    _ = try collection.insert(6, .{ .x = 20, .z = -130 });
+    _ = try collection.insert(7, .{ .x = 20, .z = -130 });
 
     var iterator = collection.iteratorAdvanced(4, 0);
     try expect(iterator.next().?.* == 2);

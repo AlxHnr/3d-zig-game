@@ -8,26 +8,27 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
     return struct {
         allocator: std.mem.Allocator,
         cells: CellMap,
-        object_ids_to_cell_references: std.AutoHashMap(u64, CellReference),
         ordered_indices: std.ArrayList(CellIndex),
 
         const Self = @This();
         const CellIndex = @import("cell_index.zig").Index(cell_side_length);
         const CellMap = std.AutoHashMap(CellIndex, UnorderedCollection(T));
+        const BackReference = struct { index: CellIndex, object_ptr: *T };
+
+        /// Returned to the user of this collection to reference inserted objects. Can be used for
+        /// removing objects from the collection.
+        pub const ObjectHandle = BackReference;
 
         pub fn create(allocator: std.mem.Allocator) !Self {
             return .{
                 .allocator = allocator,
                 .cells = CellMap.init(allocator),
-                .object_ids_to_cell_references = std.AutoHashMap(u64, CellReference).init(allocator),
                 .ordered_indices = std.ArrayList(CellIndex).init(allocator),
             };
         }
 
         pub fn destroy(self: *Self) void {
             self.ordered_indices.deinit();
-            self.object_ids_to_cell_references.deinit();
-
             var it = self.cells.valueIterator();
             while (it.next()) |collection| {
                 collection.destroy();
@@ -37,12 +38,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
 
         /// Inserts the given object into the collection. Invalidates existing iterators. The same
         /// object id should not be inserted twice.
-        pub fn insert(
-            self: *Self,
-            object: T,
-            object_id: u64,
-            position: FlatVector,
-        ) !void {
+        pub fn insert(self: *Self, object: T, position: FlatVector) !ObjectHandle {
             const cell_index = CellIndex.fromPosition(position);
 
             const cell = try self.cells.getOrPut(cell_index);
@@ -61,19 +57,13 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             errdefer cell.value_ptr.removeLastAppendedItem();
             object_ptr.* = object;
 
-            try self.object_ids_to_cell_references.putNoClobber(
-                object_id,
-                .{ .index = cell_index, .object_ptr = object_ptr },
-            );
-            errdefer _ = self.object_ids_to_cell_references.remove(object_id);
+            return .{ .index = cell_index, .object_ptr = object_ptr };
         }
 
-        /// Specified object must exist in this collection. Invalidates all iterators. Preserves the
-        /// grids capacity.
-        pub fn remove(self: *Self, object_id: u64) void {
-            const cell_reference = self.object_ids_to_cell_references.fetchRemove(object_id).?.value;
-            const cell = self.cells.getPtr(cell_reference.index).?;
-            _ = cell.swapRemove(cell_reference.object_ptr);
+        /// Remove the object specified by the given handle. Will destroy the handle and invalidate
+        /// all existing iterators. Preserves the collections capacity.
+        pub fn remove(self: *Self, handle: ObjectHandle) void {
+            _ = self.cells.getPtr(handle.index).?.swapRemove(handle.object_ptr);
         }
 
         /// Will be invalidated by modifications to this collection.
@@ -132,11 +122,5 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
         fn lessThan(_: void, a: CellIndex, b: CellIndex) bool {
             return a.compare(b) == .lt;
         }
-
-        const CellReference = struct {
-            index: CellIndex,
-            /// Non-owning pointer.
-            object_ptr: *T,
-        };
     };
 }
