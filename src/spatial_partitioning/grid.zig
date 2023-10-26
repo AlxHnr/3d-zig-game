@@ -5,8 +5,7 @@ const cell_line_iterator = @import("cell_line_iterator.zig");
 const std = @import("std");
 
 /// Collection for storing objects redundantly in multiple cells. Allows fast queries over objects
-/// which are spatially close to each other. Grow-only data structure which uses contiguous memory
-/// where possible.
+/// which are spatially close to each other.
 pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
     return struct {
         allocator: std.mem.Allocator,

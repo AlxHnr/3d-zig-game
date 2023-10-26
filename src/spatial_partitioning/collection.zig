@@ -3,7 +3,6 @@ const UnorderedCollection = @import("../unordered_collection.zig").UnorderedColl
 const std = @import("std");
 
 /// Collection which allows iterating over objects which are spatially close to each other.
-/// Grow-only data structure which uses contiguous memory where possible.
 pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
     return struct {
         allocator: std.mem.Allocator,

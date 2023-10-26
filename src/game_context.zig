@@ -36,7 +36,7 @@ pub const Context = struct {
 
     hud: Hud,
 
-    // Prevents the engine from hanging if ticks take too long and catching up becomes impossible.
+    /// Prevents the engine from hanging if ticks take too long and catching up becomes impossible.
     const max_frame_time = std.time.ns_per_s / 10;
 
     pub fn create(allocator: std.mem.Allocator, map_file_path: []const u8) !Context {
