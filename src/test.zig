@@ -819,19 +819,6 @@ test "SpatialGrid: const iterator: region queries" {
     });
 }
 
-test "SpatialGrid: reset to empty state." {
-    var grid = SpatialGrid.create(std.testing.allocator);
-    defer grid.destroy();
-
-    const range = .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } };
-
-    _ = try grid.insertIntoArea(0, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
-    _ = try grid.insertIntoArea(1, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
-    grid.resetPreservingCapacity();
-    var iterator = grid.areaIterator(range);
-    try expect(iterator.next() == null);
-}
-
 test "SpatialCollection: iterator" {
     var collection = try SpatialCollection.create(std.testing.allocator);
     defer collection.destroy();

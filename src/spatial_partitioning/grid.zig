@@ -48,20 +48,6 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             self.cells.deinit();
         }
 
-        /// Reset this grid, including all of its cells, to an empty state. Preserves its allocated
-        /// capacity. Invalidates all existing iterators and pointers to objects in this grid.
-        pub fn resetPreservingCapacity(self: *Self) void {
-            self.object_ptr_to_back_references.clearRetainingCapacity();
-            while (self.back_references.popFirst()) |back_reference_node| {
-                self.allocator.free(back_reference_node.data);
-                self.allocator.destroy(back_reference_node);
-            }
-            var cell_iterator = self.cells.valueIterator();
-            while (cell_iterator.next()) |cell| {
-                cell.resetPreservingCapacity();
-            }
-        }
-
         /// Insert copies of the given object into every cell which intersects with the specified
         /// bounding box. Invalidates existing iterators. The returned handle can be ignored and is
         /// only needed for optionally removing the inserted object from the grid.
