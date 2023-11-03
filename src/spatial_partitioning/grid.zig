@@ -12,7 +12,6 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
         cells: std.AutoHashMap(CellIndex, UnorderedCollection(T)),
         /// References all cells containing copies of the same object.
         back_references: std.TailQueue([]BackReference),
-        back_reference_node_pool: std.heap.MemoryPool(BackReferenceNode),
         /// Allows each individual object copy to be traced back to all cells the object occupies.
         object_ptr_to_back_references: std.AutoHashMap(*const T, *BackReferenceNode),
 
@@ -31,7 +30,6 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
                 .allocator = allocator,
                 .cells = std.AutoHashMap(CellIndex, UnorderedCollection(T)).init(allocator),
                 .back_references = .{},
-                .back_reference_node_pool = std.heap.MemoryPool(BackReferenceNode).init(allocator),
                 .object_ptr_to_back_references = std.AutoHashMap(*const T, *BackReferenceNode)
                     .init(allocator),
             };
@@ -41,8 +39,8 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             self.object_ptr_to_back_references.deinit();
             while (self.back_references.popFirst()) |back_reference_node| {
                 self.allocator.free(back_reference_node.data);
+                self.allocator.destroy(back_reference_node);
             }
-            self.back_reference_node_pool.deinit();
             var cell_iterator = self.cells.valueIterator();
             while (cell_iterator.next()) |cell| {
                 cell.destroy();
@@ -55,10 +53,8 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
         pub fn resetPreservingCapacity(self: *Self) void {
             self.object_ptr_to_back_references.clearRetainingCapacity();
             while (self.back_references.popFirst()) |back_reference_node| {
-                // The back-reference pool has a reset() function, which as of 0.11.0 does not
-                // preserve the preallocated capacity.
                 self.allocator.free(back_reference_node.data);
-                self.back_reference_node_pool.destroy(back_reference_node);
+                self.allocator.destroy(back_reference_node);
             }
             var cell_iterator = self.cells.valueIterator();
             while (cell_iterator.next()) |cell| {
@@ -126,7 +122,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             }
             self.back_references.remove(back_reference_node);
             self.allocator.free(back_reference_node.data);
-            self.back_reference_node_pool.destroy(back_reference_node);
+            self.allocator.destroy(back_reference_node);
         }
 
         /// Visit all cells intersecting with the specified area. Objects occupying multiple cells
@@ -168,8 +164,8 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32) type {
             /// Total amount of indices returned by `cell_index_iterator`.
             total_cell_count: usize,
         ) !*ObjectHandle {
-            var back_reference_node = try self.back_reference_node_pool.create();
-            errdefer self.back_reference_node_pool.destroy(back_reference_node);
+            var back_reference_node = try self.allocator.create(BackReferenceNode);
+            errdefer self.allocator.destroy(back_reference_node);
             back_reference_node.* = .{
                 .data = try self.allocator.alloc(BackReference, total_cell_count),
             };
