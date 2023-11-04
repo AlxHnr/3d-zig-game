@@ -53,18 +53,22 @@ pub const MovingCircle = struct {
         return self.trace[self.trace.len - 1];
     }
 
+    pub fn setPosition(self: *MovingCircle, position: math.FlatVector) void {
+        self.setTrace(&.{position});
+    }
+
     pub fn processElapsedTick(self: *MovingCircle, map: Map) void {
         const velocity_length_squared = self.velocity.lengthSquared();
         if (velocity_length_squared < math.epsilon) {
             return;
         }
         const direction = self.velocity.normalize();
-        const start_position = self.getPosition();
 
         // Max applicable velocity (limit) per tick is `radius * self.traces.len`.
         var index: usize = 0;
         var remaining_velocity = std.math.sqrt(velocity_length_squared);
-        var boundaries = collision.Circle{ .position = start_position, .radius = self.radius };
+        var boundaries = collision.Circle{ .position = self.getPosition(), .radius = self.radius };
+        var trace: @TypeOf(self.trace) = undefined;
         while (remaining_velocity > math.epsilon and index < self.trace.len) : (index += 1) {
             const substep_length = @min(remaining_velocity, self.radius);
             remaining_velocity -= substep_length;
@@ -78,28 +82,9 @@ pub const MovingCircle = struct {
                 substep = substep.scale(friction);
             }
             boundaries.position = boundaries.position.add(substep);
-            self.trace[index] = boundaries.position;
+            trace[index] = boundaries.position;
         }
-
-        // Fill trace position array with interpolated values.
-        switch (index) {
-            0 => self.trace = .{ start_position, start_position, start_position, start_position },
-            1 => self.trace = .{ self.trace[0], self.trace[0], self.trace[0], self.trace[0] },
-            2 => self.trace = .{
-                self.trace[0],
-                self.trace[0].lerp(self.trace[1], 1.0 / 3.0),
-                self.trace[0].lerp(self.trace[1], 2.0 / 3.0),
-                self.trace[1],
-            },
-            3 => self.trace = .{
-                self.trace[0],
-                self.trace[0].lerp(self.trace[1], 2.0 / 3.0),
-                self.trace[1].lerp(self.trace[2], 1.0 / 3.0),
-                self.trace[2],
-            },
-            4 => {},
-            else => unreachable,
-        }
+        self.setTrace(trace[0..index]);
     }
 
     pub const PositionsDuringContact = struct { self: math.FlatVector, other: math.FlatVector };
@@ -126,6 +111,36 @@ pub const MovingCircle = struct {
             }
         }
         return null;
+    }
+
+    /// Overwrite the positions occupied by this circle during the last tick. Can contain 0 or up to
+    /// `self.trace.len` positions.
+    pub fn setTrace(self: *MovingCircle, positions: []const math.FlatVector) void {
+        std.debug.assert(positions.len <= self.trace.len);
+
+        // Fill trace position array with interpolated values. This ensures that each trace contains
+        // the same amount of positions, simplifying collision checks.
+        switch (positions.len) {
+            0 => {
+                const position = self.getPosition();
+                self.trace = .{ position, position, position, position };
+            },
+            1 => self.trace = .{ positions[0], positions[0], positions[0], positions[0] },
+            2 => self.trace = .{
+                positions[0],
+                positions[0].lerp(positions[1], 1.0 / 3.0),
+                positions[0].lerp(positions[1], 2.0 / 3.0),
+                positions[1],
+            },
+            3 => self.trace = .{
+                positions[0],
+                positions[0].lerp(positions[1], 2.0 / 3.0),
+                positions[1].lerp(positions[2], 1.0 / 3.0),
+                positions[2],
+            },
+            4 => std.mem.copy(math.FlatVector, &self.trace, positions),
+            else => unreachable,
+        }
     }
 };
 
