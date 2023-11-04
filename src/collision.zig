@@ -148,6 +148,16 @@ pub const Circle = struct {
 
     /// If a collision occurs, return a displacement vector for moving self out of other. The
     /// returned displacement vector must be added to self.position to resolve the collision.
+    pub fn collidesWithCircleDisplacementVector(self: Circle, other: Circle) ?math.FlatVector {
+        const combined_circle = Circle{
+            .position = self.position,
+            .radius = self.radius + other.radius,
+        };
+        return combined_circle.collidesWithPoint(other.position);
+    }
+
+    /// If a collision occurs, return a displacement vector for moving self out of other. The
+    /// returned displacement vector must be added to self.position to resolve the collision.
     pub fn collidesWithLine(
         self: Circle,
         line_start: math.FlatVector,
