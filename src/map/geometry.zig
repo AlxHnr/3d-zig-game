@@ -41,7 +41,8 @@ pub const Geometry = struct {
     billboards_have_changed: bool,
 
     const spatial_grid_cell_size = 20;
-    const SpatialGrid = spatial_partitioning.Grid(collision.Rectangle, spatial_grid_cell_size);
+    const SpatialGrid =
+        spatial_partitioning.Grid(collision.Rectangle, spatial_grid_cell_size, .insert_remove);
 
     /// Stores the given allocator internally for its entire lifetime.
     pub fn create(allocator: std.mem.Allocator) !Geometry {

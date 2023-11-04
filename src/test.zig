@@ -8,9 +8,10 @@ const text_rendering = @import("text_rendering.zig");
 const util = @import("util.zig");
 
 const grid_cell_side_length = 7;
-const SpatialGrid = @import("spatial_partitioning/grid.zig").Grid(u32, grid_cell_side_length);
-const SpatialCollection =
-    @import("spatial_partitioning/collection.zig").Collection(u32, grid_cell_side_length);
+const SpatialGrid = @import("spatial_partitioning/grid.zig")
+    .Grid(u32, grid_cell_side_length, .insert_remove);
+const SpatialCollection = @import("spatial_partitioning/collection.zig")
+    .Collection(u32, grid_cell_side_length);
 const CellIndexType = @import("spatial_partitioning/cell_index.zig").Index;
 const CellIndex = CellIndexType(grid_cell_side_length);
 const CellRange = @import("spatial_partitioning/cell_range.zig").Range(grid_cell_side_length);
