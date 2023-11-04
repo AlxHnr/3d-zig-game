@@ -2,7 +2,7 @@ const Color = @import("util.zig").Color;
 const GameCharacter = @import("game_unit.zig").GameCharacter;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
-const SharedContext = @import("shared_context.zig").SharedContext;
+const SpatialGrid = @import("spatial_partitioning/grid.zig").Grid;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const collision = @import("collision.zig");
@@ -25,6 +25,16 @@ pub const Config = struct {
 
     const IdleAndAttackingValues = struct { idle: f32, attacking: f32 };
 };
+
+pub const TickContext = struct {
+    rng: std.rand.Random,
+    map: *const Map,
+    main_character: *const GameCharacter,
+    attacking_enemy_positions_at_previous_tick: *const EnemyPositionGrid,
+};
+
+pub const EnemyPositionGrid = SpatialGrid(AttackingEnemyPosition, 2, .insert_only);
+pub const AttackingEnemyPosition = struct { position: math.FlatVector, height: f32 };
 
 pub const Enemy = struct {
     config: *const Config,
@@ -74,26 +84,15 @@ pub const Enemy = struct {
         };
     }
 
-    pub fn processElapsedTick(
-        self: *Enemy,
-        shared_context: *SharedContext,
-        main_character: GameCharacter,
-        map: Map,
-    ) void {
+    pub fn processElapsedTick(self: *Enemy, context: TickContext) void {
         self.values_from_previous_tick = self.getValuesForRendering();
-        self.character.processElapsedTick(map);
-
-        var context = .{
-            .shared_context = shared_context,
-            .main_character = &main_character,
-            .map = &map,
-        };
         switch (self.state) {
             .spawning => self.state = .{ .idle = IdleState.create(context) },
             .idle => |*state| state.handleElapsedTick(self, context),
             .attacking => |*state| state.handleElapsedTick(self, context),
             else => {},
         }
+        self.character.processElapsedTick(context.map.*);
     }
 
     pub fn prepareRender(
@@ -175,8 +174,9 @@ pub const Enemy = struct {
         }
     }
 
-    fn getNameText(self: Enemy) [1]text_rendering.TextSegment {
-        return .{.{ .color = Color.white, .text = self.config.name }};
+    /// Returns a boundary for enemies to prevent them from moving too close together.
+    pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
+        return .{ .position = position, .radius = 0.2 };
     }
 
     pub fn populateHealthbarBillboardData(
@@ -223,6 +223,10 @@ pub const Enemy = struct {
         right_half.tint = .{ .r = background.r, .g = background.g, .b = background.b };
     }
 
+    fn getNameText(self: Enemy) [1]text_rendering.TextSegment {
+        return .{.{ .color = Color.white, .text = self.config.name }};
+    }
+
     fn getValuesForRendering(self: Enemy) ValuesForRendering {
         return .{
             .position = self.character.moving_circle.getPosition(),
@@ -238,12 +242,6 @@ const State = union(enum) {
     idle: IdleState,
     attacking: AttackingState,
     dead: void,
-};
-
-const TickContextPointers = struct {
-    shared_context: *SharedContext,
-    main_character: *const GameCharacter,
-    map: *const Map,
 };
 
 const ValuesForRendering = struct {
@@ -276,17 +274,17 @@ const IdleState = struct {
     const standing_interval = simulation.secondsToTicks(u32, 20);
     const visibility_check_interval = simulation.millisecondsToTicks(u32, 200);
 
-    fn create(context: TickContextPointers) IdleState {
+    fn create(context: TickContext) IdleState {
         var visibility_checker = VisibilityChecker(visibility_check_interval).create(false);
 
         // Add some variance in case many monsters spawn at the same time. This prevents them
         // from doing expensive checks during the same tick and evens out CPU load.
-        var rng = context.shared_context.rng.random();
-        visibility_checker.ticks_remaining = rng.intRangeAtMost(u32, 0, visibility_check_interval);
+        visibility_checker.ticks_remaining =
+            context.rng.intRangeAtMost(u32, 0, visibility_check_interval);
         return .{ .ticks_until_movement = 0, .visibility_checker = visibility_checker };
     }
 
-    fn handleElapsedTick(self: *IdleState, enemy: *Enemy, context: TickContextPointers) void {
+    fn handleElapsedTick(self: *IdleState, enemy: *Enemy, context: TickContext) void {
         const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
             context,
             enemy.*,
@@ -300,17 +298,16 @@ const IdleState = struct {
             return;
         }
 
-        var rng = context.shared_context.rng.random();
-        if (rng.boolean()) { // Walk.
-            const direction = std.math.degreesToRadians(f32, 360 * rng.float(f32));
+        if (context.rng.boolean()) { // Walk.
+            const direction = std.math.degreesToRadians(f32, 360 * context.rng.float(f32));
             const forward = math.FlatVector{ .x = 0, .z = -1 };
             enemy.character.acceleration_direction = forward.rotate(direction);
             enemy.character.movement_speed = enemy.config.movement_speed.idle;
             self.ticks_until_movement =
-                rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(u32, 4));
+                context.rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(u32, 4));
         } else {
             enemy.character.acceleration_direction = math.FlatVector.zero;
-            self.ticks_until_movement = rng.intRangeAtMost(u32, 0, standing_interval);
+            self.ticks_until_movement = context.rng.intRangeAtMost(u32, 0, standing_interval);
         }
     }
 };
@@ -326,7 +323,7 @@ const AttackingState = struct {
         };
     }
 
-    fn handleElapsedTick(self: *AttackingState, enemy: *Enemy, context: TickContextPointers) void {
+    fn handleElapsedTick(self: *AttackingState, enemy: *Enemy, context: TickContext) void {
         const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
             context,
             enemy.*,
@@ -348,6 +345,44 @@ const AttackingState = struct {
         } else {
             enemy.character.acceleration_direction = math.FlatVector.zero;
         }
+
+        enemy.character.moving_circle.velocity = enemy.character.moving_circle.velocity.add(
+            getDisplacementVector(
+                enemy.values_from_previous_tick.position,
+                enemy.character.height,
+                context.attacking_enemy_positions_at_previous_tick.*,
+            ),
+        );
+    }
+
+    fn getDisplacementVector(
+        position: math.FlatVector,
+        height: f32,
+        attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
+    ) math.FlatVector {
+        const circle = Enemy.makeSpacingBoundaries(position);
+        var combined_displacement_vector = math.FlatVector.zero;
+        var iterator = attacking_enemy_positions_at_previous_tick.areaIterator(
+            circle.getOuterBoundingBoxInGameCoordinates(),
+        );
+        while (iterator.next()) |other_enemy| {
+            // Ignore self.
+            if (math.isEqual(position.x, other_enemy.position.x) and
+                math.isEqual(position.z, other_enemy.position.z))
+            {
+                continue;
+            }
+            // Ignore smaller enemies.
+            if (other_enemy.height < height) {
+                continue;
+            }
+
+            const other_circle = Enemy.makeSpacingBoundaries(other_enemy.position);
+            if (circle.collidesWithCircleDisplacementVector(other_circle)) |displacement_vector| {
+                combined_displacement_vector = combined_displacement_vector.add(displacement_vector);
+            }
+        }
+        return combined_displacement_vector;
     }
 };
 
@@ -373,7 +408,7 @@ fn VisibilityChecker(comptime tick_interval: u32) type {
 
         fn isSeeingMainCharacter(
             self: *Self,
-            context: TickContextPointers,
+            context: TickContext,
             enemy: Enemy,
             aggro_radius: f32,
         ) bool {

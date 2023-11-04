@@ -109,7 +109,7 @@ const ProgramContext = struct {
             if (!keep_running) {
                 break;
             }
-            self.game_context.handleElapsedFrame();
+            try self.game_context.handleElapsedFrame();
             try self.render();
         }
     }

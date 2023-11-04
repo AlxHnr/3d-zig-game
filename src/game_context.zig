@@ -1,4 +1,5 @@
 const Enemy = @import("enemy.zig").Enemy;
+const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
 const Hud = @import("hud.zig").Hud;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
@@ -30,6 +31,9 @@ pub const Context = struct {
     shared_context: SharedContext,
     tileable_textures: textures.TileableArrayTexture,
     spritesheet: textures.SpriteSheetTexture,
+
+    /// For objects which die at the end of each tick.
+    tick_lifetime_allocator: std.heap.ArenaAllocator,
 
     billboard_renderer: rendering.BillboardRenderer,
     billboard_buffer: []rendering.SpriteData,
@@ -69,6 +73,9 @@ pub const Context = struct {
             );
         }
 
+        var tick_lifetime_allocator = std.heap.ArenaAllocator.init(allocator);
+        errdefer tick_lifetime_allocator.deinit();
+
         var billboard_renderer = try rendering.BillboardRenderer.create();
         errdefer billboard_renderer.destroy();
 
@@ -92,6 +99,8 @@ pub const Context = struct {
             .tileable_textures = tileable_textures,
             .spritesheet = spritesheet,
 
+            .tick_lifetime_allocator = tick_lifetime_allocator,
+
             .billboard_renderer = billboard_renderer,
             .billboard_buffer = &.{},
 
@@ -103,6 +112,7 @@ pub const Context = struct {
         self.hud.destroy(allocator);
         allocator.free(self.billboard_buffer);
         self.billboard_renderer.destroy();
+        self.tick_lifetime_allocator.deinit();
         self.spritesheet.destroy();
         self.tileable_textures.destroy();
         self.shared_context.destroy();
@@ -127,7 +137,7 @@ pub const Context = struct {
         self.main_character.markButtonAsReleased(button);
     }
 
-    pub fn handleElapsedFrame(self: *Context) void {
+    pub fn handleElapsedFrame(self: *Context) !void {
         self.frame_timer.reset();
         if (self.shared_context.dialog_controller.hasOpenDialogs()) {
             self.main_character.markAllButtonsAsReleased();
@@ -142,13 +152,35 @@ pub const Context = struct {
             self.map.processElapsedTick();
             self.main_character.processElapsedTick(self.map, &self.shared_context);
             self.shared_context.gem_collection.processElapsedTick();
-            for (self.shared_context.enemies.items) |*enemy| {
-                enemy.processElapsedTick(
-                    &self.shared_context,
-                    self.main_character.character,
-                    self.map,
+
+            _ = self.tick_lifetime_allocator.reset(.retain_capacity);
+            var attacking_enemy_positions_at_previous_tick =
+                EnemyPositionGrid.create(self.tick_lifetime_allocator.allocator());
+            for (self.shared_context.previous_tick_attacking_enemies.items) |attacking_enemy| {
+                try attacking_enemy_positions_at_previous_tick.insertIntoArea(
+                    attacking_enemy,
+                    Enemy.makeSpacingBoundaries(attacking_enemy.position)
+                        .getOuterBoundingBoxInGameCoordinates(),
                 );
             }
+            self.shared_context.previous_tick_attacking_enemies.clearRetainingCapacity();
+
+            const tick_context = .{
+                .rng = self.shared_context.rng.random(),
+                .map = &self.map,
+                .main_character = &self.main_character.character,
+                .attacking_enemy_positions_at_previous_tick = &attacking_enemy_positions_at_previous_tick,
+            };
+            for (self.shared_context.enemies.items) |*enemy| {
+                enemy.processElapsedTick(tick_context);
+                if (enemy.state == .attacking) {
+                    try self.shared_context.previous_tick_attacking_enemies.append(.{
+                        .position = enemy.character.moving_circle.getPosition(),
+                        .height = enemy.character.height,
+                    });
+                }
+            }
+
             self.shared_context.dialog_controller.processElapsedTick();
             if (self.frame_timer.read() > max_frame_time) {
                 self.interval_between_previous_and_current_tick = 1;
