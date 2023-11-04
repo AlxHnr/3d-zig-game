@@ -353,6 +353,12 @@ const AttackingState = struct {
                 context.attacking_enemy_positions_at_previous_tick.*,
             ),
         );
+        if (enemy.character.moving_circle.velocity.lengthSquared() >
+            enemy.character.movement_speed * enemy.character.movement_speed)
+        {
+            enemy.character.moving_circle.velocity = enemy.character.moving_circle.velocity
+                .normalize().scale(enemy.character.movement_speed);
+        }
     }
 
     fn getDisplacementVector(
