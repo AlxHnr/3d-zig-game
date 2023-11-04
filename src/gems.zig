@@ -1,5 +1,5 @@
 const MapGeometry = @import("map/geometry.zig").Geometry;
-const MovingCircle = @import("game_unit.zig").MovingCircle;
+const MovingCircle = @import("moving_circle.zig").MovingCircle;
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const collision = @import("collision.zig");
