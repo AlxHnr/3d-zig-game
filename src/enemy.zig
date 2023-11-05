@@ -33,8 +33,9 @@ pub const TickContext = struct {
     attacking_enemy_positions_at_previous_tick: *const EnemyPositionGrid,
 };
 
-pub const EnemyPositionGrid = SpatialGrid(AttackingEnemyPosition, 2, .insert_only);
+pub const EnemyPositionGrid = SpatialGrid(AttackingEnemyPosition, position_grid_cell_size, .insert_only);
 pub const AttackingEnemyPosition = struct { position: math.FlatVector, height: f32 };
+const position_grid_cell_size = 3;
 
 pub const Enemy = struct {
     config: *const Config,
@@ -176,7 +177,10 @@ pub const Enemy = struct {
 
     /// Returns a boundary for enemies to prevent them from moving too close together.
     pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
-        return .{ .position = position, .radius = 0.2 };
+        return .{
+            .position = position,
+            .radius = @as(f32, @floatFromInt(position_grid_cell_size)) / 10.0,
+        };
     }
 
     pub fn populateHealthbarBillboardData(
