@@ -183,6 +183,13 @@ pub const Enemy = struct {
         };
     }
 
+    pub fn makeAttackingEnemyPosition(self: Enemy) AttackingEnemyPosition {
+        return .{
+            .position = self.character.moving_circle.getPosition(),
+            .height = self.character.height,
+        };
+    }
+
     pub fn populateHealthbarBillboardData(
         values_to_render: ValuesForRendering,
         spritesheet: SpriteSheetTexture,

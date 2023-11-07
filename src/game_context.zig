@@ -174,10 +174,9 @@ pub const Context = struct {
             for (self.shared_context.enemies.items) |*enemy| {
                 enemy.processElapsedTick(tick_context);
                 if (enemy.state == .attacking) {
-                    try self.shared_context.previous_tick_attacking_enemies.append(.{
-                        .position = enemy.character.moving_circle.getPosition(),
-                        .height = enemy.character.height,
-                    });
+                    try self.shared_context.previous_tick_attacking_enemies.append(
+                        enemy.makeAttackingEnemyPosition(),
+                    );
                 }
             }
 
