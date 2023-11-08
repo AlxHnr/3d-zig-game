@@ -34,7 +34,10 @@ pub const TickContext = struct {
 };
 
 pub const EnemyPositionGrid = SpatialGrid(AttackingEnemyPosition, position_grid_cell_size, .insert_only);
-pub const AttackingEnemyPosition = struct { position: math.FlatVector, height: f32 };
+pub const AttackingEnemyPosition = struct {
+    position: math.FlatVector,
+    acceleration_direction: math.FlatVector,
+};
 const position_grid_cell_size = 3;
 
 pub const Enemy = struct {
@@ -179,14 +182,14 @@ pub const Enemy = struct {
     pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
         return .{
             .position = position,
-            .radius = @as(f32, @floatFromInt(position_grid_cell_size)) / 10.0,
+            .radius = @as(f32, @floatFromInt(position_grid_cell_size)) / 2.0,
         };
     }
 
     pub fn makeAttackingEnemyPosition(self: Enemy) AttackingEnemyPosition {
         return .{
             .position = self.character.moving_circle.getPosition(),
-            .height = self.character.height,
+            .acceleration_direction = self.character.acceleration_direction,
         };
     }
 
@@ -347,60 +350,68 @@ const AttackingState = struct {
 
         const offset_to_target = context.main_character.moving_circle.getPosition()
             .subtract(enemy.character.moving_circle.getPosition());
-        const distance_to_target = offset_to_target.lengthSquared();
-        const min_distance_to_target = enemy.character.moving_circle.radius +
-            context.main_character.moving_circle.radius;
-        if (distance_to_target > min_distance_to_target * min_distance_to_target) {
-            enemy.character.movement_speed = enemy.config.movement_speed.attacking;
-            enemy.character.acceleration_direction = offset_to_target.normalize();
-        } else {
-            enemy.character.acceleration_direction = math.FlatVector.zero;
-        }
-
-        enemy.character.moving_circle.velocity = enemy.character.moving_circle.velocity.add(
-            getDisplacementVector(
-                enemy.values_from_previous_tick.position,
-                enemy.character.height,
-                context.attacking_enemy_positions_at_previous_tick.*,
-            ),
-        );
-        if (enemy.character.moving_circle.velocity.lengthSquared() >
-            enemy.character.movement_speed * enemy.character.movement_speed)
-        {
-            enemy.character.moving_circle.velocity = enemy.character.moving_circle.velocity
-                .normalize().scale(enemy.character.movement_speed);
-        }
+        enemy.character.movement_speed = enemy.config.movement_speed.attacking;
+        enemy.character.acceleration_direction = offset_to_target.normalize();
+        processSuroundingPeers(enemy, context);
     }
 
-    fn getDisplacementVector(
-        position: math.FlatVector,
-        height: f32,
-        attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
-    ) math.FlatVector {
-        const circle = Enemy.makeSpacingBoundaries(position);
-        var combined_displacement_vector = math.FlatVector.zero;
-        var iterator = attacking_enemy_positions_at_previous_tick.areaIterator(
+    fn processSuroundingPeers(enemy: *Enemy, context: TickContext) void {
+        const circle = Enemy.makeSpacingBoundaries(enemy.character.moving_circle.getPosition());
+        const direction = enemy.character.moving_circle.velocity.normalize();
+        var average_velocity = AverageAccumulator.create(enemy.character.moving_circle.velocity);
+        var average_acceleration_direction =
+            AverageAccumulator.create(enemy.character.acceleration_direction);
+
+        var iterator = context.attacking_enemy_positions_at_previous_tick.areaIterator(
             circle.getOuterBoundingBoxInGameCoordinates(),
         );
-        while (iterator.next()) |other_enemy| {
+        while (iterator.next()) |peer| {
             // Ignore self.
-            if (math.isEqual(position.x, other_enemy.position.x) and
-                math.isEqual(position.z, other_enemy.position.z))
+            if (math.isEqual(enemy.values_from_previous_tick.position.x, peer.position.x) and
+                math.isEqual(enemy.values_from_previous_tick.position.z, peer.position.z))
             {
                 continue;
             }
-            // Ignore smaller enemies.
-            if (other_enemy.height < height) {
-                continue;
-            }
 
-            const other_circle = Enemy.makeSpacingBoundaries(other_enemy.position);
-            if (circle.collidesWithCircleDisplacementVector(other_circle)) |displacement_vector| {
-                combined_displacement_vector = combined_displacement_vector.add(displacement_vector);
-            }
+            const offset_from_peer = circle.position.subtract(peer.position);
+            const direction_from_peer = offset_from_peer.normalize();
+            const distance_factor = @min(1, offset_from_peer.length() / circle.radius);
+            average_velocity.add(
+                direction_from_peer.scale(enemy.character.movement_speed).lerp(
+                    enemy.character.moving_circle.velocity,
+                    distance_factor,
+                ),
+            );
+
+            const peer_slowdown = 1 + std.math.clamp(
+                direction.dotProduct(direction_from_peer.negate()),
+                -1,
+                0,
+            );
+            average_acceleration_direction.add(peer.acceleration_direction.scale(peer_slowdown));
         }
-        return combined_displacement_vector;
+
+        enemy.character.moving_circle.velocity = average_velocity.compute();
+        enemy.character.acceleration_direction = average_acceleration_direction.compute();
     }
+
+    const AverageAccumulator = struct {
+        total: math.FlatVector,
+        count: f32,
+
+        fn create(initial_value: math.FlatVector) AverageAccumulator {
+            return .{ .total = initial_value, .count = 1 };
+        }
+
+        fn add(self: *AverageAccumulator, value: math.FlatVector) void {
+            self.total = self.total.add(value);
+            self.count += 1;
+        }
+
+        fn compute(self: AverageAccumulator) math.FlatVector {
+            return self.total.scale(1.0 / self.count);
+        }
+    };
 };
 
 /// Return true if the tick was not consumed completely.

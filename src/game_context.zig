@@ -60,7 +60,7 @@ pub const Context = struct {
         errdefer map.destroy();
 
         var counter: usize = 0;
-        while (counter < 1000) : (counter += 1) {
+        while (counter < 10000) : (counter += 1) {
             try shared_context.enemies.append(
                 Enemy.create(
                     .{
