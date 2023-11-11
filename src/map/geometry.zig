@@ -1,6 +1,7 @@
 const Error = @import("../error.zig").Error;
 const ThirdPersonCamera = @import("../third_person_camera.zig").Camera;
 const animation = @import("../animation.zig");
+const cell_line_iterator = @import("../spatial_partitioning/cell_line_iterator.zig").iterator;
 const collision = @import("../collision.zig");
 const gl = @import("gl");
 const math = @import("../math.zig");
@@ -28,6 +29,7 @@ pub const Geometry = struct {
     walls_have_changed: bool,
 
     spatial_wall_index: struct { all: SpatialGrid, solid: SpatialGrid },
+    obstacle_grid: ObstacleGrid,
 
     /// Floors in this array will be rendered last to first without overpainting one another. This
     /// leads to the last floor in the array being shown above all others.
@@ -52,6 +54,8 @@ pub const Geometry = struct {
         errdefer floor_renderer.destroy();
         var billboard_renderer = try rendering.BillboardRenderer.create();
         errdefer billboard_renderer.destroy();
+        var obstacle_grid = try ObstacleGrid.create(allocator);
+        errdefer obstacle_grid.destroy();
 
         return .{
             .allocator = allocator,
@@ -65,6 +69,7 @@ pub const Geometry = struct {
                 .all = SpatialGrid.create(allocator),
                 .solid = SpatialGrid.create(allocator),
             },
+            .obstacle_grid = obstacle_grid,
             .floors = std.ArrayList(Floor).init(allocator),
             .floor_animation_state = animation.FourStepCycle.create(),
             .floor_renderer = floor_renderer,
@@ -82,6 +87,7 @@ pub const Geometry = struct {
         self.floor_renderer.destroy();
         self.floors.deinit();
 
+        self.obstacle_grid.destroy();
         self.spatial_wall_index.solid.destroy();
         self.spatial_wall_index.all.destroy();
 
@@ -103,7 +109,8 @@ pub const Geometry = struct {
             const wall_type = std.meta.stringToEnum(WallType, wall.t) orelse {
                 return Error.FailedToDeserializeMapGeometry;
             };
-            _ = try geometry.addWall(object_id_generator, wall.start, wall.end, wall_type);
+            _ = try geometry
+                .addWallIgnoreObstacleGrid(object_id_generator, wall.start, wall.end, wall_type);
         }
         for (data.floors) |floor| {
             const floor_type = std.meta.stringToEnum(FloorType, floor.t) orelse {
@@ -124,6 +131,7 @@ pub const Geometry = struct {
             _ = try geometry.addBillboardObject(object_id_generator, object_type, billboard.pos);
         }
 
+        try geometry.obstacle_grid.recompute(geometry);
         return geometry;
     }
 
@@ -267,31 +275,20 @@ pub const Geometry = struct {
         end_position: math.FlatVector,
         wall_type: WallType,
     ) !u64 {
-        const wall = try if (Wall.isFence(wall_type))
-            self.walls.translucent.addOne()
-        else
-            self.walls.solid.addOne();
-        wall.* = Wall.create(
-            object_id_generator.makeNewId(),
-            wall_type,
+        const wall_id = try self.addWallIgnoreObstacleGrid(
+            object_id_generator,
             start_position,
             end_position,
+            wall_type,
         );
-        errdefer if (Wall.isFence(wall_type)) {
-            _ = self.walls.translucent.pop();
-        } else {
-            _ = self.walls.solid.pop();
-        };
+        errdefer self.removeObjectIgnoreObstacleGrid(wall_id);
+        try self.obstacle_grid.recompute(self.*);
+        return wall_id;
+    }
 
-        errdefer self.removeWallFromSpatialGrid(wall);
-        wall.grid_handles.all = try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
-        if (!Wall.isFence(wall_type)) {
-            wall.grid_handles.solid =
-                try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
-        }
-
-        self.walls_have_changed = true;
-        return wall.object_id;
+    pub fn removeObject(self: *Geometry, object_id: u64) !void {
+        self.removeObjectIgnoreObstacleGrid(object_id);
+        try self.obstacle_grid.recompute(self.*);
     }
 
     /// If the given object id does not exist, this function will do nothing.
@@ -319,6 +316,8 @@ pub const Geometry = struct {
                 wall.grid_handles.solid =
                     try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
             }
+
+            try self.obstacle_grid.recompute(self.*);
         }
     }
 
@@ -389,40 +388,6 @@ pub const Geometry = struct {
             BillboardObject.create(object_id_generator.makeNewId(), object_type, position);
         self.billboards_have_changed = true;
         return billboard.object_id;
-    }
-
-    /// If the given object id does not exist, this function will do nothing.
-    pub fn removeObject(self: *Geometry, object_id: u64) void {
-        for (self.walls.solid.items, 0..) |*wall, index| {
-            if (wall.object_id == object_id) {
-                self.removeWallFromSpatialGrid(wall);
-                _ = self.walls.solid.orderedRemove(index);
-                self.walls_have_changed = true;
-                return;
-            }
-        }
-        for (self.walls.translucent.items, 0..) |*wall, index| {
-            if (wall.object_id == object_id) {
-                self.removeWallFromSpatialGrid(wall);
-                _ = self.walls.translucent.orderedRemove(index);
-                self.walls_have_changed = true;
-                return;
-            }
-        }
-        for (self.floors.items, 0..) |*floor, index| {
-            if (floor.object_id == object_id) {
-                _ = self.floors.orderedRemove(index);
-                self.floors_have_changed = true;
-                return;
-            }
-        }
-        for (self.billboard_objects.items, 0..) |billboard, index| {
-            if (billboard.object_id == object_id) {
-                _ = self.billboard_objects.orderedRemove(index);
-                self.billboards_have_changed = true;
-                return;
-            }
-        }
     }
 
     pub fn tintObject(self: *Geometry, object_id: u64, tint: util.Color) void {
@@ -541,6 +506,75 @@ pub const Geometry = struct {
             }
         }
         return false;
+    }
+
+    /// Returns the object id of the created wall on success.
+    fn addWallIgnoreObstacleGrid(
+        self: *Geometry,
+        object_id_generator: *util.ObjectIdGenerator,
+        start_position: math.FlatVector,
+        end_position: math.FlatVector,
+        wall_type: WallType,
+    ) !u64 {
+        const wall = try if (Wall.isFence(wall_type))
+            self.walls.translucent.addOne()
+        else
+            self.walls.solid.addOne();
+        wall.* = Wall.create(
+            object_id_generator.makeNewId(),
+            wall_type,
+            start_position,
+            end_position,
+        );
+        errdefer if (Wall.isFence(wall_type)) {
+            _ = self.walls.translucent.pop();
+        } else {
+            _ = self.walls.solid.pop();
+        };
+
+        errdefer self.removeWallFromSpatialGrid(wall);
+        wall.grid_handles.all = try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
+        if (!Wall.isFence(wall_type)) {
+            wall.grid_handles.solid =
+                try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
+        }
+
+        self.walls_have_changed = true;
+        return wall.object_id;
+    }
+
+    /// If the given object id does not exist, this function will do nothing.
+    fn removeObjectIgnoreObstacleGrid(self: *Geometry, object_id: u64) void {
+        for (self.walls.solid.items, 0..) |*wall, index| {
+            if (wall.object_id == object_id) {
+                self.removeWallFromSpatialGrid(wall);
+                _ = self.walls.solid.orderedRemove(index);
+                self.walls_have_changed = true;
+                return;
+            }
+        }
+        for (self.walls.translucent.items, 0..) |*wall, index| {
+            if (wall.object_id == object_id) {
+                self.removeWallFromSpatialGrid(wall);
+                _ = self.walls.translucent.orderedRemove(index);
+                self.walls_have_changed = true;
+                return;
+            }
+        }
+        for (self.floors.items, 0..) |*floor, index| {
+            if (floor.object_id == object_id) {
+                _ = self.floors.orderedRemove(index);
+                self.floors_have_changed = true;
+                return;
+            }
+        }
+        for (self.billboard_objects.items, 0..) |billboard, index| {
+            if (billboard.object_id == object_id) {
+                _ = self.billboard_objects.orderedRemove(index);
+                self.billboards_have_changed = true;
+                return;
+            }
+        }
     }
 
     fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !*SpatialGrid.ObjectHandle {
@@ -1041,3 +1075,128 @@ fn makeRenderingAttributes(
         .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
     };
 }
+
+/// Bitset containing all walkable and non-walkable tiles in the map.
+const ObstacleGrid = struct {
+    grid: std.DynamicBitSet,
+    map_boundaries: collision.AxisAlignedBoundingBox,
+
+    const grid_cell_size = 3;
+
+    fn create(allocator: std.mem.Allocator) !ObstacleGrid {
+        return .{
+            .grid = try std.DynamicBitSet.initEmpty(allocator, 1),
+            .map_boundaries = .{ .min = math.FlatVector.zero, .max = math.FlatVector.zero },
+        };
+    }
+
+    fn destroy(self: *ObstacleGrid) void {
+        self.grid.deinit();
+    }
+
+    fn recompute(self: *ObstacleGrid, geometry: Geometry) !void {
+        if (geometry.walls.solid.items.len == 0 and
+            geometry.walls.translucent.items.len == 0)
+        {
+            var new_grid = try ObstacleGrid.create(geometry.allocator);
+            errdefer new_grid.destroy();
+
+            self.destroy();
+            self.* = new_grid;
+            return;
+        }
+
+        // Don't assume the map covers (0, 0).
+        const any_wall = geometry.walls.solid.getLastOrNull() orelse
+            geometry.walls.translucent.getLast();
+        const any_point = any_wall.boundaries.getCornersInGameCoordinates()[0];
+
+        var map_boundaries = collision.AxisAlignedBoundingBox{ .min = any_point, .max = any_point };
+        for (geometry.walls.solid.items) |wall| {
+            updateBoundaries(&map_boundaries, wall);
+        }
+        for (geometry.walls.translucent.items) |wall| {
+            updateBoundaries(&map_boundaries, wall);
+        }
+
+        const map_dimensions = .{
+            .w = map_boundaries.max.x - map_boundaries.min.x,
+            .h = map_boundaries.max.z - map_boundaries.min.z,
+        };
+        const cell_size = @as(f32, @floatFromInt(grid_cell_size));
+        const map_cell_count = .{
+            .w = @as(usize, @intFromFloat(map_dimensions.w / cell_size)) + 1,
+            .h = @as(usize, @intFromFloat(map_dimensions.h / cell_size)) + 1,
+        };
+        const total_cell_count = map_cell_count.w * map_cell_count.h;
+        var new_grid = try std.DynamicBitSet.initEmpty(geometry.allocator, total_cell_count);
+        errdefer new_grid.deinit();
+
+        for (geometry.walls.solid.items) |wall| {
+            populateGrid(&new_grid, wall, map_boundaries, map_cell_count.w);
+        }
+        for (geometry.walls.translucent.items) |wall| {
+            populateGrid(&new_grid, wall, map_boundaries, map_cell_count.w);
+        }
+
+        self.destroy();
+        self.* = .{ .grid = new_grid, .map_boundaries = map_boundaries };
+    }
+
+    fn updateBoundaries(boundaries: *collision.AxisAlignedBoundingBox, wall: Wall) void {
+        for (wall.boundaries.getCornersInGameCoordinates()) |corner| {
+            boundaries.min.x = @min(boundaries.min.x, corner.x);
+            boundaries.min.z = @min(boundaries.min.z, corner.z);
+            boundaries.max.x = @max(boundaries.max.x, corner.x);
+            boundaries.max.z = @max(boundaries.max.z, corner.z);
+        }
+    }
+
+    fn populateGrid(
+        grid: *std.DynamicBitSet,
+        wall: Wall,
+        map_boundaries: collision.AxisAlignedBoundingBox,
+        map_cell_count_horizontal: usize,
+    ) void {
+        // Make game coordinates positive, starting at (0, 0).
+        var corners = wall.boundaries.getCornersInGameCoordinates();
+        for (&corners) |*corner| {
+            corner.* = corner.subtract(map_boundaries.min);
+        }
+        populateGridSubstep(grid, map_cell_count_horizontal, corners[0], corners[1]);
+        populateGridSubstep(grid, map_cell_count_horizontal, corners[1], corners[2]);
+        populateGridSubstep(grid, map_cell_count_horizontal, corners[2], corners[3]);
+        populateGridSubstep(grid, map_cell_count_horizontal, corners[3], corners[0]);
+    }
+
+    fn populateGridSubstep(
+        grid: *std.DynamicBitSet,
+        map_cell_count_horizontal: usize,
+        vertex_start: math.FlatVector,
+        vertex_end: math.FlatVector,
+    ) void {
+        var iterator = cell_line_iterator(CellIndex, vertex_start, vertex_end);
+        while (iterator.next()) |cell_index| {
+            grid.set(cell_index.getBitsetIndex(map_cell_count_horizontal));
+        }
+    }
+
+    /// Drop-in replacement for `spatial_partitioning.CellIndex` using larger integers.
+    const CellIndex = struct {
+        x: isize,
+        z: isize,
+        pub const side_length = grid_cell_size;
+
+        pub fn fromPosition(position: math.FlatVector) CellIndex {
+            return .{
+                .x = @intFromFloat(position.x / @as(f32, @floatFromInt(side_length))),
+                .z = @intFromFloat(position.z / @as(f32, @floatFromInt(side_length))),
+            };
+        }
+
+        pub fn getBitsetIndex(self: CellIndex, map_cell_count_horizontal: usize) usize {
+            return @as(usize, @intCast(self.z)) * map_cell_count_horizontal +
+                @as(usize, @intCast(self.x));
+        }
+    };
+};

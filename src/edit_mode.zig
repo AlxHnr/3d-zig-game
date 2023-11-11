@@ -40,7 +40,7 @@ pub const State = struct {
             .delete_objects => {
                 self.resetCurrentlyEditedObject(map);
                 if (cast3DRayToObjects(mouse_ray, map.*)) |ray_collision| {
-                    map.geometry.removeObject(ray_collision.object_id);
+                    try map.geometry.removeObject(ray_collision.object_id);
                 }
             },
         }
