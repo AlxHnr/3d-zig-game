@@ -65,12 +65,25 @@ pub const Field = struct {
         new_center_and_destination: FlatVector,
         map: Map,
     ) !void {
-        const center = new_center_and_destination;
-        const side_length = @as(f32, @floatFromInt(self.grid_cells_per_side * cell_side_length));
-        const half_side_length = side_length / 2.0;
-        const flow_field_boundaries = .{
-            .min = .{ .x = center.x - half_side_length, .z = center.z - half_side_length },
-            .max = .{ .x = center.x + half_side_length, .z = center.z + half_side_length },
+        // Push position further away from close walls. This prevents the target from being
+        // unreachable when using coarse cell sizes.
+        const center = block: {
+            const circle = .{
+                .position = new_center_and_destination,
+                .radius = @as(f32, @floatFromInt(cell_side_length * 2)),
+            };
+            if (map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
+                break :block new_center_and_destination.add(displacement_vector);
+            }
+            break :block new_center_and_destination;
+        };
+        const flow_field_boundaries = block: {
+            const side_length = @as(f32, @floatFromInt(self.grid_cells_per_side * cell_side_length));
+            const half_side_length = side_length / 2.0;
+            break :block .{
+                .min = .{ .x = center.x - half_side_length, .z = center.z - half_side_length },
+                .max = .{ .x = center.x + half_side_length, .z = center.z + half_side_length },
+            };
         };
 
         @memset(self.integration_field, .{ .has_been_visited = false, .cost = max_cost });
