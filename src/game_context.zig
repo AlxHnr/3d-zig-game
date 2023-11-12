@@ -1,5 +1,6 @@
 const Enemy = @import("enemy.zig").Enemy;
 const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
+const FlowField = @import("flow_field.zig").Field;
 const Hud = @import("hud.zig").Hud;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
@@ -23,6 +24,7 @@ pub const Context = struct {
     interval_between_previous_and_current_tick: f32,
     frame_timer: std.time.Timer,
     main_character: game_unit.Player,
+    main_character_flow_field: FlowField,
     /// Prevents walls from covering the player.
     max_camera_distance: ?f32,
 
@@ -44,6 +46,9 @@ pub const Context = struct {
     const max_frame_time = std.time.ns_per_s / 10;
 
     pub fn create(allocator: std.mem.Allocator, map_file_path: []const u8) !Context {
+        var flow_field = try FlowField.create(allocator, 100);
+        errdefer flow_field.destroy(allocator);
+
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);
         errdefer allocator.free(map_file_path_buffer);
 
@@ -91,6 +96,7 @@ pub const Context = struct {
                 0,
                 spritesheet.getSpriteAspectRatio(.player_back_frame_1),
             ),
+            .main_character_flow_field = flow_field,
             .max_camera_distance = null,
 
             .map_file_path = map_file_path_buffer,
@@ -118,6 +124,7 @@ pub const Context = struct {
         self.shared_context.destroy();
         self.map.destroy();
         allocator.free(self.map_file_path);
+        self.main_character_flow_field.destroy(allocator);
     }
 
     pub fn markButtonAsPressed(self: *Context, button: game_unit.InputButton) void {
@@ -151,6 +158,10 @@ pub const Context = struct {
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             self.map.processElapsedTick();
             self.main_character.processElapsedTick(self.map, &self.shared_context);
+            try self.main_character_flow_field.recompute(
+                self.main_character.character.moving_circle.getPosition(),
+                self.map,
+            );
             self.shared_context.gem_collection.processElapsedTick();
 
             _ = self.tick_lifetime_allocator.reset(.retain_capacity);
