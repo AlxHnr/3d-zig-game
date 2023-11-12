@@ -39,7 +39,7 @@ pub const Field = struct {
     };
 
     pub fn create(allocator: std.mem.Allocator, grid_cells_per_side: usize) !Field {
-        std.debug.assert(grid_cells_per_side > 0);
+        std.debug.assert(grid_cells_per_side >= 3);
         const array_length = grid_cells_per_side * grid_cells_per_side;
         var integration_field = try allocator.alloc(IntegrationCell, array_length);
         errdefer allocator.free(integration_field);
@@ -111,6 +111,7 @@ pub const Field = struct {
                 try self.processCell(item.x, item.z - 1, cost, flow_field_boundaries, map);
             }
         }
+        self.recomputeDirectionalVectors();
     }
 
     fn getIndex(self: Field, x: usize, z: usize) usize {
@@ -153,4 +154,113 @@ pub const Field = struct {
             try self.queue.add(.{ .x = x, .z = z, .cost = cell.cost });
         }
     }
+
+    fn recomputeDirectionalVectors(self: *Field) void {
+        const last = self.grid_cells_per_side - 1;
+
+        // Compute corners.
+        self.setDirectionalVector(0, 0, &.{
+            .{ .cost = self.getCost(1, 0), .dir = .right },
+            .{ .cost = self.getCost(1, 1), .dir = .down_right },
+            .{ .cost = self.getCost(0, 1), .dir = .down },
+        });
+        self.setDirectionalVector(last, 0, &.{
+            .{ .cost = self.getCost(last - 1, 0), .dir = .left },
+            .{ .cost = self.getCost(last - 1, 1), .dir = .down_left },
+            .{ .cost = self.getCost(last, 1), .dir = .down },
+        });
+        self.setDirectionalVector(0, last, &.{
+            .{ .cost = self.getCost(1, last), .dir = .right },
+            .{ .cost = self.getCost(1, last - 1), .dir = .up_right },
+            .{ .cost = self.getCost(0, last - 1), .dir = .up },
+        });
+        self.setDirectionalVector(last, last, &.{
+            .{ .cost = self.getCost(last - 1, last), .dir = .left },
+            .{ .cost = self.getCost(last - 1, last - 1), .dir = .up_left },
+            .{ .cost = self.getCost(last, last - 1), .dir = .up },
+        });
+
+        for (1..last) |x| {
+            // Top edge.
+            self.setDirectionalVector(x, 0, &.{
+                .{ .cost = self.getCost(x - 1, 0), .dir = .left },
+                .{ .cost = self.getCost(x - 1, 1), .dir = .down_left },
+                .{ .cost = self.getCost(x, 1), .dir = .down },
+                .{ .cost = self.getCost(x + 1, 1), .dir = .down_right },
+                .{ .cost = self.getCost(x + 1, 0), .dir = .right },
+            });
+            // Bottom edge.
+            self.setDirectionalVector(x, last, &.{
+                .{ .cost = self.getCost(x - 1, last), .dir = .left },
+                .{ .cost = self.getCost(x - 1, last - 1), .dir = .up_left },
+                .{ .cost = self.getCost(x, last - 1), .dir = .up },
+                .{ .cost = self.getCost(x + 1, last - 1), .dir = .up_right },
+                .{ .cost = self.getCost(x + 1, last), .dir = .right },
+            });
+        }
+
+        for (1..last) |z| {
+            // Left edge.
+            self.setDirectionalVector(0, z, &.{
+                .{ .cost = self.getCost(0, z - 1), .dir = .up },
+                .{ .cost = self.getCost(1, z - 1), .dir = .up_right },
+                .{ .cost = self.getCost(1, z), .dir = .right },
+                .{ .cost = self.getCost(1, z + 1), .dir = .down_right },
+                .{ .cost = self.getCost(0, z + 1), .dir = .down },
+            });
+            // Right edge.
+            self.setDirectionalVector(last, z, &.{
+                .{ .cost = self.getCost(last, z - 1), .dir = .up },
+                .{ .cost = self.getCost(last - 1, z - 1), .dir = .up_left },
+                .{ .cost = self.getCost(last - 1, z), .dir = .left },
+                .{ .cost = self.getCost(last - 1, z + 1), .dir = .down_left },
+                .{ .cost = self.getCost(last, z + 1), .dir = .down },
+            });
+        }
+
+        // Center area.
+        for (1..last) |z| {
+            for (1..last) |x| {
+                self.setDirectionalVector(x, z, &.{
+                    .{ .cost = self.getCost(x - 1, z - 1), .dir = .up_left },
+                    .{ .cost = self.getCost(x, z - 1), .dir = .up },
+                    .{ .cost = self.getCost(x + 1, z - 1), .dir = .up_right },
+                    .{ .cost = self.getCost(x + 1, z), .dir = .right },
+                    .{ .cost = self.getCost(x + 1, z + 1), .dir = .down_right },
+                    .{ .cost = self.getCost(x, z + 1), .dir = .down },
+                    .{ .cost = self.getCost(x - 1, z + 1), .dir = .down_left },
+                    .{ .cost = self.getCost(x - 1, z), .dir = .left },
+                });
+            }
+        }
+    }
+
+    fn setDirectionalVector(
+        self: *Field,
+        x: usize,
+        z: usize,
+        pairs: []const CostDirectionPair,
+    ) void {
+        const index = self.getIndex(x, z);
+        self.directional_vectors[index] = switch (self.integration_field[index].cost) {
+            0, max_cost => .none,
+            else => getDirection(pairs),
+        };
+    }
+
+    fn getDirection(pairs: []const CostDirectionPair) Direction {
+        var result = pairs[0];
+        for (pairs[1..]) |pair| {
+            if (pair.cost < result.cost) {
+                result = pair;
+            }
+        }
+        return result.dir;
+    }
+
+    fn getCost(self: Field, x: usize, z: usize) CostInt {
+        return self.integration_field[self.getIndex(x, z)].cost;
+    }
+
+    const CostDirectionPair = struct { cost: CostInt, dir: Direction };
 };
