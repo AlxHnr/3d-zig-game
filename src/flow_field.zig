@@ -256,22 +256,13 @@ pub const Field = struct {
         }
     }
 
-    fn setDirectionalVector(
-        self: *Field,
-        x: usize,
-        z: usize,
-        pairs: []const CostDirectionPair,
-    ) void {
-        const index = self.getIndex(x, z);
-        self.directional_vectors[index] = switch (self.integration_field[index].cost) {
-            0, max_cost => .none,
-            else => getDirection(pairs),
-        };
+    fn setDirectionalVector(self: *Field, x: usize, z: usize, pairs: []const CostDirPair) void {
+        self.directional_vectors[self.getIndex(x, z)] = getDirection(pairs);
     }
 
-    fn getDirection(pairs: []const CostDirectionPair) Direction {
-        var result = pairs[0];
-        for (pairs[1..]) |pair| {
+    fn getDirection(pairs: []const CostDirPair) Direction {
+        var result = CostDirPair{ .cost = max_cost, .dir = .none };
+        for (pairs[0..]) |pair| {
             if (pair.cost < result.cost) {
                 result = pair;
             }
@@ -283,5 +274,5 @@ pub const Field = struct {
         return self.integration_field[self.getIndex(x, z)].cost;
     }
 
-    const CostDirectionPair = struct { cost: CostInt, dir: Direction };
+    const CostDirPair = struct { cost: CostInt, dir: Direction };
 };
