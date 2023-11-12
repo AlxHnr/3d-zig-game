@@ -42,6 +42,8 @@ pub const Geometry = struct {
     billboard_renderer: rendering.BillboardRenderer,
     billboards_have_changed: bool,
 
+    pub const obstacle_grid_cell_size = 3;
+
     const spatial_grid_cell_size = 20;
     const SpatialGrid =
         spatial_partitioning.Grid(collision.Rectangle, spatial_grid_cell_size, .insert_remove);
@@ -506,6 +508,12 @@ pub const Geometry = struct {
             }
         }
         return false;
+    }
+
+    /// Return true if the specified position has nearby obstacles. This check has the granularity
+    /// of `obstacle_grid_cell_size` and is imprecise.
+    pub fn tileMayContainObstacle(self: Geometry, position: math.FlatVector) bool {
+        return self.obstacle_grid.tileMayContainObstacle(position);
     }
 
     /// Returns the object id of the created wall on success.
@@ -1080,13 +1088,13 @@ fn makeRenderingAttributes(
 const ObstacleGrid = struct {
     grid: std.DynamicBitSet,
     map_boundaries: collision.AxisAlignedBoundingBox,
-
-    const grid_cell_size = 3;
+    map_cell_count_horizontal: usize,
 
     fn create(allocator: std.mem.Allocator) !ObstacleGrid {
         return .{
             .grid = try std.DynamicBitSet.initEmpty(allocator, 1),
             .map_boundaries = .{ .min = math.FlatVector.zero, .max = math.FlatVector.zero },
+            .map_cell_count_horizontal = 1,
         };
     }
 
@@ -1123,7 +1131,7 @@ const ObstacleGrid = struct {
             .w = map_boundaries.max.x - map_boundaries.min.x,
             .h = map_boundaries.max.z - map_boundaries.min.z,
         };
-        const cell_size = @as(f32, @floatFromInt(grid_cell_size));
+        const cell_size = @as(f32, @floatFromInt(Geometry.obstacle_grid_cell_size));
         const map_cell_count = .{
             .w = @as(usize, @intFromFloat(map_dimensions.w / cell_size)) + 1,
             .h = @as(usize, @intFromFloat(map_dimensions.h / cell_size)) + 1,
@@ -1140,7 +1148,20 @@ const ObstacleGrid = struct {
         }
 
         self.destroy();
-        self.* = .{ .grid = new_grid, .map_boundaries = map_boundaries };
+        self.* = .{
+            .grid = new_grid,
+            .map_boundaries = map_boundaries,
+            .map_cell_count_horizontal = map_cell_count.w,
+        };
+    }
+
+    fn tileMayContainObstacle(self: ObstacleGrid, position: math.FlatVector) bool {
+        if (!self.map_boundaries.collidesWithPoint(position)) {
+            return false;
+        }
+        const index = CellIndex.fromPosition(position.subtract(self.map_boundaries.min))
+            .getBitsetIndex(self.map_cell_count_horizontal);
+        return self.grid.isSet(index);
     }
 
     fn updateBoundaries(boundaries: *collision.AxisAlignedBoundingBox, wall: Wall) void {
@@ -1185,7 +1206,7 @@ const ObstacleGrid = struct {
     const CellIndex = struct {
         x: isize,
         z: isize,
-        pub const side_length = grid_cell_size;
+        pub const side_length = Geometry.obstacle_grid_cell_size;
 
         pub fn fromPosition(position: math.FlatVector) CellIndex {
             return .{
