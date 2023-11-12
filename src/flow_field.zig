@@ -9,6 +9,7 @@ pub const Field = struct {
     grid_cells_per_side: usize,
     integration_field: []IntegrationCell,
     directional_vectors: []Direction,
+    boundaries: AxisAlignedBoundingBox,
     queue: PriorityQueue,
 
     const IntegrationCell = packed struct {
@@ -50,6 +51,7 @@ pub const Field = struct {
             .grid_cells_per_side = grid_cells_per_side,
             .integration_field = integration_field,
             .directional_vectors = directional_vectors,
+            .boundaries = .{ .min = FlatVector.zero, .max = FlatVector.zero },
             .queue = PriorityQueue.init(allocator, {}),
         };
     }
@@ -77,7 +79,7 @@ pub const Field = struct {
             }
             break :block new_center_and_destination;
         };
-        const flow_field_boundaries = block: {
+        self.boundaries = block: {
             const side_length = @as(f32, @floatFromInt(self.grid_cells_per_side * cell_side_length));
             const half_side_length = side_length / 2.0;
             break :block .{
@@ -99,16 +101,16 @@ pub const Field = struct {
         while (self.queue.removeOrNull()) |item| {
             const cost = self.integration_field[self.getIndex(item.x, item.z)].cost +| 1;
             if (item.x + 1 < self.grid_cells_per_side) {
-                try self.processCell(item.x + 1, item.z, cost, flow_field_boundaries, map);
+                try self.processCell(item.x + 1, item.z, cost, map);
             }
             if (item.x > 0) {
-                try self.processCell(item.x - 1, item.z, cost, flow_field_boundaries, map);
+                try self.processCell(item.x - 1, item.z, cost, map);
             }
             if (item.z + 1 < self.grid_cells_per_side) {
-                try self.processCell(item.x, item.z + 1, cost, flow_field_boundaries, map);
+                try self.processCell(item.x, item.z + 1, cost, map);
             }
             if (item.z > 0) {
-                try self.processCell(item.x, item.z - 1, cost, flow_field_boundaries, map);
+                try self.processCell(item.x, item.z - 1, cost, map);
             }
         }
         self.recomputeDirectionalVectors();
@@ -139,15 +141,11 @@ pub const Field = struct {
         return z * self.grid_cells_per_side + x;
     }
 
-    fn getWorldPosition(
-        x: usize,
-        z: usize,
-        flow_field_boundaries: AxisAlignedBoundingBox,
-    ) FlatVector {
+    fn getWorldPosition(self: Field, x: usize, z: usize) FlatVector {
         return FlatVector.scale(.{
             .x = @as(f32, @floatFromInt(x)),
             .z = @as(f32, @floatFromInt(z)),
-        }, cell_side_length).add(flow_field_boundaries.min);
+        }, cell_side_length).add(self.boundaries.min);
     }
 
     fn processCell(
@@ -155,7 +153,6 @@ pub const Field = struct {
         x: usize,
         z: usize,
         cost: CostInt,
-        flow_field_boundaries: AxisAlignedBoundingBox,
         map: Map,
     ) !void {
         const cell = &self.integration_field[self.getIndex(x, z)];
@@ -165,7 +162,7 @@ pub const Field = struct {
             return;
         }
 
-        const world_position = getWorldPosition(x, z, flow_field_boundaries);
+        const world_position = self.getWorldPosition(x, z);
         const tile_base_cost = if (map.geometry.tileMayContainObstacle(world_position))
             max_cost
         else
