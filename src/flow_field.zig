@@ -114,6 +114,27 @@ pub const Field = struct {
         self.recomputeDirectionalVectors();
     }
 
+    pub fn dumpAsText(self: Field, writer: std.fs.File.Writer) !void {
+        for (0..self.grid_cells_per_side) |z| {
+            for (0..self.grid_cells_per_side) |x| {
+                _ = try writer.write(
+                    switch (self.directional_vectors[self.getIndex(x, z)]) {
+                        .up_left => "↖",
+                        .up => "↑",
+                        .up_right => "↗",
+                        .left => "←",
+                        .none => " ",
+                        .right => "→",
+                        .down_left => "↙",
+                        .down => "↓",
+                        .down_right => "↘",
+                    },
+                );
+            }
+            _ = try writer.write("\n");
+        }
+    }
+
     fn getIndex(self: Field, x: usize, z: usize) usize {
         return z * self.grid_cells_per_side + x;
     }
