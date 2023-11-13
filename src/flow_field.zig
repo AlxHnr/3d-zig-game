@@ -198,10 +198,12 @@ pub const Field = struct {
         }
 
         const world_position = self.getWorldPosition(x, z);
-        const tile_base_cost = if (map.geometry.tileMayContainObstacle(world_position))
-            max_cost
-        else
-            @as(CostInt, 0);
+        const tile_base_cost: CostInt = switch (map.geometry.getObstacleTile(world_position)) {
+            .none => 0,
+            .neighbor_of_obstacle => 4,
+            .neighbor_of_multiple_obstacles => 6,
+            .obstacle => max_cost,
+        };
         cell.cost = cost +| tile_base_cost;
         if (cell.cost < max_cost) {
             try self.queue.add(.{ .x = x, .z = z, .cost = cell.cost });

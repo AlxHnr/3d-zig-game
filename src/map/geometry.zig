@@ -508,10 +508,12 @@ pub const Geometry = struct {
         return false;
     }
 
-    /// Return true if the specified position has nearby obstacles. This check has the granularity
-    /// of `obstacle_grid_cell_size` and is imprecise.
-    pub fn tileMayContainObstacle(self: Geometry, position: math.FlatVector) bool {
-        return self.obstacle_grid.tileMayContainObstacle(position);
+    pub const TileType = ObstacleGrid.TileType;
+
+    /// Return the type of obstacles bordering on the tile specified by the given position. This
+    /// check has the granularity of `obstacle_grid_cell_size` and is imprecise.
+    pub fn getObstacleTile(self: Geometry, position: math.FlatVector) TileType {
+        return self.obstacle_grid.getObstacleTile(position);
     }
 
     /// Returns the object id of the created wall on success.
@@ -1164,14 +1166,14 @@ const ObstacleGrid = struct {
         }
     }
 
-    fn tileMayContainObstacle(self: ObstacleGrid, position: math.FlatVector) bool {
+    fn getObstacleTile(self: ObstacleGrid, position: math.FlatVector) TileType {
         if (!self.map_boundaries.collidesWithPoint(position)) {
-            return false;
+            return .none;
         }
         const index = self.getIndex(
             CellIndex.fromPosition(position.subtract(self.map_boundaries.min)),
         );
-        return self.grid[index] == .obstacle;
+        return self.grid[index];
     }
 
     fn insert(self: *ObstacleGrid, wall: Wall) void {
