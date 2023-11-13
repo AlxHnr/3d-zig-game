@@ -180,6 +180,7 @@ pub const Context = struct {
                 .rng = self.shared_context.rng.random(),
                 .map = &self.map,
                 .main_character = &self.main_character.character,
+                .main_character_flow_field = &self.main_character_flow_field,
                 .attacking_enemy_positions_at_previous_tick = &attacking_enemy_positions_at_previous_tick,
             };
             for (self.shared_context.enemies.items) |*enemy| {

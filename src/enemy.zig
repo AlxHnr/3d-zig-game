@@ -1,4 +1,5 @@
 const Color = @import("util.zig").Color;
+const FlowField = @import("flow_field.zig").Field;
 const GameCharacter = @import("game_unit.zig").GameCharacter;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
@@ -30,6 +31,7 @@ pub const TickContext = struct {
     rng: std.rand.Random,
     map: *const Map,
     main_character: *const GameCharacter,
+    main_character_flow_field: *const FlowField,
     attacking_enemy_positions_at_previous_tick: *const EnemyPositionGrid,
 };
 
@@ -344,14 +346,15 @@ const AttackingState = struct {
             enemy.*,
             enemy.config.aggro_radius.attacking,
         );
-        if (!is_seeing_main_character) {
+        if (is_seeing_main_character) {
+            enemy.character.acceleration_direction =
+                context.main_character.moving_circle.getPosition().subtract(position).normalize();
+        } else if (context.main_character_flow_field.getDirection(position, context.map.*)) |direction| {
+            enemy.character.acceleration_direction = direction;
+        } else {
             enemy.state = .{ .idle = IdleState.create(context) };
             return;
         }
-
-        const offset_to_target = context.main_character.moving_circle.getPosition()
-            .subtract(enemy.character.moving_circle.getPosition());
-        enemy.character.acceleration_direction = offset_to_target.normalize();
 
         const circle = collision.Circle{ .position = position, .radius = Enemy.peer_overlap_radius };
         const direction = enemy.character.moving_circle.velocity.normalize();

@@ -102,6 +102,30 @@ pub const Field = struct {
         self.recomputeDirectionalVectors();
     }
 
+    // If the given position exists on the flow field, return a directional vector for navigating
+    // towards the flow fields center.
+    pub fn getDirection(self: Field, position: FlatVector, map: Map) ?FlatVector {
+        if (self.getIndexFromWorldPosition(position)) |index| {
+            const circle = .{ .position = position, .radius = 2 };
+            if (map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
+                return displacement_vector.normalize();
+            }
+
+            return switch (self.directional_vectors[index]) {
+                .up_left => .{ .x = -std.math.sqrt1_2, .z = -std.math.sqrt1_2 },
+                .up => .{ .x = 0, .z = -1 },
+                .up_right => .{ .x = std.math.sqrt1_2, .z = -std.math.sqrt1_2 },
+                .left => .{ .x = -1, .z = 0 },
+                .none => .{ .x = 0, .z = 0 },
+                .right => .{ .x = 1, .z = 0 },
+                .down_left => .{ .x = -std.math.sqrt1_2, .z = std.math.sqrt1_2 },
+                .down => .{ .x = 0, .z = 1 },
+                .down_right => .{ .x = std.math.sqrt1_2, .z = std.math.sqrt1_2 },
+            };
+        }
+        return null;
+    }
+
     pub fn dumpAsText(self: Field, writer: std.fs.File.Writer) !void {
         for (0..self.grid_cells_per_side) |z| {
             for (0..self.grid_cells_per_side) |x| {
@@ -137,6 +161,19 @@ pub const Field = struct {
 
     fn getIndex(self: Field, x: usize, z: usize) usize {
         return z * self.grid_cells_per_side + x;
+    }
+
+    fn getIndexFromWorldPosition(self: Field, world_position: FlatVector) ?usize {
+        const cell_position = world_position.subtract(self.boundaries.min)
+            .scale(1.0 / @as(f32, @floatFromInt(cell_side_length)));
+        const x: isize = @intFromFloat(cell_position.x);
+        const z: isize = @intFromFloat(cell_position.z);
+        if (x < 0 or x >= self.grid_cells_per_side or
+            z < 0 or z >= self.grid_cells_per_side)
+        {
+            return null;
+        }
+        return self.getIndex(@intCast(x), @intCast(z));
     }
 
     fn getWorldPosition(self: Field, x: usize, z: usize) FlatVector {
