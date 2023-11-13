@@ -55,6 +55,8 @@ pub const Enemy = struct {
     const enemy_name_font_scale = 1;
     const health_bar_scale = 1;
     const health_bar_height = health_bar_scale * 6;
+    const peer_overlap_radius = @as(f32, @floatFromInt(position_grid_cell_size)) / 10.0;
+    const peer_flock_radius = peer_overlap_radius * 4.0;
 
     pub fn create(
         position: math.FlatVector,
@@ -178,12 +180,8 @@ pub const Enemy = struct {
         }
     }
 
-    /// Returns a boundary for enemies to prevent them from moving too close together.
     pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
-        return .{
-            .position = position,
-            .radius = @as(f32, @floatFromInt(position_grid_cell_size)) / 2.0,
-        };
+        return .{ .position = position, .radius = Enemy.peer_flock_radius };
     }
 
     pub fn makeAttackingEnemyPosition(self: Enemy) AttackingEnemyPosition {
@@ -338,6 +336,9 @@ const AttackingState = struct {
     }
 
     fn handleElapsedTick(self: *AttackingState, enemy: *Enemy, context: TickContext) void {
+        enemy.character.movement_speed = enemy.config.movement_speed.attacking;
+
+        const position = enemy.character.moving_circle.getPosition();
         const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
             context,
             enemy.*,
@@ -350,21 +351,19 @@ const AttackingState = struct {
 
         const offset_to_target = context.main_character.moving_circle.getPosition()
             .subtract(enemy.character.moving_circle.getPosition());
-        enemy.character.movement_speed = enemy.config.movement_speed.attacking;
         enemy.character.acceleration_direction = offset_to_target.normalize();
-        processSuroundingPeers(enemy, context);
-    }
 
-    fn processSuroundingPeers(enemy: *Enemy, context: TickContext) void {
-        const circle = Enemy.makeSpacingBoundaries(enemy.character.moving_circle.getPosition());
+        const circle = collision.Circle{ .position = position, .radius = Enemy.peer_overlap_radius };
         const direction = enemy.character.moving_circle.velocity.normalize();
-        var average_velocity = AverageAccumulator.create(enemy.character.moving_circle.velocity);
-        var average_acceleration_direction =
-            AverageAccumulator.create(enemy.character.acceleration_direction);
-
         var iterator = context.attacking_enemy_positions_at_previous_tick.areaIterator(
             circle.getOuterBoundingBoxInGameCoordinates(),
         );
+        var combined_displacement_vector = math.FlatVector.zero;
+        var friction_factor: f32 = 1;
+        var collides_with_peer = false;
+        var average_velocity = AverageAccumulator.create(enemy.character.moving_circle.velocity);
+        var average_acceleration_direction =
+            AverageAccumulator.create(enemy.character.acceleration_direction);
         while (iterator.next()) |peer| {
             // Ignore self.
             if (math.isEqual(enemy.values_from_previous_tick.position.x, peer.position.x) and
@@ -373,26 +372,43 @@ const AttackingState = struct {
                 continue;
             }
 
-            const offset_from_peer = circle.position.subtract(peer.position);
-            const direction_from_peer = offset_from_peer.normalize();
-            const distance_factor = @min(1, offset_from_peer.length() / circle.radius);
-            average_velocity.add(
-                direction_from_peer.scale(enemy.character.movement_speed).lerp(
-                    enemy.character.moving_circle.velocity,
-                    distance_factor,
-                ),
-            );
-
-            const peer_slowdown = 1 + std.math.clamp(
-                direction.dotProduct(direction_from_peer.negate()),
-                -1,
-                0,
-            );
-            average_acceleration_direction.add(peer.acceleration_direction.scale(peer_slowdown));
+            const peer_circle = .{ .position = peer.position, .radius = Enemy.peer_overlap_radius };
+            if (circle.collidesWithCircleDisplacementVector(peer_circle)) |displacement_vector| {
+                collides_with_peer = true;
+                combined_displacement_vector = combined_displacement_vector.add(displacement_vector);
+                friction_factor *= 1 + std.math
+                    .clamp(direction.dotProduct(displacement_vector.normalize()), -1, 0);
+            } else if (!collides_with_peer) {
+                const offset_to_peer = position.subtract(peer.position);
+                const direction_to_peer = offset_to_peer.normalize();
+                const distance_factor = @min(1, offset_to_peer.length() / Enemy.peer_flock_radius);
+                average_velocity.add(
+                    direction_to_peer.scale(enemy.character.movement_speed).lerp(
+                        enemy.character.moving_circle.velocity,
+                        distance_factor,
+                    ),
+                );
+                const slowdown =
+                    1 + std.math.clamp(direction.dotProduct(direction_to_peer.negate()), -1, 0);
+                average_acceleration_direction.add(peer.acceleration_direction.scale(slowdown));
+            }
         }
 
-        enemy.character.moving_circle.velocity = average_velocity.compute();
-        enemy.character.acceleration_direction = average_acceleration_direction.compute();
+        if (collides_with_peer) {
+            enemy.character.moving_circle.velocity =
+                enemy.character.moving_circle.velocity.add(combined_displacement_vector);
+            if (enemy.character.moving_circle.velocity.lengthSquared() >
+                enemy.character.movement_speed * enemy.character.movement_speed)
+            {
+                enemy.character.moving_circle.velocity = enemy.character.moving_circle.velocity
+                    .normalize().scale(enemy.character.movement_speed);
+            }
+            enemy.character.moving_circle.velocity =
+                enemy.character.moving_circle.velocity.scale(friction_factor);
+        } else {
+            enemy.character.moving_circle.velocity = average_velocity.compute();
+            enemy.character.acceleration_direction = average_acceleration_direction.compute();
+        }
     }
 
     const AverageAccumulator = struct {
