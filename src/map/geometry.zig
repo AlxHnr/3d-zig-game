@@ -42,7 +42,7 @@ pub const Geometry = struct {
     billboard_renderer: rendering.BillboardRenderer,
     billboards_have_changed: bool,
 
-    pub const obstacle_grid_cell_size = 3;
+    pub const obstacle_grid_cell_size = 5;
 
     const spatial_grid_cell_size = 20;
     const SpatialGrid =
