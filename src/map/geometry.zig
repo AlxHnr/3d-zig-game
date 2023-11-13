@@ -1190,6 +1190,14 @@ const ObstacleGrid = struct {
         var iterator = cell_line_iterator(CellIndex, start, end);
         while (iterator.next()) |cell_index| {
             self.grid[self.getIndex(cell_index)] = .obstacle;
+            self.markNeighborOfObstacle(cell_index.x - 1, cell_index.z);
+            self.markNeighborOfObstacle(cell_index.x + 1, cell_index.z);
+            self.markNeighborOfObstacle(cell_index.x - 1, cell_index.z - 1);
+            self.markNeighborOfObstacle(cell_index.x, cell_index.z - 1);
+            self.markNeighborOfObstacle(cell_index.x + 1, cell_index.z - 1);
+            self.markNeighborOfObstacle(cell_index.x - 1, cell_index.z + 1);
+            self.markNeighborOfObstacle(cell_index.x, cell_index.z + 1);
+            self.markNeighborOfObstacle(cell_index.x + 1, cell_index.z + 1);
         }
     }
 
@@ -1211,6 +1219,16 @@ const ObstacleGrid = struct {
             };
         }
     };
+
+    fn markNeighborOfObstacle(self: *ObstacleGrid, x: isize, z: isize) void {
+        const index = self.getIndex(.{ .x = x, .z = z });
+        self.grid[index] = switch (self.grid[index]) {
+            .none => .neighbor_of_obstacle,
+            .neighbor_of_obstacle => .neighbor_of_multiple_obstacles,
+            .neighbor_of_multiple_obstacles => .neighbor_of_multiple_obstacles,
+            .obstacle => .obstacle,
+        };
+    }
 
     fn updateBoundaries(boundaries: *collision.AxisAlignedBoundingBox, wall: Wall) void {
         for (wall.boundaries.getCornersInGameCoordinates()) |corner| {
