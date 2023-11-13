@@ -56,8 +56,6 @@ pub const Geometry = struct {
         errdefer floor_renderer.destroy();
         var billboard_renderer = try rendering.BillboardRenderer.create();
         errdefer billboard_renderer.destroy();
-        var obstacle_grid = try ObstacleGrid.create(allocator);
-        errdefer obstacle_grid.destroy();
 
         return .{
             .allocator = allocator,
@@ -71,7 +69,7 @@ pub const Geometry = struct {
                 .all = SpatialGrid.create(allocator),
                 .solid = SpatialGrid.create(allocator),
             },
-            .obstacle_grid = obstacle_grid,
+            .obstacle_grid = ObstacleGrid.create(),
             .floors = std.ArrayList(Floor).init(allocator),
             .floor_animation_state = animation.FourStepCycle.create(),
             .floor_renderer = floor_renderer,
@@ -89,7 +87,7 @@ pub const Geometry = struct {
         self.floor_renderer.destroy();
         self.floors.deinit();
 
-        self.obstacle_grid.destroy();
+        self.obstacle_grid.destroy(self.allocator);
         self.spatial_wall_index.solid.destroy();
         self.spatial_wall_index.all.destroy();
 
@@ -1086,31 +1084,38 @@ fn makeRenderingAttributes(
 
 /// Bitset containing all walkable and non-walkable tiles in the map.
 const ObstacleGrid = struct {
-    grid: std.DynamicBitSet,
+    grid: []TileType,
     map_boundaries: collision.AxisAlignedBoundingBox,
     map_cell_count_horizontal: usize,
 
-    fn create(allocator: std.mem.Allocator) !ObstacleGrid {
+    const TileType = enum {
+        none,
+        neighbor_of_obstacle,
+        neighbor_of_multiple_obstacles,
+        obstacle,
+    };
+
+    fn create() ObstacleGrid {
         return .{
-            .grid = try std.DynamicBitSet.initEmpty(allocator, 1),
+            .grid = &.{},
             .map_boundaries = .{ .min = math.FlatVector.zero, .max = math.FlatVector.zero },
             .map_cell_count_horizontal = 1,
         };
     }
 
-    fn destroy(self: *ObstacleGrid) void {
-        self.grid.deinit();
+    fn destroy(self: *ObstacleGrid, allocator: std.mem.Allocator) void {
+        allocator.free(self.grid);
     }
 
     fn recompute(self: *ObstacleGrid, geometry: Geometry) !void {
         if (geometry.walls.solid.items.len == 0 and
             geometry.walls.translucent.items.len == 0)
         {
-            var new_grid = try ObstacleGrid.create(geometry.allocator);
-            errdefer new_grid.destroy();
-
-            self.destroy();
-            self.* = new_grid;
+            self.* = .{
+                .grid = self.grid,
+                .map_boundaries = .{ .min = math.FlatVector.zero, .max = math.FlatVector.zero },
+                .map_cell_count_horizontal = 1,
+            };
             return;
         }
 
@@ -1127,79 +1132,70 @@ const ObstacleGrid = struct {
             updateBoundaries(&map_boundaries, wall);
         }
 
+        const cell_size = @as(f32, @floatFromInt(Geometry.obstacle_grid_cell_size));
+        const padding_for_storing_extra_neighbors = .{ .x = cell_size, .z = cell_size };
+        map_boundaries.min = map_boundaries.min.subtract(padding_for_storing_extra_neighbors);
+        map_boundaries.max = map_boundaries.max.add(padding_for_storing_extra_neighbors);
+
         const map_dimensions = .{
             .w = map_boundaries.max.x - map_boundaries.min.x,
             .h = map_boundaries.max.z - map_boundaries.min.z,
         };
-        const cell_size = @as(f32, @floatFromInt(Geometry.obstacle_grid_cell_size));
         const map_cell_count = .{
             .w = @as(usize, @intFromFloat(map_dimensions.w / cell_size)) + 1,
             .h = @as(usize, @intFromFloat(map_dimensions.h / cell_size)) + 1,
         };
         const total_cell_count = map_cell_count.w * map_cell_count.h;
-        var new_grid = try std.DynamicBitSet.initEmpty(geometry.allocator, total_cell_count);
-        errdefer new_grid.deinit();
-
-        for (geometry.walls.solid.items) |wall| {
-            populateGrid(&new_grid, wall, map_boundaries, map_cell_count.w);
-        }
-        for (geometry.walls.translucent.items) |wall| {
-            populateGrid(&new_grid, wall, map_boundaries, map_cell_count.w);
-        }
-
-        self.destroy();
         self.* = .{
-            .grid = new_grid,
+            .grid = if (total_cell_count <= self.grid.len)
+                self.grid
+            else
+                try geometry.allocator.realloc(self.grid, total_cell_count),
             .map_boundaries = map_boundaries,
             .map_cell_count_horizontal = map_cell_count.w,
         };
+        @memset(self.grid, .none);
+
+        for (geometry.walls.solid.items) |wall| {
+            self.insert(wall);
+        }
+        for (geometry.walls.translucent.items) |wall| {
+            self.insert(wall);
+        }
     }
 
     fn tileMayContainObstacle(self: ObstacleGrid, position: math.FlatVector) bool {
         if (!self.map_boundaries.collidesWithPoint(position)) {
             return false;
         }
-        const index = CellIndex.fromPosition(position.subtract(self.map_boundaries.min))
-            .getBitsetIndex(self.map_cell_count_horizontal);
-        return self.grid.isSet(index);
+        const index = self.getIndex(
+            CellIndex.fromPosition(position.subtract(self.map_boundaries.min)),
+        );
+        return self.grid[index] == .obstacle;
     }
 
-    fn updateBoundaries(boundaries: *collision.AxisAlignedBoundingBox, wall: Wall) void {
-        for (wall.boundaries.getCornersInGameCoordinates()) |corner| {
-            boundaries.min.x = @min(boundaries.min.x, corner.x);
-            boundaries.min.z = @min(boundaries.min.z, corner.z);
-            boundaries.max.x = @max(boundaries.max.x, corner.x);
-            boundaries.max.z = @max(boundaries.max.z, corner.z);
-        }
-    }
-
-    fn populateGrid(
-        grid: *std.DynamicBitSet,
-        wall: Wall,
-        map_boundaries: collision.AxisAlignedBoundingBox,
-        map_cell_count_horizontal: usize,
-    ) void {
-        // Make game coordinates positive, starting at (0, 0).
+    fn insert(self: *ObstacleGrid, wall: Wall) void {
         var corners = wall.boundaries.getCornersInGameCoordinates();
         for (&corners) |*corner| {
-            corner.* = corner.subtract(map_boundaries.min);
+            // Make game coordinates positive, starting at (0, 0).
+            corner.* = corner.subtract(self.map_boundaries.min);
         }
-        populateGridSubstep(grid, map_cell_count_horizontal, corners[0], corners[1]);
-        populateGridSubstep(grid, map_cell_count_horizontal, corners[1], corners[2]);
-        populateGridSubstep(grid, map_cell_count_horizontal, corners[2], corners[3]);
-        populateGridSubstep(grid, map_cell_count_horizontal, corners[3], corners[0]);
+        self.insertLine(corners[0], corners[1]);
+        self.insertLine(corners[1], corners[2]);
+        self.insertLine(corners[2], corners[3]);
+        self.insertLine(corners[3], corners[0]);
     }
 
-    fn populateGridSubstep(
-        grid: *std.DynamicBitSet,
-        map_cell_count_horizontal: usize,
-        vertex_start: math.FlatVector,
-        vertex_end: math.FlatVector,
-    ) void {
-        var iterator = cell_line_iterator(CellIndex, vertex_start, vertex_end);
+    fn insertLine(self: *ObstacleGrid, start: math.FlatVector, end: math.FlatVector) void {
+        var iterator = cell_line_iterator(CellIndex, start, end);
         while (iterator.next()) |cell_index| {
-            grid.set(cell_index.getBitsetIndex(map_cell_count_horizontal));
+            self.grid[self.getIndex(cell_index)] = .obstacle;
         }
+    }
+
+    fn getIndex(self: ObstacleGrid, cell_index: CellIndex) usize {
+        return @as(usize, @intCast(cell_index.z)) * self.map_cell_count_horizontal +
+            @as(usize, @intCast(cell_index.x));
     }
 
     /// Drop-in replacement for `spatial_partitioning.CellIndex` using larger integers.
@@ -1214,10 +1210,14 @@ const ObstacleGrid = struct {
                 .z = @intFromFloat(position.z / @as(f32, @floatFromInt(side_length))),
             };
         }
-
-        pub fn getBitsetIndex(self: CellIndex, map_cell_count_horizontal: usize) usize {
-            return @as(usize, @intCast(self.z)) * map_cell_count_horizontal +
-                @as(usize, @intCast(self.x));
-        }
     };
+
+    fn updateBoundaries(boundaries: *collision.AxisAlignedBoundingBox, wall: Wall) void {
+        for (wall.boundaries.getCornersInGameCoordinates()) |corner| {
+            boundaries.min.x = @min(boundaries.min.x, corner.x);
+            boundaries.min.z = @min(boundaries.min.z, corner.z);
+            boundaries.max.x = @max(boundaries.max.x, corner.x);
+            boundaries.max.z = @max(boundaries.max.z, corner.z);
+        }
+    }
 };
