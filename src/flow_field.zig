@@ -62,23 +62,9 @@ pub const Field = struct {
         allocator.free(self.integration_field);
     }
 
-    pub fn recompute(
-        self: *Field,
-        new_center_and_destination: FlatVector,
-        map: Map,
-    ) !void {
-        // Push position further away from close walls. This prevents the target from being
-        // unreachable when using coarse cell sizes.
-        const center = block: {
-            const circle = .{
-                .position = new_center_and_destination,
-                .radius = @as(f32, @floatFromInt(cell_side_length * 2)),
-            };
-            if (map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
-                break :block new_center_and_destination.add(displacement_vector);
-            }
-            break :block new_center_and_destination;
-        };
+    pub fn recompute(self: *Field, new_center_and_destination: FlatVector, map: Map) !void {
+        // This prevents the target from being unreachable when using coarse cell sizes.
+        const center = correctPosition(new_center_and_destination, map);
         self.boundaries = block: {
             const side_length = @as(f32, @floatFromInt(self.grid_cells_per_side * cell_side_length));
             const half_side_length = side_length / 2.0;
@@ -135,6 +121,18 @@ pub const Field = struct {
             }
             _ = try writer.write("\n");
         }
+    }
+
+    // Push position further away from close walls.
+    fn correctPosition(position: FlatVector, map: Map) FlatVector {
+        const circle = .{
+            .position = position,
+            .radius = @as(f32, @floatFromInt(cell_side_length * 2)),
+        };
+        if (map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
+            return position.add(displacement_vector);
+        }
+        return position;
     }
 
     fn getIndex(self: Field, x: usize, z: usize) usize {
@@ -254,17 +252,13 @@ pub const Field = struct {
     }
 
     fn setDirectionalVector(self: *Field, x: usize, z: usize, pairs: []const CostDirPair) void {
-        self.directional_vectors[self.getIndex(x, z)] = getDirection(pairs);
-    }
-
-    fn getDirection(pairs: []const CostDirPair) Direction {
-        var result = CostDirPair{ .cost = max_cost, .dir = .none };
+        var cheapest_pair = CostDirPair{ .cost = max_cost, .dir = .none };
         for (pairs[0..]) |pair| {
-            if (pair.cost < result.cost) {
-                result = pair;
+            if (pair.cost < cheapest_pair.cost) {
+                cheapest_pair = pair;
             }
         }
-        return result.dir;
+        self.directional_vectors[self.getIndex(x, z)] = cheapest_pair.dir;
     }
 
     fn getCost(self: Field, x: usize, z: usize) CostInt {
