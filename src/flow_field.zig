@@ -104,13 +104,8 @@ pub const Field = struct {
 
     // If the given position exists on the flow field, return a directional vector for navigating
     // towards the flow fields center.
-    pub fn getDirection(self: Field, position: FlatVector, map: Map) ?FlatVector {
+    pub fn getDirection(self: Field, position: FlatVector) ?FlatVector {
         if (self.getIndexFromWorldPosition(position)) |index| {
-            const circle = .{ .position = position, .radius = 2 };
-            if (map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
-                return displacement_vector.normalize();
-            }
-
             return switch (self.directional_vectors[index]) {
                 .up_left => .{ .x = -std.math.sqrt1_2, .z = -std.math.sqrt1_2 },
                 .up => .{ .x = 0, .z = -1 },
