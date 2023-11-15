@@ -281,8 +281,8 @@ pub const Field = struct {
         for (1..last) |z| {
             for (1..last) |x| {
                 self.setDirectionalVector(x, z, &.{
-                    .{ .x = x - 1, .z = z - 1, .dir = .up_left },
                     .{ .x = x, .z = z - 1, .dir = .up },
+                    .{ .x = x - 1, .z = z - 1, .dir = .up_left },
                     .{ .x = x + 1, .z = z - 1, .dir = .up_right },
                     .{ .x = x + 1, .z = z, .dir = .right },
                     .{ .x = x + 1, .z = z + 1, .dir = .down_right },
@@ -294,8 +294,10 @@ pub const Field = struct {
         }
     }
 
+    // `cells` must contain more than one item and should not start with a diagonal direction.
     fn setDirectionalVector(self: *Field, x: usize, z: usize, cells: []const CellDirection) void {
         std.debug.assert(cells.len > 0);
+        std.debug.assert(cells[0].x == x or cells[0].z == z);
 
         const index = self.getIndex(x, z);
         if (self.integration_field[index].cost == max_cost) {
@@ -306,7 +308,13 @@ pub const Field = struct {
         var cheapest_cell = .{ .cost = self.getCost(cells[0].x, cells[0].z), .dir = cells[0].dir };
         for (cells[1..]) |cell| {
             const cell_cost = self.getCost(cell.x, cell.z);
-            if (cell_cost < cheapest_cell.cost) {
+            if (cell_cost < cheapest_cell.cost and
+                // Either not diagonal.
+                ((cell.x == x or cell.z == z) or
+                // Or doesn't go trough adjacent wall.
+                (self.getCost(cell.x, z) != max_cost and
+                self.getCost(x, cell.z) != max_cost)))
+            {
                 cheapest_cell = .{ .cost = cell_cost, .dir = cell.dir };
             }
         }
