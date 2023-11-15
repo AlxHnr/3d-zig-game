@@ -297,6 +297,12 @@ pub const Context = struct {
         return &self.shared_context.object_id_generator;
     }
 
+    pub fn playerIsOnFlowFieldObstacleTile(self: Context) bool {
+        return self.map.geometry.getObstacleTile(
+            self.main_character.character.moving_circle.getPosition(),
+        ) == .obstacle;
+    }
+
     pub fn reloadMapFromDisk(self: *Context, allocator: std.mem.Allocator) !void {
         const map =
             try loadMap(allocator, &self.shared_context.object_id_generator, self.map_file_path);

@@ -221,6 +221,7 @@ const ProgramContext = struct {
             self.allocator,
             self.screen_dimensions,
             self.edit_mode_state,
+            self.game_context,
         );
 
         sdl.SDL_GL_SwapWindow(self.window);
@@ -274,6 +275,7 @@ const EditModeRenderer = struct {
         allocator: std.mem.Allocator,
         screen_dimensions: util.ScreenDimensions,
         state: edit_mode.State,
+        game_context: GameContext,
     ) !void {
         var text_buffer: [64]u8 = undefined;
         const description = try state.describe(&text_buffer);
@@ -283,6 +285,10 @@ const EditModeRenderer = struct {
             .{ .color = text_color, .text = description[0] },
             .{ .color = text_color, .text = "\n" },
             .{ .color = text_color, .text = description[1] },
+            .{ .color = text_color, .text = if (game_context.playerIsOnFlowFieldObstacleTile())
+                "\nFlowField: Unreachable"
+            else
+                "" },
         };
 
         const sprite_count = text_rendering.getSpriteCount(&segments);
