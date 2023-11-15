@@ -1,4 +1,5 @@
 const AxisAlignedBoundingBox = @import("collision.zig").AxisAlignedBoundingBox;
+const Circle = @import("collision.zig").Circle;
 const FlatVector = @import("math.zig").FlatVector;
 const Map = @import("map/map.zig").Map;
 const cell_side_length = @import("map/geometry.zig").Geometry.obstacle_grid_cell_size;
@@ -110,19 +111,12 @@ pub const Field = struct {
             if (direction != .none) {
                 return toDirectionVector(direction);
             }
-            var radius_factor: f32 = 0.5;
-            while (radius_factor < 9) : (radius_factor *= 2) {
-                const circle = .{
-                    .position = position,
-                    .radius = @as(f32, @floatFromInt(cell_side_length)) * radius_factor,
-                };
-                if (map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
-                    const corrected_position = position.add(displacement_vector);
-                    if (self.getIndexFromWorldPosition(corrected_position)) |cell_index| {
-                        const corrected_direction = self.directional_vectors[cell_index];
-                        if (corrected_direction != .none) {
-                            return toDirectionVector(corrected_direction);
-                        }
+            var iterator = GrowingRadiusIterator.create(position, &map);
+            while (iterator.next()) |corrected_position| {
+                if (self.getIndexFromWorldPosition(corrected_position)) |cell_index| {
+                    const corrected_direction = self.directional_vectors[cell_index];
+                    if (corrected_direction != .none) {
+                        return toDirectionVector(corrected_direction);
                     }
                 }
             }
@@ -341,4 +335,31 @@ pub const Field = struct {
             .down_right => .{ .x = std.math.sqrt1_2, .z = std.math.sqrt1_2 },
         };
     }
+
+    /// Returns all positions encountered when incrementally pushing the specified position further
+    /// away from nearby geometry.
+    const GrowingRadiusIterator = struct {
+        position: FlatVector,
+        radius_factor: f32,
+        map: *const Map,
+
+        fn create(position: FlatVector, map: *const Map) GrowingRadiusIterator {
+            return .{ .position = position, .radius_factor = 0.5, .map = map };
+        }
+
+        /// Returns null when there is no nearby geometry.
+        fn next(self: *GrowingRadiusIterator) ?FlatVector {
+            while (self.radius_factor < 9) {
+                const circle = .{
+                    .position = self.position,
+                    .radius = @as(f32, @floatFromInt(cell_side_length)) * self.radius_factor,
+                };
+                self.radius_factor *= 2.0;
+                if (self.map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
+                    return self.position.add(displacement_vector);
+                }
+            }
+            return null;
+        }
+    };
 };
