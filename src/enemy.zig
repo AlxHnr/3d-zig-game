@@ -349,7 +349,7 @@ const AttackingState = struct {
         if (is_seeing_main_character) {
             enemy.character.acceleration_direction =
                 context.main_character.moving_circle.getPosition().subtract(position).normalize();
-        } else if (context.main_character_flow_field.getDirection(position)) |direction| {
+        } else if (context.main_character_flow_field.getDirection(position, context.map.*)) |direction| {
             enemy.character.acceleration_direction = direction;
         } else {
             enemy.state = .{ .idle = IdleState.create(context) };

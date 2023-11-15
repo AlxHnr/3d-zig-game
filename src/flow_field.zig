@@ -104,19 +104,28 @@ pub const Field = struct {
 
     // If the given position exists on the flow field, return a directional vector for navigating
     // towards the flow fields center.
-    pub fn getDirection(self: Field, position: FlatVector) ?FlatVector {
+    pub fn getDirection(self: Field, position: FlatVector, map: Map) ?FlatVector {
         if (self.getIndexFromWorldPosition(position)) |index| {
-            return switch (self.directional_vectors[index]) {
-                .up_left => .{ .x = -std.math.sqrt1_2, .z = -std.math.sqrt1_2 },
-                .up => .{ .x = 0, .z = -1 },
-                .up_right => .{ .x = std.math.sqrt1_2, .z = -std.math.sqrt1_2 },
-                .left => .{ .x = -1, .z = 0 },
-                .none => .{ .x = 0, .z = 0 },
-                .right => .{ .x = 1, .z = 0 },
-                .down_left => .{ .x = -std.math.sqrt1_2, .z = std.math.sqrt1_2 },
-                .down => .{ .x = 0, .z = 1 },
-                .down_right => .{ .x = std.math.sqrt1_2, .z = std.math.sqrt1_2 },
-            };
+            const direction = self.directional_vectors[index];
+            if (direction != .none) {
+                return toDirectionVector(direction);
+            }
+            var radius_factor: f32 = 0.5;
+            while (radius_factor < 9) : (radius_factor *= 2) {
+                const circle = .{
+                    .position = position,
+                    .radius = @as(f32, @floatFromInt(cell_side_length)) * radius_factor,
+                };
+                if (map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
+                    const corrected_position = position.add(displacement_vector);
+                    if (self.getIndexFromWorldPosition(corrected_position)) |cell_index| {
+                        const corrected_direction = self.directional_vectors[cell_index];
+                        if (corrected_direction != .none) {
+                            return toDirectionVector(corrected_direction);
+                        }
+                    }
+                }
+            }
         }
         return null;
     }
@@ -288,6 +297,12 @@ pub const Field = struct {
     fn setDirectionalVector(self: *Field, x: usize, z: usize, cells: []const CellDirection) void {
         std.debug.assert(cells.len > 0);
 
+        const index = self.getIndex(x, z);
+        if (self.integration_field[index].cost == max_cost) {
+            self.directional_vectors[index] = .none;
+            return;
+        }
+
         var cheapest_cell = .{ .cost = self.getCost(cells[0].x, cells[0].z), .dir = cells[0].dir };
         for (cells[1..]) |cell| {
             const cell_cost = self.getCost(cell.x, cell.z);
@@ -295,7 +310,7 @@ pub const Field = struct {
                 cheapest_cell = .{ .cost = cell_cost, .dir = cell.dir };
             }
         }
-        self.directional_vectors[self.getIndex(x, z)] = cheapest_cell.dir;
+        self.directional_vectors[index] = cheapest_cell.dir;
     }
 
     fn getCost(self: Field, x: usize, z: usize) CostInt {
@@ -303,4 +318,19 @@ pub const Field = struct {
     }
 
     const CellDirection = struct { x: usize, z: usize, dir: Direction };
+
+    fn toDirectionVector(direction: Direction) FlatVector {
+        std.debug.assert(direction != .none);
+        return switch (direction) {
+            .up_left => .{ .x = -std.math.sqrt1_2, .z = -std.math.sqrt1_2 },
+            .up => .{ .x = 0, .z = -1 },
+            .up_right => .{ .x = std.math.sqrt1_2, .z = -std.math.sqrt1_2 },
+            .left => .{ .x = -1, .z = 0 },
+            .none => unreachable,
+            .right => .{ .x = 1, .z = 0 },
+            .down_left => .{ .x = -std.math.sqrt1_2, .z = std.math.sqrt1_2 },
+            .down => .{ .x = 0, .z = 1 },
+            .down_right => .{ .x = std.math.sqrt1_2, .z = std.math.sqrt1_2 },
+        };
+    }
 };
