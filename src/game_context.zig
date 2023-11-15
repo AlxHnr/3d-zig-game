@@ -298,13 +298,9 @@ pub const Context = struct {
     }
 
     pub fn playerIsOnFlowFieldObstacleTile(self: Context) bool {
-        const tile = self.map.geometry.getObstacleTile(
+        return self.map.geometry.getObstacleTile(
             self.main_character.character.moving_circle.getPosition(),
-        );
-        return switch (tile) {
-            .none, .neighbor_of_obstacle, .neighbor_of_multiple_obstacles => false,
-            .obstacle, .obstacle_tranclucent => true,
-        };
+        ).isObstacle();
     }
 
     pub fn reloadMapFromDisk(self: *Context, allocator: std.mem.Allocator) !void {

@@ -145,10 +145,10 @@ pub const Field = struct {
     }
 
     fn pushPositionOutOfObstacleCells(position: FlatVector, map: Map) FlatVector {
-        if (map.geometry.getObstacleTile(position) == .obstacle) {
+        if (map.geometry.getObstacleTile(position).isObstacle()) {
             var iterator = GrowingRadiusIterator.create(position, &map);
             while (iterator.next()) |corrected_position| {
-                if (map.geometry.getObstacleTile(corrected_position) != .obstacle) {
+                if (map.geometry.getObstacleTile(corrected_position).isObstacle()) {
                     return corrected_position;
                 }
             }
@@ -199,7 +199,7 @@ pub const Field = struct {
             .none => 0,
             .neighbor_of_obstacle => 4,
             .neighbor_of_multiple_obstacles => 6,
-            .obstacle, .obstacle_tranclucent => max_cost,
+            .obstacle_solid, .obstacle_tranclucent => max_cost,
         };
         cell.cost = cost +| tile_base_cost;
         if (cell.cost < max_cost) {

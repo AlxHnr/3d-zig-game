@@ -1094,8 +1094,12 @@ const ObstacleGrid = struct {
         none,
         neighbor_of_obstacle,
         neighbor_of_multiple_obstacles,
-        obstacle,
+        obstacle_solid,
         obstacle_tranclucent,
+
+        pub fn isObstacle(self: TileType) bool {
+            return self == .obstacle_solid or self == .obstacle_tranclucent;
+        }
     };
 
     fn create() ObstacleGrid {
@@ -1184,7 +1188,7 @@ const ObstacleGrid = struct {
             corner.* = corner.subtract(self.map_boundaries.min);
         }
         const tile_type: TileType =
-            if (Wall.isFence(wall.wall_type)) .obstacle_tranclucent else .obstacle;
+            if (Wall.isFence(wall.wall_type)) .obstacle_tranclucent else .obstacle_solid;
         self.insertLine(tile_type, corners[0], corners[1]);
         self.insertLine(tile_type, corners[1], corners[2]);
         self.insertLine(tile_type, corners[2], corners[3]);
@@ -1200,7 +1204,7 @@ const ObstacleGrid = struct {
         var iterator = cell_line_iterator(CellIndex, start, end);
         while (iterator.next()) |cell_index| {
             const index = self.getIndex(cell_index);
-            if (self.grid[index] != .obstacle) {
+            if (self.grid[index] != .obstacle_solid) {
                 self.grid[index] = tile_type;
             }
             self.markNeighborOfObstacle(cell_index.x - 1, cell_index.z);
@@ -1238,7 +1242,7 @@ const ObstacleGrid = struct {
         self.grid[index] = switch (self.grid[index]) {
             .none => .neighbor_of_obstacle,
             .neighbor_of_obstacle => .neighbor_of_multiple_obstacles,
-            .neighbor_of_multiple_obstacles, .obstacle, .obstacle_tranclucent => |current| current,
+            .neighbor_of_multiple_obstacles, .obstacle_solid, .obstacle_tranclucent => |current| current,
         };
     }
 
