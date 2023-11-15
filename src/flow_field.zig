@@ -161,8 +161,8 @@ pub const Field = struct {
     fn getIndexFromWorldPosition(self: Field, world_position: FlatVector) ?usize {
         const cell_position = world_position.subtract(self.boundaries.min)
             .scale(1.0 / @as(f32, @floatFromInt(cell_side_length)));
-        const x: isize = @intFromFloat(cell_position.x);
-        const z: isize = @intFromFloat(cell_position.z);
+        const x: isize = @intFromFloat(@ceil(cell_position.x));
+        const z: isize = @intFromFloat(@ceil(cell_position.z));
         if (x < 0 or x >= self.grid_cells_per_side or
             z < 0 or z >= self.grid_cells_per_side)
         {
