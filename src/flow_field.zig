@@ -199,7 +199,7 @@ pub const Field = struct {
             .none => 0,
             .neighbor_of_obstacle => 4,
             .neighbor_of_multiple_obstacles => 6,
-            .obstacle => max_cost,
+            .obstacle, .obstacle_tranclucent => max_cost,
         };
         cell.cost = cost +| tile_base_cost;
         if (cell.cost < max_cost) {

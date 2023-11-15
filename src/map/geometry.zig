@@ -1095,6 +1095,7 @@ const ObstacleGrid = struct {
         neighbor_of_obstacle,
         neighbor_of_multiple_obstacles,
         obstacle,
+        obstacle_tranclucent,
     };
 
     fn create() ObstacleGrid {
@@ -1182,16 +1183,26 @@ const ObstacleGrid = struct {
             // Make game coordinates positive, starting at (0, 0).
             corner.* = corner.subtract(self.map_boundaries.min);
         }
-        self.insertLine(corners[0], corners[1]);
-        self.insertLine(corners[1], corners[2]);
-        self.insertLine(corners[2], corners[3]);
-        self.insertLine(corners[3], corners[0]);
+        const tile_type: TileType =
+            if (Wall.isFence(wall.wall_type)) .obstacle_tranclucent else .obstacle;
+        self.insertLine(tile_type, corners[0], corners[1]);
+        self.insertLine(tile_type, corners[1], corners[2]);
+        self.insertLine(tile_type, corners[2], corners[3]);
+        self.insertLine(tile_type, corners[3], corners[0]);
     }
 
-    fn insertLine(self: *ObstacleGrid, start: math.FlatVector, end: math.FlatVector) void {
+    fn insertLine(
+        self: *ObstacleGrid,
+        tile_type: TileType,
+        start: math.FlatVector,
+        end: math.FlatVector,
+    ) void {
         var iterator = cell_line_iterator(CellIndex, start, end);
         while (iterator.next()) |cell_index| {
-            self.grid[self.getIndex(cell_index)] = .obstacle;
+            const index = self.getIndex(cell_index);
+            if (self.grid[index] != .obstacle) {
+                self.grid[index] = tile_type;
+            }
             self.markNeighborOfObstacle(cell_index.x - 1, cell_index.z);
             self.markNeighborOfObstacle(cell_index.x + 1, cell_index.z);
             self.markNeighborOfObstacle(cell_index.x - 1, cell_index.z - 1);
@@ -1227,8 +1238,7 @@ const ObstacleGrid = struct {
         self.grid[index] = switch (self.grid[index]) {
             .none => .neighbor_of_obstacle,
             .neighbor_of_obstacle => .neighbor_of_multiple_obstacles,
-            .neighbor_of_multiple_obstacles => .neighbor_of_multiple_obstacles,
-            .obstacle => .obstacle,
+            .neighbor_of_multiple_obstacles, .obstacle, .obstacle_tranclucent => |current| current,
         };
     }
 
