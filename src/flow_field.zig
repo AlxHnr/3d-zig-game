@@ -64,8 +64,7 @@ pub const Field = struct {
     }
 
     pub fn recompute(self: *Field, new_center_and_destination: FlatVector, map: Map) !void {
-        // This prevents the target from being unreachable when using coarse cell sizes.
-        const center = correctPosition(new_center_and_destination, map);
+        const center = pushPositionOutOfObstacleCells(new_center_and_destination, map);
         self.boundaries = block: {
             const side_length = @as(f32, @floatFromInt(self.grid_cells_per_side * cell_side_length));
             const half_side_length = side_length / 2.0;
@@ -145,14 +144,14 @@ pub const Field = struct {
         }
     }
 
-    // Push position further away from close walls.
-    fn correctPosition(position: FlatVector, map: Map) FlatVector {
-        const circle = .{
-            .position = position,
-            .radius = @as(f32, @floatFromInt(cell_side_length * 2)),
-        };
-        if (map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
-            return position.add(displacement_vector);
+    fn pushPositionOutOfObstacleCells(position: FlatVector, map: Map) FlatVector {
+        if (map.geometry.getObstacleTile(position) == .obstacle) {
+            var iterator = GrowingRadiusIterator.create(position, &map);
+            while (iterator.next()) |corrected_position| {
+                if (map.geometry.getObstacleTile(corrected_position) != .obstacle) {
+                    return corrected_position;
+                }
+            }
         }
         return position;
     }
