@@ -23,13 +23,13 @@ pub const Field = struct {
     const CostInt = u15;
     const max_cost = std.math.maxInt(CostInt);
     const Direction = enum { up_left, up, up_right, left, none, right, down_left, down, down_right };
-    const PriorityQueue = std.PriorityQueue(QueueItem, void, QueueItem.compare);
+    const PriorityQueue = std.PriorityQueue(QueueItem, void, QueueItem.comparePriority);
     const QueueItem = struct {
         x: usize,
         z: usize,
         cost: CostInt,
 
-        fn compare(_: void, a: QueueItem, b: QueueItem) std.math.Order {
+        fn comparePriority(_: void, a: QueueItem, b: QueueItem) std.math.Order {
             if (a.cost < b.cost) {
                 return .lt;
             }
@@ -64,25 +64,25 @@ pub const Field = struct {
     }
 
     pub fn recompute(self: *Field, new_center_and_destination: FlatVector, map: Map) !void {
-        const center = pushPositionOutOfObstacleCells(new_center_and_destination, map);
+        const target = pushPositionOutOfObstacleCells(new_center_and_destination, map);
         self.boundaries = block: {
             const side_length = @as(f32, @floatFromInt(self.grid_cells_per_side * cell_side_length));
             const half_side_length = side_length / 2.0;
             break :block .{
-                .min = .{ .x = center.x - half_side_length, .z = center.z - half_side_length },
-                .max = .{ .x = center.x + half_side_length, .z = center.z + half_side_length },
+                .min = .{ .x = target.x - half_side_length, .z = target.z - half_side_length },
+                .max = .{ .x = target.x + half_side_length, .z = target.z + half_side_length },
             };
         };
 
         @memset(self.integration_field, .{ .has_been_visited = false, .cost = max_cost });
-        const center_tile = .{
+        const target_tile = .{
             .x = self.grid_cells_per_side / 2,
             .z = self.grid_cells_per_side / 2,
             .cost = 0,
         };
-        self.integration_field[self.getIndex(center_tile.x, center_tile.z)] =
-            .{ .has_been_visited = true, .cost = center_tile.cost };
-        try self.queue.add(center_tile);
+        self.integration_field[self.getIndex(target_tile.x, target_tile.z)] =
+            .{ .has_been_visited = true, .cost = target_tile.cost };
+        try self.queue.add(target_tile);
 
         while (self.queue.removeOrNull()) |item| {
             const cost = self.integration_field[self.getIndex(item.x, item.z)].cost +| 1;
@@ -184,24 +184,24 @@ pub const Field = struct {
         self: *Field,
         x: usize,
         z: usize,
-        cost: CostInt,
+        new_cost: CostInt,
         map: Map,
     ) !void {
         const cell = &self.integration_field[self.getIndex(x, z)];
-        const should_skip = cell.has_been_visited or cost == max_cost;
+        const should_skip = cell.has_been_visited;
         cell.has_been_visited = true;
         if (should_skip) {
             return;
         }
 
-        const world_position = self.getWorldPosition(x, z);
-        const tile_base_cost: CostInt = switch (map.geometry.getObstacleTile(world_position)) {
+        const tile_type = map.geometry.getObstacleTile(self.getWorldPosition(x, z));
+        const tile_base_cost: CostInt = switch (tile_type) {
             .none => 0,
             .neighbor_of_obstacle => 4,
             .neighbor_of_multiple_obstacles => 6,
             .obstacle_solid, .obstacle_tranclucent => max_cost,
         };
-        cell.cost = cost +| tile_base_cost;
+        cell.cost = tile_base_cost +| new_cost;
         if (cell.cost < max_cost) {
             try self.queue.add(.{ .x = x, .z = z, .cost = cell.cost });
         }
