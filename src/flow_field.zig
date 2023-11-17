@@ -197,9 +197,8 @@ pub const Field = struct {
         const tile_type = map.geometry.getObstacleTile(self.getWorldPosition(x, z));
         const tile_base_cost: CostInt = switch (tile_type) {
             .none => 0,
-            .neighbor_of_obstacle => 4,
-            .neighbor_of_multiple_obstacles => 6,
-            .obstacle_solid, .obstacle_tranclucent => max_cost,
+            .neighbor_of_obstacle => 2,
+            .obstacle_tranclucent, .obstacle_solid => max_cost,
         };
         cell.cost = tile_base_cost +| new_cost;
         if (cell.cost < max_cost) {

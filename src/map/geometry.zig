@@ -1093,12 +1093,11 @@ const ObstacleGrid = struct {
     const TileType = enum {
         none,
         neighbor_of_obstacle,
-        neighbor_of_multiple_obstacles,
-        obstacle_solid,
         obstacle_tranclucent,
+        obstacle_solid,
 
         pub fn isObstacle(self: TileType) bool {
-            return self == .obstacle_solid or self == .obstacle_tranclucent;
+            return self == .obstacle_tranclucent or self == .obstacle_solid;
         }
     };
 
@@ -1241,8 +1240,7 @@ const ObstacleGrid = struct {
         const index = self.getIndex(.{ .x = x, .z = z });
         self.grid[index] = switch (self.grid[index]) {
             .none => .neighbor_of_obstacle,
-            .neighbor_of_obstacle => .neighbor_of_multiple_obstacles,
-            .neighbor_of_multiple_obstacles, .obstacle_solid, .obstacle_tranclucent => |current| current,
+            .neighbor_of_obstacle, .obstacle_tranclucent, .obstacle_solid => |current| current,
         };
     }
 
