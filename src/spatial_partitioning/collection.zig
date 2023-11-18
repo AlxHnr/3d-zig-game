@@ -106,8 +106,14 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             return self.iteratorAdvanced(0, 0);
         }
 
+        /// Iterates over all cells in this collection. Will be invalidated by modifications to this
+        /// collection.
+        pub fn cellGroupIterator(self: *Self) CellGroupIterator {
+            return self.cellGroupIteratorAdvanced(0, 0);
+        }
+
         /// Iterates over all items in this collection. Individual cells can be skipped by
-        /// specifying offsets. Empty/non-existing cells are not considered by the offsets. Will be
+        /// specifying offsets. Non-existing cells are not considered by the offsets. Will be
         /// invalidated by modifications to this collection.
         pub fn iteratorAdvanced(
             self: *Self,
@@ -116,10 +122,25 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             /// Number cells to skip before advancing to the next cell.
             stride: usize,
         ) Iterator {
+            return .{
+                .cell_group_iterator = self.cellGroupIteratorAdvanced(offset_from_start, stride),
+                .cell_iterator = null,
+            };
+        }
+
+        /// Iterates over all cells in this collection. Individual cells can be skipped by
+        /// specifying offsets. Non-existing cells are not considered by the offsets. Will be
+        /// invalidated by modifications to this collection.
+        pub fn cellGroupIteratorAdvanced(
+            self: *Self,
+            /// Cells to skip from the first cell in this collection.
+            offset_from_start: usize,
+            /// Number cells to skip before advancing to the next cell.
+            stride: usize,
+        ) CellGroupIterator {
             std.mem.sort(CellIndex, self.ordered_indices.items, {}, lessThan);
             return .{
                 .cells = &self.cells,
-                .cell_iterator = null,
                 .ordered_indices = self.ordered_indices.items,
                 .index = offset_from_start,
                 .step = stride + 1,
@@ -127,11 +148,8 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
         }
 
         pub const Iterator = struct {
-            cells: *const CellMap,
+            cell_group_iterator: CellGroupIterator,
             cell_iterator: ?UnorderedCollection(T).Iterator,
-            ordered_indices: []CellIndex,
-            index: usize,
-            step: usize,
 
             /// Returns a mutable pointer for updating objects in-place.
             pub fn next(self: *Iterator) ?*T {
@@ -140,18 +158,39 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
                         return object;
                     }
                 }
+                if (self.cell_group_iterator.next()) |cell_group| {
+                    self.cell_iterator = cell_group.cell.iterator();
+                    return self.cell_iterator.?.next();
+                }
+                return null;
+            }
+        };
+
+        pub const CellGroupIterator = struct {
+            cells: *const CellMap,
+            ordered_indices: []CellIndex,
+            index: usize,
+            step: usize,
+
+            /// Returns the next cell group for mutable iteration. The returned collection itself
+            /// should not be inserted to or deleted from.
+            pub fn next(self: *CellGroupIterator) ?CellGroup {
                 while (self.index < self.ordered_indices.len) {
                     const cell_index = self.ordered_indices[self.index];
                     self.index += self.step;
 
                     const cell = self.cells.getPtr(cell_index).?;
                     if (cell.count() > 0) {
-                        self.cell_iterator = cell.iterator();
-                        return self.cell_iterator.?.next();
+                        return .{ .cell_index = cell_index, .cell = cell };
                     }
                 }
                 return null;
             }
+
+            pub const CellGroup = struct {
+                cell_index: CellIndex,
+                cell: *UnorderedCollection(T),
+            };
         };
 
         fn lessThan(_: void, a: CellIndex, b: CellIndex) bool {
