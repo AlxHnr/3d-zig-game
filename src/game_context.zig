@@ -184,13 +184,43 @@ pub const Context = struct {
             };
             var enemy_iterator = self.shared_context.enemies.iterator();
             while (enemy_iterator.next()) |enemy_ptr| {
+                const old_cell_index = self.shared_context.enemies.getCellIndex(
+                    enemy_ptr.character.moving_circle.getPosition(),
+                );
                 enemy_ptr.processElapsedTick(tick_context);
+                const new_cell_index = self.shared_context.enemies.getCellIndex(
+                    enemy_ptr.character.moving_circle.getPosition(),
+                );
+
+                if (enemy_ptr.state == .dead) {
+                    try self.shared_context.enemies_to_remove.append(
+                        self.shared_context.enemies.getObjectHandle(enemy_ptr),
+                    );
+                } else if (new_cell_index.compare(old_cell_index) != .eq) {
+                    try self.shared_context.enemies_to_remove.append(
+                        self.shared_context.enemies.getObjectHandle(enemy_ptr),
+                    );
+                    try self.shared_context.enemies_to_add.append(enemy_ptr.*);
+                }
+
                 if (enemy_ptr.state == .attacking) {
                     try self.shared_context.previous_tick_attacking_enemies.append(
                         enemy_ptr.makeAttackingEnemyPosition(),
                     );
                 }
             }
+
+            for (self.shared_context.enemies_to_remove.items) |object_handle| {
+                self.shared_context.enemies.remove(object_handle);
+            }
+            self.shared_context.enemies_to_remove.clearRetainingCapacity();
+            for (self.shared_context.enemies_to_add.items) |enemy| {
+                _ = try self.shared_context.enemies.insert(
+                    enemy,
+                    enemy.character.moving_circle.getPosition(),
+                );
+            }
+            self.shared_context.enemies_to_add.clearRetainingCapacity();
 
             self.shared_context.dialog_controller.processElapsedTick();
             if (self.frame_timer.read() > max_frame_time) {
