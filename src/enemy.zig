@@ -330,6 +330,7 @@ const AttackingState = struct {
     visibility_checker: VisibilityChecker(visibility_check_interval),
 
     const visibility_check_interval = simulation.millisecondsToTicks(u32, 2000);
+    const enemy_friction_constant = 1 - 1 / simulation.kphToGameUnitsPerTick(432);
 
     fn create() AttackingState {
         return .{
@@ -379,7 +380,7 @@ const AttackingState = struct {
             if (circle.collidesWithCircleDisplacementVector(peer_circle)) |displacement_vector| {
                 collides_with_peer = true;
                 combined_displacement_vector = combined_displacement_vector.add(displacement_vector);
-                friction_factor *= 1 + std.math
+                friction_factor *= 1 + enemy_friction_constant * std.math
                     .clamp(direction.dotProduct(displacement_vector.normalize()), -1, 0);
             } else if (!collides_with_peer) {
                 const offset_to_peer = position.subtract(peer.position);
