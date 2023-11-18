@@ -3,6 +3,7 @@ const DialogController = @import("dialog.zig").Controller;
 const Enemy = @import("enemy.zig").Enemy;
 const GemCollection = @import("gems.zig").Collection;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
+const SpatialCollection = @import("spatial_partitioning/collection.zig").Collection;
 const std = @import("std");
 
 pub const SharedContext = struct {
@@ -16,14 +17,19 @@ pub const SharedContext = struct {
 
     gem_collection: GemCollection,
 
-    enemies: std.ArrayList(Enemy),
+    enemies: EnemyCollection,
     previous_tick_attacking_enemies: std.ArrayList(AttackingEnemyPosition),
 
     dialog_controller: DialogController,
 
+    pub const EnemyCollection = SpatialCollection(Enemy, 7);
+
     pub fn create(allocator: std.mem.Allocator) !SharedContext {
         var gem_collection = GemCollection.create(allocator);
         errdefer gem_collection.destroy();
+
+        var enemy_collection = try EnemyCollection.create(allocator);
+        errdefer enemy_collection.destroy();
 
         var dialog_controller = try DialogController.create(allocator);
         errdefer dialog_controller.destroy();
@@ -32,7 +38,7 @@ pub const SharedContext = struct {
             .object_id_generator = ObjectIdGenerator.create(),
             .rng = std.rand.Xoroshiro128.init(0),
             .gem_collection = gem_collection,
-            .enemies = std.ArrayList(Enemy).init(allocator),
+            .enemies = enemy_collection,
             .previous_tick_attacking_enemies = std.ArrayList(AttackingEnemyPosition).init(allocator),
             .dialog_controller = dialog_controller,
         };
@@ -41,7 +47,7 @@ pub const SharedContext = struct {
     pub fn destroy(self: *SharedContext) void {
         self.dialog_controller.destroy();
         self.previous_tick_attacking_enemies.deinit();
-        self.enemies.deinit();
+        self.enemies.destroy();
         self.gem_collection.destroy();
     }
 };

@@ -66,15 +66,13 @@ pub const Context = struct {
 
         var counter: usize = 0;
         while (counter < 10000) : (counter += 1) {
-            try shared_context.enemies.append(
-                Enemy.create(
-                    .{
-                        .x = -shared_context.rng.random().float(f32) * 100 - 50,
-                        .z = shared_context.rng.random().float(f32) * 500,
-                    },
-                    &enemy_presets.floating_eye,
-                    spritesheet,
-                ),
+            const position = .{
+                .x = -shared_context.rng.random().float(f32) * 100 - 50,
+                .z = shared_context.rng.random().float(f32) * 500,
+            };
+            _ = try shared_context.enemies.insert(
+                Enemy.create(position, &enemy_presets.floating_eye, spritesheet),
+                position,
             );
         }
 
@@ -184,11 +182,12 @@ pub const Context = struct {
                 .main_character_flow_field = &self.main_character_flow_field,
                 .attacking_enemy_positions_at_previous_tick = &attacking_enemy_positions_at_previous_tick,
             };
-            for (self.shared_context.enemies.items) |*enemy| {
-                enemy.processElapsedTick(tick_context);
-                if (enemy.state == .attacking) {
+            var enemy_iterator = self.shared_context.enemies.iterator();
+            while (enemy_iterator.next()) |enemy_ptr| {
+                enemy_ptr.processElapsedTick(tick_context);
+                if (enemy_ptr.state == .attacking) {
                     try self.shared_context.previous_tick_attacking_enemies.append(
-                        enemy.makeAttackingEnemyPosition(),
+                        enemy_ptr.makeAttackingEnemyPosition(),
                     );
                 }
             }
@@ -224,9 +223,10 @@ pub const Context = struct {
 
         const gems_to_render = self.shared_context.gem_collection.getBillboardCount();
         billboards_to_render += gems_to_render;
-        for (self.shared_context.enemies.items) |*enemy| {
-            enemy.prepareRender(camera, self.interval_between_previous_and_current_tick);
-            billboards_to_render += enemy.getBillboardCount();
+        var enemy_iterator = self.shared_context.enemies.iterator();
+        while (enemy_iterator.next()) |enemy_ptr| {
+            enemy_ptr.prepareRender(camera, self.interval_between_previous_and_current_tick);
+            billboards_to_render += enemy_ptr.getBillboardCount();
         }
         billboards_to_render += 1; // Player sprite.
 
@@ -242,10 +242,11 @@ pub const Context = struct {
         );
         var start: usize = gems_to_render;
         var end: usize = gems_to_render;
-        for (self.shared_context.enemies.items) |enemy| {
+        enemy_iterator = self.shared_context.enemies.iterator();
+        while (enemy_iterator.next()) |enemy_ptr| {
             start = end;
-            end += enemy.getBillboardCount();
-            enemy.populateBillboardData(self.spritesheet, self.billboard_buffer[start..end]);
+            end += enemy_ptr.getBillboardCount();
+            enemy_ptr.populateBillboardData(self.spritesheet, self.billboard_buffer[start..end]);
         }
         self.billboard_buffer[end] = self.main_character.getBillboardData(
             self.spritesheet,
