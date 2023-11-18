@@ -1,3 +1,4 @@
+const AttackingEnemyPosition = @import("enemy.zig").AttackingEnemyPosition;
 const Enemy = @import("enemy.zig").Enemy;
 const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
 const FlowField = @import("flow_field.zig").Field;
@@ -37,6 +38,8 @@ pub const Context = struct {
 
     /// For objects which die at the end of each tick.
     tick_lifetime_allocator: std.heap.ArenaAllocator,
+    thread_pool: *std.Thread.Pool,
+    thread_contexts: []ThreadContext,
 
     billboard_renderer: rendering.BillboardRenderer,
     billboard_buffer: []rendering.SpriteData,
@@ -80,6 +83,20 @@ pub const Context = struct {
         var tick_lifetime_allocator = std.heap.ArenaAllocator.init(allocator);
         errdefer tick_lifetime_allocator.deinit();
 
+        var thread_pool = try allocator.create(std.Thread.Pool);
+        errdefer allocator.destroy(thread_pool);
+        try thread_pool.init(.{ .allocator = allocator });
+        errdefer thread_pool.deinit();
+
+        var thread_contexts = try allocator.alloc(ThreadContext, thread_pool.threads.len);
+        errdefer allocator.free(thread_contexts);
+        for (thread_contexts) |*context| {
+            context.* = ThreadContext.create(allocator);
+        }
+        errdefer for (thread_contexts) |*context| {
+            context.destroy();
+        };
+
         var billboard_renderer = try rendering.BillboardRenderer.create();
         errdefer billboard_renderer.destroy();
 
@@ -106,6 +123,8 @@ pub const Context = struct {
             .spritesheet = spritesheet,
 
             .tick_lifetime_allocator = tick_lifetime_allocator,
+            .thread_pool = thread_pool,
+            .thread_contexts = thread_contexts,
 
             .billboard_renderer = billboard_renderer,
             .billboard_buffer = &.{},
@@ -118,6 +137,12 @@ pub const Context = struct {
         self.hud.destroy(allocator);
         allocator.free(self.billboard_buffer);
         self.billboard_renderer.destroy();
+        for (self.thread_contexts) |*context| {
+            context.destroy();
+        }
+        allocator.free(self.thread_contexts);
+        self.thread_pool.deinit();
+        allocator.destroy(self.thread_pool);
         self.tick_lifetime_allocator.deinit();
         self.spritesheet.destroy();
         self.tileable_textures.destroy();
@@ -163,15 +188,17 @@ pub const Context = struct {
             _ = self.tick_lifetime_allocator.reset(.retain_capacity);
             var attacking_enemy_positions_at_previous_tick =
                 EnemyPositionGrid.create(self.tick_lifetime_allocator.allocator());
-            for (self.shared_context.previous_tick_attacking_enemies.items) |attacking_enemy| {
-                try attacking_enemy_positions_at_previous_tick.insertIntoArea(
-                    attacking_enemy,
-                    Enemy.makeSpacingBoundaries(attacking_enemy.position)
-                        .getOuterBoundingBoxInGameCoordinates(),
-                );
-                self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
+            for (self.thread_contexts) |*context| {
+                for (context.previous_tick_attacking_enemies.items) |attacking_enemy| {
+                    try attacking_enemy_positions_at_previous_tick.insertIntoArea(
+                        attacking_enemy,
+                        Enemy.makeSpacingBoundaries(attacking_enemy.position)
+                            .getOuterBoundingBoxInGameCoordinates(),
+                    );
+                    self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
+                }
+                context.previous_tick_attacking_enemies.clearRetainingCapacity();
             }
-            self.shared_context.previous_tick_attacking_enemies.clearRetainingCapacity();
             try self.main_character_flow_field.recompute(
                 self.main_character.character.moving_circle.getPosition(),
                 self.map,
@@ -181,21 +208,24 @@ pub const Context = struct {
             while (cell_group_iterator.next()) |cell_group| {
                 try self.processEnemyCellGroup(
                     cell_group,
-                    &attacking_enemy_positions_at_previous_tick,
+                    &self.thread_contexts[0],
+                    attacking_enemy_positions_at_previous_tick,
                 );
             }
 
-            for (self.shared_context.enemies_to_remove.items) |object_handle| {
-                self.shared_context.enemies.remove(object_handle);
+            for (self.thread_contexts) |*context| {
+                for (context.enemies_to_remove.items) |object_handle| {
+                    self.shared_context.enemies.remove(object_handle);
+                }
+                context.enemies_to_remove.clearRetainingCapacity();
+                for (context.enemies_to_add.items) |enemy| {
+                    _ = try self.shared_context.enemies.insert(
+                        enemy,
+                        enemy.character.moving_circle.getPosition(),
+                    );
+                }
+                context.enemies_to_add.clearRetainingCapacity();
             }
-            self.shared_context.enemies_to_remove.clearRetainingCapacity();
-            for (self.shared_context.enemies_to_add.items) |enemy| {
-                _ = try self.shared_context.enemies.insert(
-                    enemy,
-                    enemy.character.moving_circle.getPosition(),
-                );
-            }
-            self.shared_context.enemies_to_add.clearRetainingCapacity();
 
             self.shared_context.dialog_controller.processElapsedTick();
             if (self.frame_timer.read() > max_frame_time) {
@@ -376,9 +406,10 @@ pub const Context = struct {
     }
 
     fn processEnemyCellGroup(
-        self: *Context,
+        self: Context,
         cell_group: SharedContext.EnemyCollection.CellGroupIterator.CellGroup,
-        enemy_position_grid: *EnemyPositionGrid,
+        thread_context: *ThreadContext,
+        enemy_position_grid: EnemyPositionGrid,
     ) !void {
         var rng = blk: {
             // Deterministic and portably reproducible seed which is oblivious to core count
@@ -393,7 +424,7 @@ pub const Context = struct {
             .map = &self.map,
             .main_character = &self.main_character.character,
             .main_character_flow_field = &self.main_character_flow_field,
-            .attacking_enemy_positions_at_previous_tick = enemy_position_grid,
+            .attacking_enemy_positions_at_previous_tick = &enemy_position_grid,
         };
 
         var enemy_iterator = cell_group.cell.iterator();
@@ -407,21 +438,43 @@ pub const Context = struct {
             );
 
             if (enemy_ptr.state == .dead) {
-                try self.shared_context.enemies_to_remove.append(
+                try thread_context.enemies_to_remove.append(
                     self.shared_context.enemies.getObjectHandle(enemy_ptr),
                 );
             } else if (new_cell_index.compare(old_cell_index) != .eq) {
-                try self.shared_context.enemies_to_remove.append(
+                try thread_context.enemies_to_remove.append(
                     self.shared_context.enemies.getObjectHandle(enemy_ptr),
                 );
-                try self.shared_context.enemies_to_add.append(enemy_ptr.*);
+                try thread_context.enemies_to_add.append(enemy_ptr.*);
             }
 
             if (enemy_ptr.state == .attacking) {
-                try self.shared_context.previous_tick_attacking_enemies.append(
+                try thread_context.previous_tick_attacking_enemies.append(
                     enemy_ptr.makeAttackingEnemyPosition(),
                 );
             }
         }
+    }
+};
+
+const ThreadContext = struct {
+    enemies_to_add: std.ArrayList(Enemy),
+    enemies_to_remove: std.ArrayList(*ObjectHandle),
+    previous_tick_attacking_enemies: std.ArrayList(AttackingEnemyPosition),
+
+    const ObjectHandle = SharedContext.EnemyCollection.ObjectHandle;
+
+    fn create(allocator: std.mem.Allocator) ThreadContext {
+        return .{
+            .enemies_to_add = std.ArrayList(Enemy).init(allocator),
+            .enemies_to_remove = std.ArrayList(*ObjectHandle).init(allocator),
+            .previous_tick_attacking_enemies = std.ArrayList(AttackingEnemyPosition).init(allocator),
+        };
+    }
+
+    fn destroy(self: *ThreadContext) void {
+        self.previous_tick_attacking_enemies.deinit();
+        self.enemies_to_remove.deinit();
+        self.enemies_to_add.deinit();
     }
 };
