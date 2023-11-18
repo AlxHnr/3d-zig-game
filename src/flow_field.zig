@@ -148,7 +148,7 @@ pub const Field = struct {
         if (map.geometry.getObstacleTile(position).isObstacle()) {
             var iterator = GrowingRadiusIterator.create(position, &map);
             while (iterator.next()) |corrected_position| {
-                if (map.geometry.getObstacleTile(corrected_position).isObstacle()) {
+                if (!map.geometry.getObstacleTile(corrected_position).isObstacle()) {
                     return corrected_position;
                 }
             }
