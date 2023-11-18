@@ -90,6 +90,17 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             self.back_reference_pool.destroy(back_reference);
         }
 
+        /// The given object pointer must exist in this collection.
+        pub fn getObjectHandle(self: Self, object_ptr: *T) *ObjectHandle {
+            const ptr = self.object_ptr_to_back_references.get(object_ptr);
+            std.debug.assert(ptr != null);
+            return @ptrCast(ptr.?);
+        }
+
+        pub fn getCellIndex(_: Self, position: FlatVector) CellIndex {
+            return CellIndex.fromPosition(position);
+        }
+
         /// Will be invalidated by modifications to this collection.
         pub fn iterator(self: *Self) Iterator {
             return self.iteratorAdvanced(0, 0);
