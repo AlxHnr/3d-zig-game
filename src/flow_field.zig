@@ -8,6 +8,8 @@ const std = @import("std");
 /// Grid of direction vectors leading towards its center, avoiding obstacles.
 pub const Field = struct {
     grid_cells_per_side: usize,
+    cell_unit_counter: []u8,
+    crowd_sampling_counter: usize,
     integration_field: []IntegrationCell,
     directional_vectors: []Direction,
     boundaries: AxisAlignedBoundingBox,
@@ -43,6 +45,9 @@ pub const Field = struct {
     pub fn create(allocator: std.mem.Allocator, grid_cells_per_side: usize) !Field {
         std.debug.assert(grid_cells_per_side >= 3);
         const array_length = grid_cells_per_side * grid_cells_per_side;
+        var cell_unit_counter = try allocator.alloc(u8, array_length);
+        errdefer allocator.free(cell_unit_counter);
+        @memset(cell_unit_counter, 0);
         var integration_field = try allocator.alloc(IntegrationCell, array_length);
         errdefer allocator.free(integration_field);
         var directional_vectors = try allocator.alloc(Direction, array_length);
@@ -50,6 +55,8 @@ pub const Field = struct {
         @memset(directional_vectors, .none);
         return .{
             .grid_cells_per_side = grid_cells_per_side,
+            .cell_unit_counter = cell_unit_counter,
+            .crowd_sampling_counter = 0,
             .integration_field = integration_field,
             .directional_vectors = directional_vectors,
             .boundaries = .{ .min = FlatVector.zero, .max = FlatVector.zero },
@@ -61,6 +68,7 @@ pub const Field = struct {
         self.queue.deinit();
         allocator.free(self.directional_vectors);
         allocator.free(self.integration_field);
+        allocator.free(self.cell_unit_counter);
     }
 
     pub fn recompute(self: *Field, new_center_and_destination: FlatVector, map: Map) !void {
@@ -100,6 +108,8 @@ pub const Field = struct {
             }
         }
         self.recomputeDirectionalVectors();
+
+        @memset(self.cell_unit_counter, 0);
     }
 
     // If the given position exists on the flow field, return a directional vector for navigating
@@ -121,6 +131,17 @@ pub const Field = struct {
             }
         }
         return null;
+    }
+
+    /// Incorporate the given position into the next call to `recompute()` to mitigate overcrowding.
+    pub fn sampleCrowd(self: *Field, position: FlatVector) void {
+        if (self.crowd_sampling_counter == 50) {
+            self.crowd_sampling_counter = 0;
+            if (self.getIndexFromWorldPosition(position)) |index| {
+                self.cell_unit_counter[index] +|= 1;
+            }
+        }
+        self.crowd_sampling_counter += 1;
     }
 
     pub fn dumpAsText(self: Field, writer: std.fs.File.Writer) !void {
@@ -187,7 +208,8 @@ pub const Field = struct {
         new_cost: CostInt,
         map: Map,
     ) !void {
-        const cell = &self.integration_field[self.getIndex(x, z)];
+        const index = self.getIndex(x, z);
+        const cell = &self.integration_field[index];
         const should_skip = cell.has_been_visited;
         cell.has_been_visited = true;
         if (should_skip) {
@@ -200,7 +222,7 @@ pub const Field = struct {
             .neighbor_of_obstacle => 2,
             .obstacle_tranclucent, .obstacle_solid => max_cost,
         };
-        cell.cost = tile_base_cost +| new_cost;
+        cell.cost = tile_base_cost +| self.cell_unit_counter[index] * 5 +| new_cost;
         if (cell.cost < max_cost) {
             try self.queue.add(.{ .x = x, .z = z, .cost = cell.cost });
         }
