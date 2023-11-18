@@ -21,6 +21,7 @@ const textures = @import("textures.zig");
 
 pub const Context = struct {
     tick_timer: simulation.TickTimer,
+    tick_counter: u64,
     interval_between_previous_and_current_tick: f32,
     frame_timer: std.time.Timer,
     main_character: game_unit.Player,
@@ -87,6 +88,7 @@ pub const Context = struct {
 
         return .{
             .tick_timer = try simulation.TickTimer.start(simulation.tickrate),
+            .tick_counter = 0,
             .interval_between_previous_and_current_tick = 1,
             .frame_timer = try std.time.Timer.start(),
             .main_character = game_unit.Player.create(
@@ -152,8 +154,8 @@ pub const Context = struct {
         const lap_result = self.tick_timer.lap();
         self.interval_between_previous_and_current_tick = lap_result.next_tick_progress;
 
-        var tick_counter: u64 = 0;
-        while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
+        const end_tick = self.tick_counter + lap_result.elapsed_ticks;
+        while (self.tick_counter < end_tick) : (self.tick_counter += 1) {
             self.map.processElapsedTick();
             self.main_character.processElapsedTick(self.map, &self.shared_context);
             self.shared_context.gem_collection.processElapsedTick();
