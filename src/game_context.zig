@@ -177,39 +177,12 @@ pub const Context = struct {
                 self.map,
             );
 
-            const tick_context = .{
-                .rng = self.shared_context.rng.random(),
-                .map = &self.map,
-                .main_character = &self.main_character.character,
-                .main_character_flow_field = &self.main_character_flow_field,
-                .attacking_enemy_positions_at_previous_tick = &attacking_enemy_positions_at_previous_tick,
-            };
-            var enemy_iterator = self.shared_context.enemies.iterator();
-            while (enemy_iterator.next()) |enemy_ptr| {
-                const old_cell_index = self.shared_context.enemies.getCellIndex(
-                    enemy_ptr.character.moving_circle.getPosition(),
+            var cell_group_iterator = self.shared_context.enemies.cellGroupIterator();
+            while (cell_group_iterator.next()) |cell_group| {
+                try self.processEnemyCellGroup(
+                    cell_group,
+                    &attacking_enemy_positions_at_previous_tick,
                 );
-                enemy_ptr.processElapsedTick(tick_context);
-                const new_cell_index = self.shared_context.enemies.getCellIndex(
-                    enemy_ptr.character.moving_circle.getPosition(),
-                );
-
-                if (enemy_ptr.state == .dead) {
-                    try self.shared_context.enemies_to_remove.append(
-                        self.shared_context.enemies.getObjectHandle(enemy_ptr),
-                    );
-                } else if (new_cell_index.compare(old_cell_index) != .eq) {
-                    try self.shared_context.enemies_to_remove.append(
-                        self.shared_context.enemies.getObjectHandle(enemy_ptr),
-                    );
-                    try self.shared_context.enemies_to_add.append(enemy_ptr.*);
-                }
-
-                if (enemy_ptr.state == .attacking) {
-                    try self.shared_context.previous_tick_attacking_enemies.append(
-                        enemy_ptr.makeAttackingEnemyPosition(),
-                    );
-                }
             }
 
             for (self.shared_context.enemies_to_remove.items) |object_handle| {
@@ -400,5 +373,55 @@ pub const Context = struct {
             object_id_generator,
             serializable_data.value,
         );
+    }
+
+    fn processEnemyCellGroup(
+        self: *Context,
+        cell_group: SharedContext.EnemyCollection.CellGroupIterator.CellGroup,
+        enemy_position_grid: *EnemyPositionGrid,
+    ) !void {
+        var rng = blk: {
+            // Deterministic and portably reproducible seed which is oblivious to core count
+            // and thread execution order.
+            var seed = std.hash.Wyhash.init(self.tick_counter);
+            seed.update(std.mem.asBytes(&cell_group.cell_index.x));
+            seed.update(std.mem.asBytes(&cell_group.cell_index.z));
+            break :blk std.rand.Xoroshiro128.init(seed.final());
+        };
+        const tick_context = .{
+            .rng = rng.random(),
+            .map = &self.map,
+            .main_character = &self.main_character.character,
+            .main_character_flow_field = &self.main_character_flow_field,
+            .attacking_enemy_positions_at_previous_tick = enemy_position_grid,
+        };
+
+        var enemy_iterator = cell_group.cell.iterator();
+        while (enemy_iterator.next()) |enemy_ptr| {
+            const old_cell_index = self.shared_context.enemies.getCellIndex(
+                enemy_ptr.character.moving_circle.getPosition(),
+            );
+            enemy_ptr.processElapsedTick(tick_context);
+            const new_cell_index = self.shared_context.enemies.getCellIndex(
+                enemy_ptr.character.moving_circle.getPosition(),
+            );
+
+            if (enemy_ptr.state == .dead) {
+                try self.shared_context.enemies_to_remove.append(
+                    self.shared_context.enemies.getObjectHandle(enemy_ptr),
+                );
+            } else if (new_cell_index.compare(old_cell_index) != .eq) {
+                try self.shared_context.enemies_to_remove.append(
+                    self.shared_context.enemies.getObjectHandle(enemy_ptr),
+                );
+                try self.shared_context.enemies_to_add.append(enemy_ptr.*);
+            }
+
+            if (enemy_ptr.state == .attacking) {
+                try self.shared_context.previous_tick_attacking_enemies.append(
+                    enemy_ptr.makeAttackingEnemyPosition(),
+                );
+            }
+        }
     }
 };
