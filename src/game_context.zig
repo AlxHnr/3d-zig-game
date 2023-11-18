@@ -74,7 +74,7 @@ pub const Context = struct {
                 .x = -shared_context.rng.random().float(f32) * 100 - 50,
                 .z = shared_context.rng.random().float(f32) * 500,
             };
-            _ = try shared_context.enemies.insert(
+            _ = try shared_context.enemy_collection.insert(
                 Enemy.create(position, &enemy_presets.floating_eye, spritesheet),
                 position,
             );
@@ -204,7 +204,7 @@ pub const Context = struct {
                 self.map,
             );
 
-            var cell_group_iterator = self.shared_context.enemies.cellGroupIterator();
+            var cell_group_iterator = self.shared_context.enemy_collection.cellGroupIterator();
             while (cell_group_iterator.next()) |cell_group| {
                 try self.processEnemyCellGroup(
                     cell_group,
@@ -215,11 +215,11 @@ pub const Context = struct {
 
             for (self.thread_contexts) |*context| {
                 for (context.enemies_to_remove.items) |object_handle| {
-                    self.shared_context.enemies.remove(object_handle);
+                    self.shared_context.enemy_collection.remove(object_handle);
                 }
                 context.enemies_to_remove.clearRetainingCapacity();
                 for (context.enemies_to_add.items) |enemy| {
-                    _ = try self.shared_context.enemies.insert(
+                    _ = try self.shared_context.enemy_collection.insert(
                         enemy,
                         enemy.character.moving_circle.getPosition(),
                     );
@@ -258,7 +258,7 @@ pub const Context = struct {
 
         const gems_to_render = self.shared_context.gem_collection.getBillboardCount();
         billboards_to_render += gems_to_render;
-        var enemy_iterator = self.shared_context.enemies.iterator();
+        var enemy_iterator = self.shared_context.enemy_collection.iterator();
         while (enemy_iterator.next()) |enemy_ptr| {
             enemy_ptr.prepareRender(camera, self.interval_between_previous_and_current_tick);
             billboards_to_render += enemy_ptr.getBillboardCount();
@@ -277,7 +277,7 @@ pub const Context = struct {
         );
         var start: usize = gems_to_render;
         var end: usize = gems_to_render;
-        enemy_iterator = self.shared_context.enemies.iterator();
+        enemy_iterator = self.shared_context.enemy_collection.iterator();
         while (enemy_iterator.next()) |enemy_ptr| {
             start = end;
             end += enemy_ptr.getBillboardCount();
@@ -429,21 +429,21 @@ pub const Context = struct {
 
         var enemy_iterator = cell_group.cell.iterator();
         while (enemy_iterator.next()) |enemy_ptr| {
-            const old_cell_index = self.shared_context.enemies.getCellIndex(
+            const old_cell_index = self.shared_context.enemy_collection.getCellIndex(
                 enemy_ptr.character.moving_circle.getPosition(),
             );
             enemy_ptr.processElapsedTick(tick_context);
-            const new_cell_index = self.shared_context.enemies.getCellIndex(
+            const new_cell_index = self.shared_context.enemy_collection.getCellIndex(
                 enemy_ptr.character.moving_circle.getPosition(),
             );
 
             if (enemy_ptr.state == .dead) {
                 try thread_context.enemies_to_remove.append(
-                    self.shared_context.enemies.getObjectHandle(enemy_ptr),
+                    self.shared_context.enemy_collection.getObjectHandle(enemy_ptr),
                 );
             } else if (new_cell_index.compare(old_cell_index) != .eq) {
                 try thread_context.enemies_to_remove.append(
-                    self.shared_context.enemies.getObjectHandle(enemy_ptr),
+                    self.shared_context.enemy_collection.getObjectHandle(enemy_ptr),
                 );
                 try thread_context.enemies_to_add.append(enemy_ptr.*);
             }

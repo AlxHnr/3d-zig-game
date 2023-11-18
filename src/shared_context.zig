@@ -15,7 +15,7 @@ pub const SharedContext = struct {
     rng: std.rand.Xoroshiro128,
 
     gem_collection: GemCollection,
-    enemies: EnemyCollection,
+    enemy_collection: EnemyCollection,
     dialog_controller: DialogController,
 
     pub const EnemyCollection = SpatialCollection(Enemy, 7);
@@ -34,14 +34,14 @@ pub const SharedContext = struct {
             .object_id_generator = ObjectIdGenerator.create(),
             .rng = std.rand.Xoroshiro128.init(0),
             .gem_collection = gem_collection,
-            .enemies = enemy_collection,
+            .enemy_collection = enemy_collection,
             .dialog_controller = dialog_controller,
         };
     }
 
     pub fn destroy(self: *SharedContext) void {
         self.dialog_controller.destroy();
-        self.enemies.destroy();
+        self.enemy_collection.destroy();
         self.gem_collection.destroy();
     }
 };
