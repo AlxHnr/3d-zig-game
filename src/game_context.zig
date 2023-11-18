@@ -158,10 +158,6 @@ pub const Context = struct {
         while (tick_counter < lap_result.elapsed_ticks) : (tick_counter += 1) {
             self.map.processElapsedTick();
             self.main_character.processElapsedTick(self.map, &self.shared_context);
-            try self.main_character_flow_field.recompute(
-                self.main_character.character.moving_circle.getPosition(),
-                self.map,
-            );
             self.shared_context.gem_collection.processElapsedTick();
 
             _ = self.tick_lifetime_allocator.reset(.retain_capacity);
@@ -173,8 +169,13 @@ pub const Context = struct {
                     Enemy.makeSpacingBoundaries(attacking_enemy.position)
                         .getOuterBoundingBoxInGameCoordinates(),
                 );
+                self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
             }
             self.shared_context.previous_tick_attacking_enemies.clearRetainingCapacity();
+            try self.main_character_flow_field.recompute(
+                self.main_character.character.moving_circle.getPosition(),
+                self.map,
+            );
 
             const tick_context = .{
                 .rng = self.shared_context.rng.random(),
@@ -186,9 +187,6 @@ pub const Context = struct {
             for (self.shared_context.enemies.items) |*enemy| {
                 enemy.processElapsedTick(tick_context);
                 if (enemy.state == .attacking) {
-                    self.main_character_flow_field.sampleCrowd(
-                        enemy.character.moving_circle.getPosition(),
-                    );
                     try self.shared_context.previous_tick_attacking_enemies.append(
                         enemy.makeAttackingEnemyPosition(),
                     );
