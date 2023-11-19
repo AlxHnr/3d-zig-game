@@ -285,6 +285,8 @@ pub const Context = struct {
 
         const gems_to_render = self.shared_context.gem_collection.getBillboardCount();
         billboards_to_render += gems_to_render;
+
+        self.performance_measurements.begin(.enemy_prepare_render);
         var wait_group = std.Thread.WaitGroup{};
         for (self.thread_contexts, 0..) |context, thread_id| {
             var iterator = self.shared_context.enemy_collection.iteratorAdvanced(
@@ -304,6 +306,8 @@ pub const Context = struct {
             );
         }
         self.thread_pool.waitAndWork(&wait_group);
+        self.performance_measurements.end(.enemy_prepare_render);
+
         for (self.thread_contexts) |context| {
             billboards_to_render += context.enemy_billboard_count;
         }

@@ -3,7 +3,7 @@ const std = @import("std");
 pub const Measurements = struct {
     metrics: std.enums.EnumArray(MetricType, Metric),
 
-    pub const MetricType = enum { enemy_logic };
+    pub const MetricType = enum { enemy_logic, enemy_prepare_render };
     const Metric = struct {
         timer: std.time.Timer,
         accumulated_time: u64,
@@ -46,8 +46,9 @@ pub const Measurements = struct {
     }
 
     pub fn printLogInfo(self: Measurements) void {
-        std.log.info("Enemies: {d:.3}ms", .{
+        std.log.info("Enemies({d:.3}ms, {d:.3}ms)", .{
             self.getAverage(.enemy_logic),
+            self.getAverage(.enemy_prepare_render),
         });
     }
 
