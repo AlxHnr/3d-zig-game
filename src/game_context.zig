@@ -6,6 +6,7 @@ const Hud = @import("hud.zig").Hud;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
+const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
@@ -37,6 +38,7 @@ pub const Context = struct {
     shared_context: SharedContext,
     tileable_textures: textures.TileableArrayTexture,
     spritesheet: textures.SpriteSheetTexture,
+    prerendered_enemy_names: PrerenderedEnemyNames,
 
     /// For objects which die at the end of each tick.
     tick_lifetime_allocator: std.heap.ArenaAllocator,
@@ -65,6 +67,9 @@ pub const Context = struct {
 
         var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
         errdefer spritesheet.destroy();
+
+        var prerendered_enemy_names = try PrerenderedEnemyNames.create(allocator, spritesheet);
+        errdefer prerendered_enemy_names.destroy(allocator);
 
         var shared_context = try SharedContext.create(allocator);
         errdefer shared_context.destroy();
@@ -127,6 +132,7 @@ pub const Context = struct {
             .shared_context = shared_context,
             .tileable_textures = tileable_textures,
             .spritesheet = spritesheet,
+            .prerendered_enemy_names = prerendered_enemy_names,
 
             .tick_lifetime_allocator = tick_lifetime_allocator,
             .thread_pool = thread_pool,
@@ -151,6 +157,7 @@ pub const Context = struct {
         allocator.free(self.thread_contexts);
         self.thread_pool.destroy(allocator);
         self.tick_lifetime_allocator.deinit();
+        self.prerendered_enemy_names.destroy(allocator);
         self.spritesheet.destroy();
         self.tileable_textures.destroy();
         self.shared_context.destroy();
@@ -303,8 +310,12 @@ pub const Context = struct {
         var enemy_iterator = self.shared_context.enemy_collection.iterator();
         while (enemy_iterator.next()) |enemy_ptr| {
             start = end;
-            end += enemy_ptr.getBillboardCount();
-            enemy_ptr.populateBillboardData(self.spritesheet, self.billboard_buffer[start..end]);
+            end += enemy_ptr.getBillboardCount(self.prerendered_enemy_names);
+            enemy_ptr.populateBillboardData(
+                self.spritesheet,
+                self.prerendered_enemy_names,
+                self.billboard_buffer[start..end],
+            );
         }
         self.performance_measurements.end(.render_enemies);
 
@@ -548,7 +559,8 @@ pub const Context = struct {
         var iterator = enemy_iterator;
         while (iterator.next()) |enemy_ptr| {
             enemy_ptr.prepareRender(camera, self.interval_between_previous_and_current_tick);
-            thread_context.enemy_billboard_count += enemy_ptr.getBillboardCount();
+            thread_context.enemy_billboard_count +=
+                enemy_ptr.getBillboardCount(self.prerendered_enemy_names);
         }
     }
 };

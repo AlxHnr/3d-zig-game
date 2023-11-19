@@ -7,6 +7,7 @@ const SpatialGrid = @import("spatial_partitioning/grid.zig").Grid;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
 const collision = @import("collision.zig");
+const enemy_presets = @import("enemy_presets.zig");
 const makeSpriteData = @import("game_unit.zig").makeSpriteData;
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
@@ -126,10 +127,10 @@ pub const Enemy = struct {
         };
     }
 
-    pub fn getBillboardCount(self: Enemy) usize {
+    pub fn getBillboardCount(self: Enemy, cache: PrerenderedNames) usize {
         var billboard_count: usize = 1; // Enemy sprite.
         if (self.prepared_render_data.should_render_name) {
-            billboard_count += text_rendering.getSpriteCount(&self.getNameText());
+            billboard_count += cache.get(self.config).len;
         }
         if (self.prepared_render_data.should_render_health_bar) {
             billboard_count += 2;
@@ -141,6 +142,7 @@ pub const Enemy = struct {
     pub fn populateBillboardData(
         self: Enemy,
         spritesheet: SpriteSheetTexture,
+        cache: PrerenderedNames,
         /// Must have enough capacity to store all billboards. See getBillboardCount().
         out: []rendering.SpriteData,
     ) void {
@@ -168,17 +170,17 @@ pub const Enemy = struct {
 
         if (self.prepared_render_data.should_render_name) {
             const up = math.Vector3d{ .x = 0, .y = 1, .z = 0 };
-            text_rendering.populateBillboardDataExactPixelSizeWithOffset(
-                &self.getNameText(),
-                self.prepared_render_data.values.position.toVector3d()
-                    .add(up.scale(self.prepared_render_data.values.height *
-                    offset_to_player_height_factor)),
-                0,
-                pixel_offset_for_name_y,
-                spritesheet.getFontSizeMultiple(enemy_name_font_scale),
-                spritesheet,
+            std.mem.copy(
+                rendering.SpriteData,
                 out[offset_to_name_letters..],
+                cache.get(self.config),
             );
+            const position = self.prepared_render_data.values.position.toVector3d()
+                .add(up.scale(self.prepared_render_data.values.height *
+                offset_to_player_height_factor));
+            for (out[offset_to_name_letters..]) |*billboard_data| {
+                billboard_data.position = .{ .x = position.x, .y = position.y, .z = position.z };
+            }
         }
     }
 
@@ -249,6 +251,68 @@ pub const Enemy = struct {
             .health = self.character.health,
         };
     }
+};
+
+pub const PrerenderedNames = struct {
+    cache: Cache,
+
+    const Cache = std.AutoHashMap(*const Config, []rendering.SpriteData);
+
+    pub fn create(
+        allocator: std.mem.Allocator,
+        spritesheet: SpriteSheetTexture,
+    ) !PrerenderedNames {
+        var cache = Cache.init(allocator);
+        errdefer cache.deinit();
+        errdefer {
+            var iterator = cache.valueIterator();
+            while (iterator.next()) |billboard_data| {
+                allocator.free(billboard_data.*);
+            }
+        }
+        for (enemy_preset_addresses) |preset_ptr| {
+            const text_segment = &[_]text_rendering.TextSegment{
+                .{ .color = Color.white, .text = preset_ptr.name },
+            };
+            const billboard_count = text_rendering.getSpriteCount(text_segment);
+            var billboard_data = try allocator.alloc(rendering.SpriteData, billboard_count);
+            errdefer allocator.free(billboard_data);
+
+            text_rendering.populateBillboardDataExactPixelSizeWithOffset(
+                text_segment,
+                .{ .x = 0, .y = 0, .z = 0 },
+                0,
+                Enemy.health_bar_height * 2,
+                spritesheet.getFontSizeMultiple(Enemy.enemy_name_font_scale),
+                spritesheet,
+                billboard_data,
+            );
+            try cache.put(preset_ptr, billboard_data);
+        }
+        return .{ .cache = cache };
+    }
+
+    pub fn destroy(self: *PrerenderedNames, allocator: std.mem.Allocator) void {
+        var iterator = self.cache.valueIterator();
+        while (iterator.next()) |billboard_data| {
+            allocator.free(billboard_data.*);
+        }
+        self.cache.deinit();
+    }
+
+    fn get(self: PrerenderedNames, config: *const Config) []const rendering.SpriteData {
+        const result = self.cache.get(config);
+        std.debug.assert(result != null);
+        return result.?;
+    }
+
+    const enemy_preset_addresses = blk: {
+        var addresses: [@typeInfo(enemy_presets).Struct.decls.len]*const Config = undefined;
+        for (@typeInfo(enemy_presets).Struct.decls, 0..) |field, index| {
+            addresses[index] = &@field(enemy_presets, field.name);
+        }
+        break :blk addresses;
+    };
 };
 
 const State = union(enum) {
