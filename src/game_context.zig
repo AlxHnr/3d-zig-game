@@ -195,29 +195,23 @@ pub const Context = struct {
             self.main_character.processElapsedTick(self.map, &self.shared_context);
             self.shared_context.gem_collection.processElapsedTick();
 
-            self.performance_measurements.begin(.thread_aggregation);
             _ = self.tick_lifetime_allocator.reset(.retain_capacity);
             var attacking_enemy_positions_at_previous_tick =
                 EnemyPositionGrid.create(self.tick_lifetime_allocator.allocator());
+            self.performance_measurements.begin(.thread_aggregation_flow_field);
+            try self.thread_pool.dispatchIgnoreErrors(
+                reindexEnemyGrid,
+                .{ self, &attacking_enemy_positions_at_previous_tick },
+            );
+            try self.thread_pool.dispatchIgnoreErrors(recomputeFlowFieldThread, .{self});
+            self.thread_pool.wait();
+            self.performance_measurements.end(.thread_aggregation_flow_field);
+
             for (self.thread_contexts) |context| {
-                for (context.previous_tick_attacking_enemies.items) |attacking_enemy| {
-                    try attacking_enemy_positions_at_previous_tick.insertIntoArea(
-                        attacking_enemy,
-                        Enemy.makeSpacingBoundaries(attacking_enemy.position)
-                            .getOuterBoundingBoxInGameCoordinates(),
-                    );
-                    self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
-                }
+                context.enemies_to_remove.clearRetainingCapacity();
+                context.enemies_to_add.clearRetainingCapacity();
                 context.previous_tick_attacking_enemies.clearRetainingCapacity();
             }
-            self.performance_measurements.pause(.thread_aggregation);
-
-            self.performance_measurements.begin(.flow_field);
-            try self.main_character_flow_field.recompute(
-                self.main_character.character.moving_circle.getPosition(),
-                self.map,
-            );
-            self.performance_measurements.end(.flow_field);
 
             self.performance_measurements.begin(.enemy_logic);
             for (self.thread_contexts, 0..) |context, thread_id| {
@@ -237,22 +231,6 @@ pub const Context = struct {
             }
             self.thread_pool.wait();
             self.performance_measurements.end(.enemy_logic);
-
-            self.performance_measurements.proceed(.thread_aggregation);
-            for (self.thread_contexts) |context| {
-                for (context.enemies_to_remove.items) |object_handle| {
-                    self.shared_context.enemy_collection.remove(object_handle);
-                }
-                context.enemies_to_remove.clearRetainingCapacity();
-                for (context.enemies_to_add.items) |enemy| {
-                    _ = try self.shared_context.enemy_collection.insert(
-                        enemy,
-                        enemy.character.moving_circle.getPosition(),
-                    );
-                }
-                context.enemies_to_add.clearRetainingCapacity();
-            }
-            self.performance_measurements.end(.thread_aggregation);
 
             self.shared_context.dialog_controller.processElapsedTick();
 
@@ -451,6 +429,46 @@ pub const Context = struct {
             object_id_generator,
             serializable_data.value,
         );
+    }
+
+    fn reindexEnemyGrid(
+        self: *Context,
+        attacking_enemy_positions_at_previous_tick: *EnemyPositionGrid,
+    ) !void {
+        self.performance_measurements.begin(.thread_aggregation);
+        for (self.thread_contexts) |context| {
+            for (context.enemies_to_remove.items) |object_handle| {
+                self.shared_context.enemy_collection.remove(object_handle);
+            }
+            for (context.enemies_to_add.items) |enemy| {
+                _ = try self.shared_context.enemy_collection.insert(
+                    enemy,
+                    enemy.character.moving_circle.getPosition(),
+                );
+            }
+            for (context.previous_tick_attacking_enemies.items) |attacking_enemy| {
+                try attacking_enemy_positions_at_previous_tick.insertIntoArea(
+                    attacking_enemy,
+                    Enemy.makeSpacingBoundaries(attacking_enemy.position)
+                        .getOuterBoundingBoxInGameCoordinates(),
+                );
+            }
+        }
+        self.performance_measurements.end(.thread_aggregation);
+    }
+
+    fn recomputeFlowFieldThread(self: *Context) !void {
+        self.performance_measurements.begin(.flow_field);
+        for (self.thread_contexts) |context| {
+            for (context.previous_tick_attacking_enemies.items) |attacking_enemy| {
+                self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
+            }
+        }
+        try self.main_character_flow_field.recompute(
+            self.main_character.character.moving_circle.getPosition(),
+            self.map,
+        );
+        self.performance_measurements.end(.flow_field);
     }
 
     fn processEnemyThread(
