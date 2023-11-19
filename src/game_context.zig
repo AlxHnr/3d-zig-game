@@ -189,11 +189,15 @@ pub const Context = struct {
         self.interval_between_previous_and_current_tick = lap_result.next_tick_progress;
 
         const end_tick = self.tick_counter + lap_result.elapsed_ticks;
-        while (self.tick_counter < end_tick) : (self.tick_counter += 1) {
+        while (self.tick_counter < end_tick and
+            self.frame_timer.read() < max_frame_time) : (self.tick_counter += 1)
+        {
+            self.performance_measurements.begin(.tick);
             self.map.processElapsedTick();
             self.main_character.processElapsedTick(self.map, &self.shared_context);
             self.shared_context.gem_collection.processElapsedTick();
 
+            self.performance_measurements.begin(.thread_aggregation);
             _ = self.tick_lifetime_allocator.reset(.retain_capacity);
             var attacking_enemy_positions_at_previous_tick =
                 EnemyPositionGrid.create(self.tick_lifetime_allocator.allocator());
@@ -208,10 +212,14 @@ pub const Context = struct {
                 }
                 context.previous_tick_attacking_enemies.clearRetainingCapacity();
             }
+            self.performance_measurements.pause(.thread_aggregation);
+
+            self.performance_measurements.begin(.flow_field);
             try self.main_character_flow_field.recompute(
                 self.main_character.character.moving_circle.getPosition(),
                 self.map,
             );
+            self.performance_measurements.end(.flow_field);
 
             self.performance_measurements.begin(.enemy_logic);
             var wait_group = std.Thread.WaitGroup{};
@@ -235,6 +243,7 @@ pub const Context = struct {
             self.thread_pool.waitAndWork(&wait_group);
             self.performance_measurements.end(.enemy_logic);
 
+            self.performance_measurements.proceed(.thread_aggregation);
             for (self.thread_contexts) |context| {
                 for (context.enemies_to_remove.items) |object_handle| {
                     self.shared_context.enemy_collection.remove(object_handle);
@@ -248,17 +257,15 @@ pub const Context = struct {
                 }
                 context.enemies_to_add.clearRetainingCapacity();
             }
+            self.performance_measurements.end(.thread_aggregation);
 
             self.shared_context.dialog_controller.processElapsedTick();
-            if (self.frame_timer.read() > max_frame_time) {
-                self.interval_between_previous_and_current_tick = 1;
-                break;
-            }
 
             if (@mod(self.tick_counter, simulation.tickrate) == 0) {
                 self.performance_measurements.updateAverageAndReset();
                 self.performance_measurements.printLogInfo();
             }
+            self.performance_measurements.end(.tick);
         }
 
         const ray_wall_collision = self.map.geometry.cast3DRayToWalls(
@@ -277,6 +284,7 @@ pub const Context = struct {
         allocator: std.mem.Allocator,
         screen_dimensions: ScreenDimensions,
     ) !void {
+        self.performance_measurements.begin(.render);
         try self.map.prepareRender(self.spritesheet);
         const camera = self.main_character
             .getCamera(self.interval_between_previous_and_current_tick);
@@ -286,7 +294,7 @@ pub const Context = struct {
         const gems_to_render = self.shared_context.gem_collection.getBillboardCount();
         billboards_to_render += gems_to_render;
 
-        self.performance_measurements.begin(.enemy_prepare_render);
+        self.performance_measurements.begin(.render_enemies);
         var wait_group = std.Thread.WaitGroup{};
         for (self.thread_contexts, 0..) |context, thread_id| {
             var iterator = self.shared_context.enemy_collection.iteratorAdvanced(
@@ -306,11 +314,11 @@ pub const Context = struct {
             );
         }
         self.thread_pool.waitAndWork(&wait_group);
-        self.performance_measurements.end(.enemy_prepare_render);
-
         for (self.thread_contexts) |context| {
             billboards_to_render += context.enemy_billboard_count;
         }
+        self.performance_measurements.pause(.render_enemies);
+
         billboards_to_render += 1; // Player sprite.
 
         if (self.billboard_buffer.len < billboards_to_render) {
@@ -325,12 +333,16 @@ pub const Context = struct {
         );
         var start: usize = gems_to_render;
         var end: usize = gems_to_render;
+
+        self.performance_measurements.proceed(.render_enemies);
         var enemy_iterator = self.shared_context.enemy_collection.iterator();
         while (enemy_iterator.next()) |enemy_ptr| {
             start = end;
             end += enemy_ptr.getBillboardCount();
             enemy_ptr.populateBillboardData(self.spritesheet, self.billboard_buffer[start..end]);
         }
+        self.performance_measurements.end(.render_enemies);
+
         self.billboard_buffer[end] = self.main_character.getBillboardData(
             self.spritesheet,
             self.interval_between_previous_and_current_tick,
@@ -354,6 +366,7 @@ pub const Context = struct {
             camera.getDirectionToTarget(),
             self.spritesheet.id,
         );
+        self.performance_measurements.end(.render);
     }
 
     pub fn renderHud(

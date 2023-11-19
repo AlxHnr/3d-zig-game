@@ -3,7 +3,14 @@ const std = @import("std");
 pub const Measurements = struct {
     metrics: std.enums.EnumArray(MetricType, Metric),
 
-    pub const MetricType = enum { enemy_logic, enemy_prepare_render };
+    pub const MetricType = enum {
+        tick,
+        enemy_logic,
+        thread_aggregation,
+        flow_field,
+        render,
+        render_enemies,
+    };
     const Metric = struct {
         timer: std.time.Timer,
         accumulated_time: u64,
@@ -29,6 +36,15 @@ pub const Measurements = struct {
         self.metrics.getPtr(metric_type).timer.reset();
     }
 
+    pub fn pause(self: *Measurements, metric_type: MetricType) void {
+        const metric = self.metrics.getPtr(metric_type);
+        metric.accumulated_time += metric.timer.read();
+    }
+
+    pub fn proceed(self: *Measurements, metric_type: MetricType) void {
+        self.begin(metric_type);
+    }
+
     pub fn end(self: *Measurements, metric_type: MetricType) void {
         const metric = self.metrics.getPtr(metric_type);
         metric.accumulated_time += metric.timer.read();
@@ -39,16 +55,24 @@ pub const Measurements = struct {
         var iterator = self.metrics.iterator();
         while (iterator.next()) |item| {
             const metric = item.value;
-            metric.average_time = metric.accumulated_time / metric.accumulated_time_count;
+            if (metric.accumulated_time_count == 0) {
+                metric.average_time = 0;
+            } else {
+                metric.average_time = metric.accumulated_time / metric.accumulated_time_count;
+            }
             metric.accumulated_time = 0;
             metric.accumulated_time_count = 0;
         }
     }
 
     pub fn printLogInfo(self: Measurements) void {
-        std.log.info("Enemies({d:.3}ms, {d:.3}ms)", .{
+        std.log.info("⏲️ {d:.2}ms: 👾{d:.2}ms 🌐{d:.2}ms, ↪️ {d:.2}ms │ 🖌️{d:.2}ms: 👾{d:.2}ms", .{
+            self.getAverage(.tick),
             self.getAverage(.enemy_logic),
-            self.getAverage(.enemy_prepare_render),
+            self.getAverage(.flow_field),
+            self.getAverage(.thread_aggregation),
+            self.getAverage(.render),
+            self.getAverage(.render_enemies),
         });
     }
 
