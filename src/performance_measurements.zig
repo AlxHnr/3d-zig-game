@@ -4,6 +4,7 @@ pub const Measurements = struct {
     metrics: std.enums.EnumArray(MetricType, Metric),
 
     pub const MetricType = enum {
+        total,
         tick,
         enemy_logic,
         thread_aggregation,
@@ -66,14 +67,18 @@ pub const Measurements = struct {
     }
 
     pub fn printLogInfo(self: Measurements) void {
-        std.log.info("⏲️ {d:.2}ms: 👾{d:.2}ms 🌐{d:.2}ms, ↪️ {d:.2}ms │ 🖌️{d:.2}ms: 👾{d:.2}ms", .{
-            self.getAverage(.tick),
-            self.getAverage(.enemy_logic),
-            self.getAverage(.flow_field),
-            self.getAverage(.thread_aggregation),
-            self.getAverage(.render),
-            self.getAverage(.render_enemies),
-        });
+        std.log.info(
+            "⏱️ {d:.2}ms │ ⏲️ {d:.2}ms: 👾{d:.2}ms 🌐{d:.2}ms, ↪️ {d:.2}ms │ 🖌️{d:.2}ms: 👾{d:.2}ms",
+            .{
+                self.getAverage(.total),
+                self.getAverage(.tick),
+                self.getAverage(.enemy_logic),
+                self.getAverage(.flow_field),
+                self.getAverage(.thread_aggregation),
+                self.getAverage(.render),
+                self.getAverage(.render_enemies),
+            },
+        );
     }
 
     fn getAverage(self: Measurements, metric_type: MetricType) f32 {

@@ -105,8 +105,12 @@ const ProgramContext = struct {
 
     fn run(self: *ProgramContext) !void {
         while (true) {
+            // Timer is stopped in `render()`.
+            self.game_context.performance_measurements.begin(.total);
+
             const keep_running = try self.processInputs();
             if (!keep_running) {
+                self.game_context.performance_measurements.end(.total);
                 break;
             }
             try self.game_context.handleElapsedFrame();
@@ -223,6 +227,7 @@ const ProgramContext = struct {
             self.edit_mode_state,
             self.game_context,
         );
+        self.game_context.performance_measurements.end(.total);
 
         sdl.SDL_GL_SwapWindow(self.window);
     }
