@@ -24,7 +24,7 @@ const textures = @import("textures.zig");
 
 pub const Context = struct {
     tick_timer: simulation.TickTimer,
-    tick_counter: u64,
+    tick_counter: u32,
     interval_between_previous_and_current_tick: f32,
     frame_timer: std.time.Timer,
     main_character: game_unit.Player,
