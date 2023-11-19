@@ -5,6 +5,7 @@ const FlowField = @import("flow_field.zig").Field;
 const Hud = @import("hud.zig").Hud;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
+const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
@@ -41,6 +42,7 @@ pub const Context = struct {
     thread_pool: *std.Thread.Pool,
     /// Contexts are not stored in a single contiguous array to avoid false sharing.
     thread_contexts: []*ThreadContext,
+    performance_measurements: PerformanceMeasurements,
 
     billboard_renderer: rendering.BillboardRenderer,
     billboard_buffer: []rendering.SpriteData,
@@ -130,6 +132,7 @@ pub const Context = struct {
             .tick_lifetime_allocator = tick_lifetime_allocator,
             .thread_pool = thread_pool,
             .thread_contexts = thread_contexts,
+            .performance_measurements = try PerformanceMeasurements.create(),
 
             .billboard_renderer = billboard_renderer,
             .billboard_buffer = &.{},
@@ -210,6 +213,7 @@ pub const Context = struct {
                 self.map,
             );
 
+            self.performance_measurements.begin(.enemy_logic);
             var wait_group = std.Thread.WaitGroup{};
             for (self.thread_contexts, 0..) |context, thread_id| {
                 var iterator = self.shared_context.enemy_collection.cellGroupIteratorAdvanced(
@@ -229,6 +233,7 @@ pub const Context = struct {
                 );
             }
             self.thread_pool.waitAndWork(&wait_group);
+            self.performance_measurements.end(.enemy_logic);
 
             for (self.thread_contexts) |context| {
                 for (context.enemies_to_remove.items) |object_handle| {
@@ -248,6 +253,11 @@ pub const Context = struct {
             if (self.frame_timer.read() > max_frame_time) {
                 self.interval_between_previous_and_current_tick = 1;
                 break;
+            }
+
+            if (@mod(self.tick_counter, simulation.tickrate) == 0) {
+                self.performance_measurements.updateAverageAndReset();
+                self.performance_measurements.printLogInfo();
             }
         }
 
