@@ -9,6 +9,7 @@ const PerformanceMeasurements = @import("performance_measurements.zig").Measurem
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
+const ThreadPool = @import("thread_pool.zig").Pool;
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const dialog = @import("dialog.zig");
@@ -39,7 +40,7 @@ pub const Context = struct {
 
     /// For objects which die at the end of each tick.
     tick_lifetime_allocator: std.heap.ArenaAllocator,
-    thread_pool: *std.Thread.Pool,
+    thread_pool: ThreadPool,
     /// Contexts are not stored in a single contiguous array to avoid false sharing.
     thread_contexts: []*ThreadContext,
     performance_measurements: PerformanceMeasurements,
@@ -86,12 +87,10 @@ pub const Context = struct {
         var tick_lifetime_allocator = std.heap.ArenaAllocator.init(allocator);
         errdefer tick_lifetime_allocator.deinit();
 
-        var thread_pool = try allocator.create(std.Thread.Pool);
-        errdefer allocator.destroy(thread_pool);
-        try thread_pool.init(.{ .allocator = allocator });
-        errdefer thread_pool.deinit();
+        var thread_pool = try ThreadPool.create(allocator);
+        errdefer thread_pool.destroy(allocator);
 
-        var thread_contexts = try allocator.alloc(*ThreadContext, thread_pool.threads.len);
+        var thread_contexts = try allocator.alloc(*ThreadContext, thread_pool.countThreads());
         errdefer allocator.free(thread_contexts);
         var contexts_created: usize = 0;
         errdefer for (0..contexts_created) |index| {
@@ -150,8 +149,7 @@ pub const Context = struct {
             allocator.destroy(context);
         }
         allocator.free(self.thread_contexts);
-        self.thread_pool.deinit();
-        allocator.destroy(self.thread_pool);
+        self.thread_pool.destroy(allocator);
         self.tick_lifetime_allocator.deinit();
         self.spritesheet.destroy();
         self.tileable_textures.destroy();
@@ -222,25 +220,22 @@ pub const Context = struct {
             self.performance_measurements.end(.flow_field);
 
             self.performance_measurements.begin(.enemy_logic);
-            var wait_group = std.Thread.WaitGroup{};
             for (self.thread_contexts, 0..) |context, thread_id| {
                 var iterator = self.shared_context.enemy_collection.cellGroupIteratorAdvanced(
                     thread_id,
                     self.thread_contexts.len - 1,
                 );
-                wait_group.start();
-                try self.thread_pool.spawn(
+                try self.thread_pool.dispatchIgnoreErrors(
                     processEnemyThread,
                     .{
                         self,
                         context,
-                        &wait_group,
                         iterator,
                         attacking_enemy_positions_at_previous_tick,
                     },
                 );
             }
-            self.thread_pool.waitAndWork(&wait_group);
+            self.thread_pool.wait();
             self.performance_measurements.end(.enemy_logic);
 
             self.performance_measurements.proceed(.thread_aggregation);
@@ -295,25 +290,17 @@ pub const Context = struct {
         billboards_to_render += gems_to_render;
 
         self.performance_measurements.begin(.render_enemies);
-        var wait_group = std.Thread.WaitGroup{};
         for (self.thread_contexts, 0..) |context, thread_id| {
             var iterator = self.shared_context.enemy_collection.iteratorAdvanced(
                 thread_id,
                 self.thread_contexts.len - 1,
             );
-            wait_group.start();
-            try self.thread_pool.spawn(
+            try self.thread_pool.dispatch(
                 prepareEnemyRenderThread,
-                .{
-                    self,
-                    context,
-                    &wait_group,
-                    iterator,
-                    camera,
-                },
+                .{ self, context, iterator, camera },
             );
         }
-        self.thread_pool.waitAndWork(&wait_group);
+        self.thread_pool.wait();
         for (self.thread_contexts) |context| {
             billboards_to_render += context.enemy_billboard_count;
         }
@@ -469,21 +456,17 @@ pub const Context = struct {
     fn processEnemyThread(
         self: *Context,
         thread_context: *ThreadContext,
-        wait_group: *std.Thread.WaitGroup,
         cell_group_iterator: SharedContext.EnemyCollection.CellGroupIterator,
         attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
-    ) void {
+    ) !void {
         var iterator = cell_group_iterator;
         while (iterator.next()) |cell_group| {
-            self.processEnemyCellGroup(
+            try self.processEnemyCellGroup(
                 cell_group,
                 thread_context,
                 attacking_enemy_positions_at_previous_tick,
-            ) catch |err| {
-                std.log.err("thread: failed to process enemy cell group: {}", .{err});
-            };
+            );
         }
-        wait_group.finish();
     }
 
     fn processEnemyCellGroup(
@@ -540,7 +523,6 @@ pub const Context = struct {
     fn prepareEnemyRenderThread(
         self: *Context,
         thread_context: *ThreadContext,
-        wait_group: *std.Thread.WaitGroup,
         enemy_iterator: SharedContext.EnemyCollection.Iterator,
         camera: ThirdPersonCamera,
     ) void {
@@ -550,7 +532,6 @@ pub const Context = struct {
             enemy_ptr.prepareRender(camera, self.interval_between_previous_and_current_tick);
             thread_context.enemy_billboard_count += enemy_ptr.getBillboardCount();
         }
-        wait_group.finish();
     }
 };
 
