@@ -18,7 +18,7 @@ pub const SharedContext = struct {
     enemy_collection: EnemyCollection,
     dialog_controller: DialogController,
 
-    pub const EnemyCollection = SpatialCollection(Enemy, 7);
+    pub const EnemyCollection = SpatialCollection(Enemy, 50);
 
     pub fn create(allocator: std.mem.Allocator) !SharedContext {
         var gem_collection = GemCollection.create(allocator);

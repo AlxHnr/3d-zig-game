@@ -39,7 +39,8 @@ pub const Context = struct {
     /// For objects which die at the end of each tick.
     tick_lifetime_allocator: std.heap.ArenaAllocator,
     thread_pool: *std.Thread.Pool,
-    thread_contexts: []ThreadContext,
+    /// Contexts are not stored in a single contiguous array to avoid false sharing.
+    thread_contexts: []*ThreadContext,
 
     billboard_renderer: rendering.BillboardRenderer,
     billboard_buffer: []rendering.SpriteData,
@@ -88,14 +89,18 @@ pub const Context = struct {
         try thread_pool.init(.{ .allocator = allocator });
         errdefer thread_pool.deinit();
 
-        var thread_contexts = try allocator.alloc(ThreadContext, thread_pool.threads.len);
+        var thread_contexts = try allocator.alloc(*ThreadContext, thread_pool.threads.len);
         errdefer allocator.free(thread_contexts);
-        for (thread_contexts) |*context| {
-            context.* = ThreadContext.create(allocator);
-        }
-        errdefer for (thread_contexts) |*context| {
-            context.destroy();
+        var contexts_created: usize = 0;
+        errdefer for (0..contexts_created) |index| {
+            thread_contexts[index].destroy();
+            allocator.destroy(thread_contexts[index]);
         };
+        for (thread_contexts) |*context| {
+            context.* = try allocator.create(ThreadContext);
+            context.*.* = ThreadContext.create(allocator);
+            contexts_created += 1;
+        }
 
         var billboard_renderer = try rendering.BillboardRenderer.create();
         errdefer billboard_renderer.destroy();
@@ -137,8 +142,9 @@ pub const Context = struct {
         self.hud.destroy(allocator);
         allocator.free(self.billboard_buffer);
         self.billboard_renderer.destroy();
-        for (self.thread_contexts) |*context| {
+        for (self.thread_contexts) |context| {
             context.destroy();
+            allocator.destroy(context);
         }
         allocator.free(self.thread_contexts);
         self.thread_pool.deinit();
@@ -188,7 +194,7 @@ pub const Context = struct {
             _ = self.tick_lifetime_allocator.reset(.retain_capacity);
             var attacking_enemy_positions_at_previous_tick =
                 EnemyPositionGrid.create(self.tick_lifetime_allocator.allocator());
-            for (self.thread_contexts) |*context| {
+            for (self.thread_contexts) |context| {
                 for (context.previous_tick_attacking_enemies.items) |attacking_enemy| {
                     try attacking_enemy_positions_at_previous_tick.insertIntoArea(
                         attacking_enemy,
@@ -204,16 +210,27 @@ pub const Context = struct {
                 self.map,
             );
 
-            var cell_group_iterator = self.shared_context.enemy_collection.cellGroupIterator();
-            while (cell_group_iterator.next()) |cell_group| {
-                try self.processEnemyCellGroup(
-                    cell_group,
-                    &self.thread_contexts[0],
-                    attacking_enemy_positions_at_previous_tick,
+            var wait_group = std.Thread.WaitGroup{};
+            for (self.thread_contexts, 0..) |context, thread_id| {
+                var iterator = self.shared_context.enemy_collection.cellGroupIteratorAdvanced(
+                    thread_id,
+                    self.thread_contexts.len - 1,
+                );
+                wait_group.start();
+                try self.thread_pool.spawn(
+                    processEnemyThread,
+                    .{
+                        self,
+                        context,
+                        &wait_group,
+                        iterator,
+                        attacking_enemy_positions_at_previous_tick,
+                    },
                 );
             }
+            self.thread_pool.waitAndWork(&wait_group);
 
-            for (self.thread_contexts) |*context| {
+            for (self.thread_contexts) |context| {
                 for (context.enemies_to_remove.items) |object_handle| {
                     self.shared_context.enemy_collection.remove(object_handle);
                 }
@@ -258,10 +275,27 @@ pub const Context = struct {
 
         const gems_to_render = self.shared_context.gem_collection.getBillboardCount();
         billboards_to_render += gems_to_render;
-        var enemy_iterator = self.shared_context.enemy_collection.iterator();
-        while (enemy_iterator.next()) |enemy_ptr| {
-            enemy_ptr.prepareRender(camera, self.interval_between_previous_and_current_tick);
-            billboards_to_render += enemy_ptr.getBillboardCount();
+        var wait_group = std.Thread.WaitGroup{};
+        for (self.thread_contexts, 0..) |context, thread_id| {
+            var iterator = self.shared_context.enemy_collection.iteratorAdvanced(
+                thread_id,
+                self.thread_contexts.len - 1,
+            );
+            wait_group.start();
+            try self.thread_pool.spawn(
+                prepareEnemyRenderThread,
+                .{
+                    self,
+                    context,
+                    &wait_group,
+                    iterator,
+                    camera,
+                },
+            );
+        }
+        self.thread_pool.waitAndWork(&wait_group);
+        for (self.thread_contexts) |context| {
+            billboards_to_render += context.enemy_billboard_count;
         }
         billboards_to_render += 1; // Player sprite.
 
@@ -277,7 +311,7 @@ pub const Context = struct {
         );
         var start: usize = gems_to_render;
         var end: usize = gems_to_render;
-        enemy_iterator = self.shared_context.enemy_collection.iterator();
+        var enemy_iterator = self.shared_context.enemy_collection.iterator();
         while (enemy_iterator.next()) |enemy_ptr| {
             start = end;
             end += enemy_ptr.getBillboardCount();
@@ -405,6 +439,26 @@ pub const Context = struct {
         );
     }
 
+    fn processEnemyThread(
+        self: *Context,
+        thread_context: *ThreadContext,
+        wait_group: *std.Thread.WaitGroup,
+        cell_group_iterator: SharedContext.EnemyCollection.CellGroupIterator,
+        attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
+    ) void {
+        var iterator = cell_group_iterator;
+        while (iterator.next()) |cell_group| {
+            self.processEnemyCellGroup(
+                cell_group,
+                thread_context,
+                attacking_enemy_positions_at_previous_tick,
+            ) catch |err| {
+                std.log.err("thread: failed to process enemy cell group: {}", .{err});
+            };
+        }
+        wait_group.finish();
+    }
+
     fn processEnemyCellGroup(
         self: Context,
         cell_group: SharedContext.EnemyCollection.CellGroupIterator.CellGroup,
@@ -455,12 +509,29 @@ pub const Context = struct {
             }
         }
     }
+
+    fn prepareEnemyRenderThread(
+        self: *Context,
+        thread_context: *ThreadContext,
+        wait_group: *std.Thread.WaitGroup,
+        enemy_iterator: SharedContext.EnemyCollection.Iterator,
+        camera: ThirdPersonCamera,
+    ) void {
+        thread_context.enemy_billboard_count = 0;
+        var iterator = enemy_iterator;
+        while (iterator.next()) |enemy_ptr| {
+            enemy_ptr.prepareRender(camera, self.interval_between_previous_and_current_tick);
+            thread_context.enemy_billboard_count += enemy_ptr.getBillboardCount();
+        }
+        wait_group.finish();
+    }
 };
 
 const ThreadContext = struct {
     enemies_to_add: std.ArrayList(Enemy),
     enemies_to_remove: std.ArrayList(*ObjectHandle),
     previous_tick_attacking_enemies: std.ArrayList(AttackingEnemyPosition),
+    enemy_billboard_count: usize,
 
     const ObjectHandle = SharedContext.EnemyCollection.ObjectHandle;
 
@@ -469,6 +540,7 @@ const ThreadContext = struct {
             .enemies_to_add = std.ArrayList(Enemy).init(allocator),
             .enemies_to_remove = std.ArrayList(*ObjectHandle).init(allocator),
             .previous_tick_attacking_enemies = std.ArrayList(AttackingEnemyPosition).init(allocator),
+            .enemy_billboard_count = 0,
         };
     }
 
