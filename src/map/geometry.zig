@@ -26,7 +26,6 @@ pub const Geometry = struct {
         translucent: std.ArrayList(Wall),
     },
     wall_renderer: rendering.WallRenderer,
-    walls_have_changed: bool,
 
     spatial_wall_index: struct { all: SpatialGrid, solid: SpatialGrid },
     obstacle_grid: ObstacleGrid,
@@ -36,11 +35,9 @@ pub const Geometry = struct {
     floors: std.ArrayList(Floor),
     floor_animation_state: animation.FourStepCycle,
     floor_renderer: rendering.FloorRenderer,
-    floors_have_changed: bool,
 
     billboard_objects: std.ArrayList(BillboardObject),
     billboard_renderer: rendering.BillboardRenderer,
-    billboards_have_changed: bool,
 
     pub const obstacle_grid_cell_size = 5;
 
@@ -64,7 +61,6 @@ pub const Geometry = struct {
                 .translucent = std.ArrayList(Wall).init(allocator),
             },
             .wall_renderer = wall_renderer,
-            .walls_have_changed = false,
             .spatial_wall_index = .{
                 .all = SpatialGrid.create(allocator),
                 .solid = SpatialGrid.create(allocator),
@@ -73,10 +69,8 @@ pub const Geometry = struct {
             .floors = std.ArrayList(Floor).init(allocator),
             .floor_animation_state = animation.FourStepCycle.create(),
             .floor_renderer = floor_renderer,
-            .floors_have_changed = false,
             .billboard_objects = std.ArrayList(BillboardObject).init(allocator),
             .billboard_renderer = billboard_renderer,
-            .billboards_have_changed = false,
         };
     }
 
@@ -100,6 +94,7 @@ pub const Geometry = struct {
     pub fn createFromSerializableData(
         allocator: std.mem.Allocator,
         object_id_generator: *util.ObjectIdGenerator,
+        spritesheet: textures.SpriteSheetTexture,
         data: SerializableData,
     ) !Geometry {
         var geometry = try create(allocator);
@@ -110,13 +105,13 @@ pub const Geometry = struct {
                 return Error.FailedToDeserializeMapGeometry;
             };
             _ = try geometry
-                .addWallIgnoreObstacleGrid(object_id_generator, wall.start, wall.end, wall_type);
+                .addWallUncached(object_id_generator, wall.start, wall.end, wall_type);
         }
         for (data.floors) |floor| {
             const floor_type = std.meta.stringToEnum(FloorType, floor.t) orelse {
                 return Error.FailedToDeserializeMapGeometry;
             };
-            _ = try geometry.addFloor(
+            _ = try geometry.addFloorUncached(
                 object_id_generator,
                 floor.side_a_start,
                 floor.side_a_end,
@@ -128,26 +123,16 @@ pub const Geometry = struct {
             const object_type = std.meta.stringToEnum(BillboardObjectType, billboard.t) orelse {
                 return Error.FailedToDeserializeMapGeometry;
             };
-            _ = try geometry.addBillboardObject(object_id_generator, object_type, billboard.pos);
+            _ = try geometry.addBillboardObjectUncached(
+                object_id_generator,
+                object_type,
+                billboard.pos,
+                spritesheet,
+            );
         }
 
-        try geometry.obstacle_grid.recompute(geometry);
+        try geometry.updateCache();
         return geometry;
-    }
-
-    pub fn prepareRender(self: *Geometry, spritesheet: textures.SpriteSheetTexture) !void {
-        if (self.walls_have_changed) {
-            try self.uploadWallsToRenderer();
-            self.walls_have_changed = false;
-        }
-        if (self.floors_have_changed) {
-            try self.uploadFloorsToRenderer();
-            self.floors_have_changed = false;
-        }
-        if (self.billboards_have_changed) {
-            try self.uploadBillboardsToRenderer(spritesheet);
-            self.billboards_have_changed = false;
-        }
     }
 
     pub fn render(
@@ -275,20 +260,20 @@ pub const Geometry = struct {
         end_position: math.FlatVector,
         wall_type: WallType,
     ) !u64 {
-        const wall_id = try self.addWallIgnoreObstacleGrid(
+        const wall_id = try self.addWallUncached(
             object_id_generator,
             start_position,
             end_position,
             wall_type,
         );
-        errdefer self.removeObjectIgnoreObstacleGrid(wall_id);
-        try self.obstacle_grid.recompute(self.*);
+        errdefer self.removeObjectUncached(wall_id);
+        try self.updateCache();
         return wall_id;
     }
 
     pub fn removeObject(self: *Geometry, object_id: u64) !void {
-        self.removeObjectIgnoreObstacleGrid(object_id);
-        try self.obstacle_grid.recompute(self.*);
+        self.removeObjectUncached(object_id);
+        try self.updateCache();
     }
 
     /// If the given object id does not exist, this function will do nothing.
@@ -298,27 +283,24 @@ pub const Geometry = struct {
         start_position: math.FlatVector,
         end_position: math.FlatVector,
     ) !void {
-        if (self.findWall(object_id)) |wall| {
-            var old_wall = wall.*;
-            wall.* = Wall.create(
-                object_id,
-                old_wall.wall_type,
-                start_position,
-                end_position,
-            );
-            wall.tint = old_wall.tint;
-            self.walls_have_changed = true;
+        var wall = self.findWall(object_id) orelse return;
+        var old_wall = wall.*;
+        wall.* = Wall.create(
+            object_id,
+            old_wall.wall_type,
+            start_position,
+            end_position,
+        );
+        wall.tint = old_wall.tint;
 
-            self.removeWallFromSpatialGrid(&old_wall);
-            wall.grid_handles.all =
-                try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
-            if (!Wall.isFence(wall.wall_type)) {
-                wall.grid_handles.solid =
-                    try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
-            }
-
-            try self.obstacle_grid.recompute(self.*);
+        self.removeWallFromSpatialGrid(&old_wall);
+        wall.grid_handles.all =
+            try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
+        if (!Wall.isFence(wall.wall_type)) {
+            wall.grid_handles.solid =
+                try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
         }
+        try self.updateCache();
     }
 
     pub const FloorType = enum {
@@ -337,16 +319,16 @@ pub const Geometry = struct {
         side_b_length: f32,
         floor_type: FloorType,
     ) !u64 {
-        const floor = try self.floors.addOne();
-        floor.* = Floor.create(
-            object_id_generator.makeNewId(),
-            floor_type,
+        const floor_id = try self.addFloorUncached(
+            object_id_generator,
             side_a_start,
             side_a_end,
             side_b_length,
+            floor_type,
         );
-        self.floors_have_changed = true;
-        return floor.object_id;
+        errdefer self.removeObjectUncached(floor_id);
+        try self.updateCache();
+        return floor_id;
     }
 
     /// If the given object id does not exist, this function will do nothing.
@@ -356,20 +338,18 @@ pub const Geometry = struct {
         side_a_start: math.FlatVector,
         side_a_end: math.FlatVector,
         side_b_length: f32,
-    ) void {
-        if (self.findFloor(object_id)) |floor| {
-            const tint = floor.tint;
-            const floor_type = floor.floor_type;
-            floor.* = Floor.create(
-                object_id,
-                floor_type,
-                side_a_start,
-                side_a_end,
-                side_b_length,
-            );
-            floor.tint = tint;
-            self.floors_have_changed = true;
-        }
+    ) !void {
+        var floor = self.findFloor(object_id) orelse return;
+        const tint = floor.tint;
+        floor.* = Floor.create(
+            object_id,
+            floor.floor_type,
+            side_a_start,
+            side_a_end,
+            side_b_length,
+        );
+        floor.tint = tint;
+        try self.updateCache();
     }
 
     pub const BillboardObjectType = enum {
@@ -382,38 +362,39 @@ pub const Geometry = struct {
         object_id_generator: *util.ObjectIdGenerator,
         object_type: BillboardObjectType,
         position: math.FlatVector,
+        spritesheet: textures.SpriteSheetTexture,
     ) !u64 {
-        const billboard = try self.billboard_objects.addOne();
-        billboard.* =
-            BillboardObject.create(object_id_generator.makeNewId(), object_type, position);
-        self.billboards_have_changed = true;
-        return billboard.object_id;
+        const billboard_id = try self.addBillboardObjectUncached(
+            object_id_generator,
+            object_type,
+            position,
+            spritesheet,
+        );
+        errdefer self.removeObjectUncached(billboard_id);
+        try self.updateCache();
+        return billboard_id;
     }
 
-    pub fn tintObject(self: *Geometry, object_id: u64, tint: util.Color) void {
+    pub fn tintObject(self: *Geometry, object_id: u64, tint: util.Color) !void {
         if (self.findWall(object_id)) |wall| {
             wall.tint = tint;
-            self.walls_have_changed = true;
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = tint;
-            self.floors_have_changed = true;
         } else if (self.findBillboardObject(object_id)) |billboard| {
             billboard.tint = tint;
-            self.billboards_have_changed = true;
         }
+        try self.updateCache();
     }
 
-    pub fn untintObject(self: *Geometry, object_id: u64) void {
+    pub fn untintObject(self: *Geometry, object_id: u64) !void {
         if (self.findWall(object_id)) |wall| {
             wall.tint = Wall.getDefaultTint(wall.wall_type);
-            self.walls_have_changed = true;
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = Floor.getDefaultTint(floor.floor_type);
-            self.floors_have_changed = true;
         } else if (self.findBillboardObject(object_id)) |billboard| {
             billboard.tint = BillboardObject.getDefaultTint(billboard.object_type);
-            self.billboards_have_changed = true;
         }
+        try self.updateCache();
     }
 
     pub const RayCollision = struct {
@@ -517,7 +498,7 @@ pub const Geometry = struct {
     }
 
     /// Returns the object id of the created wall on success.
-    fn addWallIgnoreObstacleGrid(
+    fn addWallUncached(
         self: *Geometry,
         object_id_generator: *util.ObjectIdGenerator,
         start_position: math.FlatVector,
@@ -547,17 +528,51 @@ pub const Geometry = struct {
                 try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
         }
 
-        self.walls_have_changed = true;
         return wall.object_id;
     }
 
+    fn addFloorUncached(
+        self: *Geometry,
+        object_id_generator: *util.ObjectIdGenerator,
+        side_a_start: math.FlatVector,
+        side_a_end: math.FlatVector,
+        side_b_length: f32,
+        floor_type: FloorType,
+    ) !u64 {
+        const floor = try self.floors.addOne();
+        floor.* = Floor.create(
+            object_id_generator.makeNewId(),
+            floor_type,
+            side_a_start,
+            side_a_end,
+            side_b_length,
+        );
+        return floor.object_id;
+    }
+
+    fn addBillboardObjectUncached(
+        self: *Geometry,
+        object_id_generator: *util.ObjectIdGenerator,
+        object_type: BillboardObjectType,
+        position: math.FlatVector,
+        spritesheet: textures.SpriteSheetTexture,
+    ) !u64 {
+        const billboard = try self.billboard_objects.addOne();
+        billboard.* = BillboardObject.create(
+            object_id_generator.makeNewId(),
+            object_type,
+            position,
+            spritesheet,
+        );
+        return billboard.object_id;
+    }
+
     /// If the given object id does not exist, this function will do nothing.
-    fn removeObjectIgnoreObstacleGrid(self: *Geometry, object_id: u64) void {
+    fn removeObjectUncached(self: *Geometry, object_id: u64) void {
         for (self.walls.solid.items, 0..) |*wall, index| {
             if (wall.object_id == object_id) {
                 self.removeWallFromSpatialGrid(wall);
                 _ = self.walls.solid.orderedRemove(index);
-                self.walls_have_changed = true;
                 return;
             }
         }
@@ -565,24 +580,28 @@ pub const Geometry = struct {
             if (wall.object_id == object_id) {
                 self.removeWallFromSpatialGrid(wall);
                 _ = self.walls.translucent.orderedRemove(index);
-                self.walls_have_changed = true;
                 return;
             }
         }
         for (self.floors.items, 0..) |*floor, index| {
             if (floor.object_id == object_id) {
                 _ = self.floors.orderedRemove(index);
-                self.floors_have_changed = true;
                 return;
             }
         }
         for (self.billboard_objects.items, 0..) |billboard, index| {
             if (billboard.object_id == object_id) {
                 _ = self.billboard_objects.orderedRemove(index);
-                self.billboards_have_changed = true;
                 return;
             }
         }
+    }
+
+    fn updateCache(self: *Geometry) !void {
+        try self.obstacle_grid.recompute(self.*);
+        try self.uploadWallsToRenderer();
+        try self.uploadFloorsToRenderer();
+        try self.uploadBillboardsToRenderer();
     }
 
     fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !*SpatialGrid.ObjectHandle {
@@ -696,7 +715,7 @@ pub const Geometry = struct {
         self.floor_renderer.uploadFloors(data);
     }
 
-    fn uploadBillboardsToRenderer(self: *Geometry, spritesheet: textures.SpriteSheetTexture) !void {
+    fn uploadBillboardsToRenderer(self: *Geometry) !void {
         var data = try self.allocator.alloc(
             rendering.SpriteData,
             self.billboard_objects.items.len,
@@ -704,7 +723,7 @@ pub const Geometry = struct {
         defer self.allocator.free(data);
 
         for (self.billboard_objects.items, 0..) |billboard, index| {
-            data[index] = billboard.getBillboardData(spritesheet);
+            data[index] = billboard.sprite_data;
         }
         self.billboard_renderer.uploadBillboards(data);
     }
@@ -1011,20 +1030,42 @@ const BillboardObject = struct {
     object_type: Geometry.BillboardObjectType,
     boundaries: collision.Circle,
     tint: util.Color,
+    sprite_data: rendering.SpriteData,
 
     fn create(
         object_id: u64,
         object_type: Geometry.BillboardObjectType,
         position: math.FlatVector,
+        spritesheet: textures.SpriteSheetTexture,
     ) BillboardObject {
         const width: f32 = switch (object_type) {
             else => 1.0,
         };
+        const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (object_type) {
+            .small_bush => .small_bush,
+        };
+        const source = spritesheet.getSpriteTexcoords(sprite_id);
+        const boundaries = .{ .position = position, .radius = width / 2 };
+        const half_height = boundaries.radius * spritesheet.getSpriteAspectRatio(sprite_id);
+        const tint = getDefaultTint(object_type);
         return .{
             .object_id = object_id,
             .object_type = object_type,
-            .boundaries = .{ .position = position, .radius = width / 2 },
-            .tint = getDefaultTint(object_type),
+            .boundaries = boundaries,
+            .tint = tint,
+            .sprite_data = .{
+                .position = .{
+                    .x = boundaries.position.x,
+                    .y = half_height,
+                    .z = boundaries.position.z,
+                },
+                .size = .{
+                    .w = boundaries.radius * 2,
+                    .h = half_height * 2,
+                },
+                .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
+                .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
+            },
         };
     }
 
@@ -1038,31 +1079,6 @@ const BillboardObject = struct {
             self.boundaries.position.toVector3d().add(offset_to_right).add(offset_to_top),
             self.boundaries.position.toVector3d().subtract(offset_to_right).add(offset_to_top),
         });
-    }
-
-    fn getBillboardData(
-        self: BillboardObject,
-        spritesheet: textures.SpriteSheetTexture,
-    ) rendering.SpriteData {
-        const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (self.object_type) {
-            .small_bush => .small_bush,
-        };
-        const source = spritesheet.getSpriteTexcoords(sprite_id);
-        const half_height = self.boundaries.radius *
-            spritesheet.getSpriteAspectRatio(sprite_id);
-        return .{
-            .position = .{
-                .x = self.boundaries.position.x,
-                .y = half_height,
-                .z = self.boundaries.position.z,
-            },
-            .size = .{
-                .w = self.boundaries.radius * 2,
-                .h = half_height * 2,
-            },
-            .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
-            .tint = .{ .r = self.tint.r, .g = self.tint.g, .b = self.tint.b },
-        };
     }
 
     fn getDefaultTint(object_type: Geometry.BillboardObjectType) util.Color {

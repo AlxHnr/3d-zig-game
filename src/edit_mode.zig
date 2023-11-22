@@ -1,5 +1,6 @@
 const Map = @import("map/map.zig").Map;
 const MapGeometry = @import("map/geometry.zig").Geometry;
+const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const collision = @import("collision.zig");
 const math = @import("math.zig");
 const std = @import("std");
@@ -28,17 +29,23 @@ pub const State = struct {
         object_id_generator: *util.ObjectIdGenerator,
         map: *Map,
         mouse_ray: collision.Ray3d,
+        spritesheet: SpriteSheetTexture,
     ) !void {
         switch (self.mode) {
             .insert_objects => {
                 if (self.currently_edited_object != null) {
-                    self.resetCurrentlyEditedObject(map);
+                    try self.resetCurrentlyEditedObject(map);
                 } else if (cast3DRayToGround(mouse_ray)) |ground_position| {
-                    try self.startPlacingObject(object_id_generator, map, ground_position);
+                    try self.startPlacingObject(
+                        object_id_generator,
+                        map,
+                        ground_position,
+                        spritesheet,
+                    );
                 }
             },
             .delete_objects => {
-                self.resetCurrentlyEditedObject(map);
+                try self.resetCurrentlyEditedObject(map);
                 if (cast3DRayToObjects(mouse_ray, map.*)) |ray_collision| {
                     try map.geometry.removeObject(ray_collision.object_id);
                 }
@@ -59,9 +66,12 @@ pub const State = struct {
                 }
             },
             .delete_objects => {
-                self.resetCurrentlyEditedObject(map);
+                try self.resetCurrentlyEditedObject(map);
                 if (cast3DRayToObjects(mouse_ray, map.*)) |ray_collision| {
-                    map.geometry.tintObject(ray_collision.object_id, .{ .r = 1, .g = 0, .b = 0 });
+                    try map.geometry.tintObject(
+                        ray_collision.object_id,
+                        .{ .r = 1, .g = 0, .b = 0 },
+                    );
                     self.currently_edited_object = CurrentlyEditedObject{
                         .object_id = ray_collision.object_id,
                         .start_position = undefined,
@@ -72,14 +82,14 @@ pub const State = struct {
     }
 
     // Cycles between the states various edit modes, e.g. insert, delete.
-    pub fn cycleMode(self: *State, map: *Map) void {
-        self.resetCurrentlyEditedObject(map);
+    pub fn cycleMode(self: *State, map: *Map) !void {
+        try self.resetCurrentlyEditedObject(map);
         self.mode = util.getNextEnumWrapAround(self.mode);
     }
 
     // Cycles between the types of objects to insert, e.g. walls, floors.
-    pub fn cycleInsertedObjectType(self: *State, map: *Map) void {
-        self.resetCurrentlyEditedObject(map);
+    pub fn cycleInsertedObjectType(self: *State, map: *Map) !void {
+        try self.resetCurrentlyEditedObject(map);
         self.object_type_to_insert.used_field =
             util.getNextEnumWrapAround(self.object_type_to_insert.used_field);
     }
@@ -146,9 +156,9 @@ pub const State = struct {
         start_position: math.FlatVector,
     };
 
-    fn resetCurrentlyEditedObject(self: *State, map: *Map) void {
+    fn resetCurrentlyEditedObject(self: *State, map: *Map) !void {
         if (self.currently_edited_object) |object| {
-            map.geometry.untintObject(object.object_id);
+            try map.geometry.untintObject(object.object_id);
         }
         self.currently_edited_object = null;
     }
@@ -158,6 +168,7 @@ pub const State = struct {
         object_id_generator: *util.ObjectIdGenerator,
         map: *Map,
         position: math.FlatVector,
+        spritesheet: SpriteSheetTexture,
     ) !void {
         const object_type = &self.object_type_to_insert;
         const object_id = try switch (object_type.used_field) {
@@ -178,10 +189,11 @@ pub const State = struct {
                 object_id_generator,
                 object_type.billboard,
                 position,
+                spritesheet,
             ),
         };
         if (object_type.used_field != .billboard) {
-            map.geometry.tintObject(object_id, .{ .r = 0, .g = 1, .b = 0 });
+            try map.geometry.tintObject(object_id, .{ .r = 0, .g = 1, .b = 0 });
             self.currently_edited_object =
                 CurrentlyEditedObject{ .object_id = object_id, .start_position = position };
         }
@@ -216,7 +228,7 @@ pub const State = struct {
                         std.mem.swap(math.FlatVector, &side_a_start, &side_a_end);
                     }
 
-                    map.geometry.updateFloor(
+                    try map.geometry.updateFloor(
                         object.object_id,
                         side_a_start,
                         side_a_end,

@@ -74,7 +74,12 @@ pub const Context = struct {
         var shared_context = try SharedContext.create(allocator);
         errdefer shared_context.destroy();
 
-        var map = try loadMap(allocator, &shared_context.object_id_generator, map_file_path);
+        var map = try loadMap(
+            allocator,
+            &shared_context.object_id_generator,
+            spritesheet,
+            map_file_path,
+        );
         errdefer map.destroy();
 
         var counter: usize = 0;
@@ -265,7 +270,6 @@ pub const Context = struct {
         screen_dimensions: ScreenDimensions,
     ) !void {
         self.performance_measurements.begin(.render);
-        try self.map.prepareRender(self.spritesheet);
         const camera = self.main_character
             .getCamera(self.interval_between_previous_and_current_tick);
 
@@ -386,8 +390,12 @@ pub const Context = struct {
     }
 
     pub fn reloadMapFromDisk(self: *Context, allocator: std.mem.Allocator) !void {
-        const map =
-            try loadMap(allocator, &self.shared_context.object_id_generator, self.map_file_path);
+        const map = try loadMap(
+            allocator,
+            &self.shared_context.object_id_generator,
+            self.spritesheet,
+            self.map_file_path,
+        );
         self.map.destroy();
         self.map = map;
     }
@@ -434,6 +442,7 @@ pub const Context = struct {
     fn loadMap(
         allocator: std.mem.Allocator,
         object_id_generator: *ObjectIdGenerator,
+        spritesheet: textures.SpriteSheetTexture,
         file_path: []const u8,
     ) !Map {
         var json_string = try std.fs.cwd().readFileAlloc(allocator, file_path, 20 * 1024 * 1024);
@@ -446,6 +455,7 @@ pub const Context = struct {
         return Map.createFromSerializableData(
             allocator,
             object_id_generator,
+            spritesheet,
             serializable_data.value,
         );
     }

@@ -152,9 +152,10 @@ const ProgramContext = struct {
                         self.game_context.getMutableObjectIdGenerator(),
                         self.game_context.getMutableMap(),
                         ray,
+                        self.game_context.spritesheet,
                     );
                 } else if (event.button.button == sdl.SDL_BUTTON_MIDDLE) {
-                    self.edit_mode_state.cycleInsertedObjectType(
+                    try self.edit_mode_state.cycleInsertedObjectType(
                         self.game_context.getMutableMap(),
                     );
                 }
@@ -185,7 +186,7 @@ const ProgramContext = struct {
                 } else if (event.key.keysym.sym == sdl.SDLK_F5) {
                     try self.game_context.reloadMapFromDisk(self.allocator);
                 } else if (event.key.keysym.sym == sdl.SDLK_DELETE) {
-                    self.edit_mode_state.cycleMode(self.game_context.getMutableMap());
+                    try self.edit_mode_state.cycleMode(self.game_context.getMutableMap());
                 } else if (keyToInputButton(event.key.keysym.sym)) |keycode| {
                     self.game_context.markButtonAsPressed(keycode);
                 }

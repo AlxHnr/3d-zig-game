@@ -20,11 +20,13 @@ pub const Map = struct {
     pub fn createFromSerializableData(
         allocator: std.mem.Allocator,
         object_id_generator: *ObjectIdGenerator,
+        spritesheet: textures.SpriteSheetTexture,
         data: SerializableData,
     ) !Map {
         var geometry = try Geometry.createFromSerializableData(
             allocator,
             object_id_generator,
+            spritesheet,
             .{
                 .walls = data.walls,
                 .floors = data.floors,
