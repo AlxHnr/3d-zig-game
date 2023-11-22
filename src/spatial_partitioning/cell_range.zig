@@ -58,26 +58,24 @@ pub fn Range(comptime cell_side_length: u32) type {
             }
 
             pub fn isOverlappingWithOnlyOneCell(self: Iterator, range: Self) bool {
-                if (self.current) |current| {
-                    var overlapping_cells: usize = 0;
+                const current = self.current orelse return false;
+                var overlapping_cells: usize = 0;
 
-                    if (current.z > self.min.z) {
-                        const already_traversed_block = .{
-                            .min = self.min,
-                            .max = .{ .x = self.max.x, .z = current.z - 1 },
-                        };
-                        overlapping_cells += range.countTouchingCells(already_traversed_block);
-                    }
-
-                    const current_rows_block = .{
-                        .min = .{ .x = self.min.x, .z = current.z },
-                        .max = .{ .x = current.x, .z = current.z },
+                if (current.z > self.min.z) {
+                    const already_traversed_block = .{
+                        .min = self.min,
+                        .max = .{ .x = self.max.x, .z = current.z - 1 },
                     };
-                    overlapping_cells += range.countTouchingCells(current_rows_block);
-
-                    return overlapping_cells == 1;
+                    overlapping_cells += range.countTouchingCells(already_traversed_block);
                 }
-                return false;
+
+                const current_rows_block = .{
+                    .min = .{ .x = self.min.x, .z = current.z },
+                    .max = .{ .x = current.x, .z = current.z },
+                };
+                overlapping_cells += range.countTouchingCells(current_rows_block);
+
+                return overlapping_cells == 1;
             }
         };
     };

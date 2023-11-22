@@ -432,16 +432,15 @@ pub const Geometry = struct {
             return result;
         }
 
-        if (ray.collidesWithGround()) |impact_point| {
-            for (self.floors.items, 0..) |_, index| {
-                // The last floor in this array is always drawn at the top.
-                const floor = self.floors.items[self.floors.items.len - index - 1];
-                if (floor.boundaries.collidesWithPoint(impact_point.position.toFlatVector())) {
-                    return RayCollision{
-                        .object_id = floor.object_id,
-                        .impact_point = impact_point,
-                    };
-                }
+        const impact_point = ray.collidesWithGround() orelse return null;
+        for (self.floors.items, 0..) |_, index| {
+            // The last floor in this array is always drawn at the top.
+            const floor = self.floors.items[self.floors.items.len - index - 1];
+            if (floor.boundaries.collidesWithPoint(impact_point.position.toFlatVector())) {
+                return RayCollision{
+                    .object_id = floor.object_id,
+                    .impact_point = impact_point,
+                };
             }
         }
         return null;
@@ -659,16 +658,11 @@ pub const Geometry = struct {
         object_id: u64,
         current_collision: ?RayCollision,
     ) ?RayCollision {
-        if (impact_point) |point| {
-            if (current_collision) |current| {
-                if (point.distance_from_start_position <
-                    current.impact_point.distance_from_start_position)
-                {
-                    return RayCollision{ .object_id = object_id, .impact_point = point };
-                }
-            } else {
-                return RayCollision{ .object_id = object_id, .impact_point = point };
-            }
+        const point = impact_point orelse return current_collision;
+        const current = current_collision orelse
+            return .{ .object_id = object_id, .impact_point = point };
+        if (point.distance_from_start_position < current.impact_point.distance_from_start_position) {
+            return .{ .object_id = object_id, .impact_point = point };
         }
         return current_collision;
     }
@@ -895,16 +889,15 @@ const Wall = struct {
         quad: [4]math.Vector3d,
         closest_impact_point: *?collision.Ray3d.ImpactPoint,
     ) void {
-        if (ray.collidesWithQuad(quad)) |current_impact_point| {
-            if (closest_impact_point.*) |previous_impact_point| {
-                if (current_impact_point.distance_from_start_position <
-                    previous_impact_point.distance_from_start_position)
-                {
-                    closest_impact_point.* = current_impact_point;
-                }
-            } else {
+        const current_impact_point = ray.collidesWithQuad(quad) orelse return;
+        if (closest_impact_point.*) |previous_impact_point| {
+            if (current_impact_point.distance_from_start_position <
+                previous_impact_point.distance_from_start_position)
+            {
                 closest_impact_point.* = current_impact_point;
             }
+        } else {
+            closest_impact_point.* = current_impact_point;
         }
     }
 

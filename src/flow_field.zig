@@ -115,19 +115,17 @@ pub const Field = struct {
     // If the given position exists on the flow field, return a directional vector for navigating
     // towards the flow fields center.
     pub fn getDirection(self: Field, position: FlatVector, map: Map) ?FlatVector {
-        if (self.getIndexFromWorldPosition(position)) |index| {
-            const direction = self.directional_vectors[index];
-            if (direction != .none) {
-                return toDirectionVector(direction);
-            }
-            var iterator = GrowingRadiusIterator.create(position, &map);
-            while (iterator.next()) |corrected_position| {
-                if (self.getIndexFromWorldPosition(corrected_position)) |cell_index| {
-                    const corrected_direction = self.directional_vectors[cell_index];
-                    if (corrected_direction != .none) {
-                        return toDirectionVector(corrected_direction);
-                    }
-                }
+        const index = self.getIndexFromWorldPosition(position) orelse return null;
+        const direction = self.directional_vectors[index];
+        if (direction != .none) {
+            return toDirectionVector(direction);
+        }
+        var iterator = GrowingRadiusIterator.create(position, &map);
+        while (iterator.next()) |corrected_position| {
+            const cell_index = self.getIndexFromWorldPosition(corrected_position) orelse continue;
+            const corrected_direction = self.directional_vectors[cell_index];
+            if (corrected_direction != .none) {
+                return toDirectionVector(corrected_direction);
             }
         }
         return null;

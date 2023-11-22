@@ -46,9 +46,8 @@ pub const State = struct {
             },
             .delete_objects => {
                 try self.resetCurrentlyEditedObject(map);
-                if (cast3DRayToObjects(mouse_ray, map.*)) |ray_collision| {
-                    try map.geometry.removeObject(ray_collision.object_id);
-                }
+                const ray_collision = cast3DRayToObjects(mouse_ray, map.*) orelse return;
+                try map.geometry.removeObject(ray_collision.object_id);
             },
         }
     }
@@ -61,22 +60,20 @@ pub const State = struct {
     ) !void {
         switch (self.mode) {
             .insert_objects => {
-                if (cast3DRayToGround(mouse_ray)) |ground_position| {
-                    try self.updateCurrentlyInsertedObject(map, ground_position, camera_direction);
-                }
+                const ground_position = cast3DRayToGround(mouse_ray) orelse return;
+                try self.updateCurrentlyInsertedObject(map, ground_position, camera_direction);
             },
             .delete_objects => {
                 try self.resetCurrentlyEditedObject(map);
-                if (cast3DRayToObjects(mouse_ray, map.*)) |ray_collision| {
-                    try map.geometry.tintObject(
-                        ray_collision.object_id,
-                        .{ .r = 1, .g = 0, .b = 0 },
-                    );
-                    self.currently_edited_object = CurrentlyEditedObject{
-                        .object_id = ray_collision.object_id,
-                        .start_position = undefined,
-                    };
-                }
+                const ray_collision = cast3DRayToObjects(mouse_ray, map.*) orelse return;
+                try map.geometry.tintObject(
+                    ray_collision.object_id,
+                    .{ .r = 1, .g = 0, .b = 0 },
+                );
+                self.currently_edited_object = CurrentlyEditedObject{
+                    .object_id = ray_collision.object_id,
+                    .start_position = undefined,
+                };
             },
         }
     }
@@ -205,38 +202,37 @@ pub const State = struct {
         object_end_position: math.FlatVector,
         camera_direction: math.FlatVector,
     ) !void {
-        if (self.currently_edited_object) |object| {
-            switch (self.object_type_to_insert.used_field) {
-                .wall => {
-                    try map.geometry
-                        .updateWall(object.object_id, object.start_position, object_end_position);
-                },
-                .floor => {
-                    const offset = object_end_position.subtract(object.start_position);
-                    const camera_right_axis = camera_direction.rotateRightBy90Degrees();
-                    const side_a_length = offset.projectOnto(camera_direction).length();
-                    const side_a_offset = camera_direction.normalize().scale(side_a_length);
-                    const side_b_length = offset.projectOnto(camera_right_axis).length();
+        const object = self.currently_edited_object orelse return;
+        switch (self.object_type_to_insert.used_field) {
+            .wall => {
+                try map.geometry
+                    .updateWall(object.object_id, object.start_position, object_end_position);
+            },
+            .floor => {
+                const offset = object_end_position.subtract(object.start_position);
+                const camera_right_axis = camera_direction.rotateRightBy90Degrees();
+                const side_a_length = offset.projectOnto(camera_direction).length();
+                const side_a_offset = camera_direction.normalize().scale(side_a_length);
+                const side_b_length = offset.projectOnto(camera_right_axis).length();
 
-                    var side_a_start = object.start_position;
-                    var side_a_end = side_a_start.add(side_a_offset);
-                    if (camera_direction.dotProduct(offset) < 0) {
-                        side_a_start = object.start_position.subtract(side_a_offset);
-                        side_a_end = object.start_position;
-                    }
-                    if (camera_right_axis.dotProduct(offset) > 0) {
-                        std.mem.swap(math.FlatVector, &side_a_start, &side_a_end);
-                    }
+                var side_a_start = object.start_position;
+                var side_a_end = side_a_start.add(side_a_offset);
+                if (camera_direction.dotProduct(offset) < 0) {
+                    side_a_start = object.start_position.subtract(side_a_offset);
+                    side_a_end = object.start_position;
+                }
+                if (camera_right_axis.dotProduct(offset) > 0) {
+                    std.mem.swap(math.FlatVector, &side_a_start, &side_a_end);
+                }
 
-                    try map.geometry.updateFloor(
-                        object.object_id,
-                        side_a_start,
-                        side_a_end,
-                        side_b_length,
-                    );
-                },
-                .billboard => {},
-            }
+                try map.geometry.updateFloor(
+                    object.object_id,
+                    side_a_start,
+                    side_a_end,
+                    side_b_length,
+                );
+            },
+            .billboard => {},
         }
     }
 };
