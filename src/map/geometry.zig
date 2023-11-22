@@ -381,7 +381,7 @@ pub const Geometry = struct {
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = tint;
         } else if (self.findBillboardObject(object_id)) |billboard| {
-            billboard.tint = tint;
+            billboard.setTint(tint);
         }
         try self.updateCache();
     }
@@ -392,7 +392,7 @@ pub const Geometry = struct {
         } else if (self.findFloor(object_id)) |floor| {
             floor.tint = Floor.getDefaultTint(floor.floor_type);
         } else if (self.findBillboardObject(object_id)) |billboard| {
-            billboard.tint = BillboardObject.getDefaultTint(billboard.object_type);
+            billboard.setTint(BillboardObject.getDefaultTint(billboard.object_type));
         }
         try self.updateCache();
     }
@@ -1022,7 +1022,6 @@ const BillboardObject = struct {
     object_id: u64,
     object_type: Geometry.BillboardObjectType,
     boundaries: collision.Circle,
-    tint: util.Color,
     sprite_data: rendering.SpriteData,
 
     fn create(
@@ -1045,7 +1044,6 @@ const BillboardObject = struct {
             .object_id = object_id,
             .object_type = object_type,
             .boundaries = boundaries,
-            .tint = tint,
             .sprite_data = .{
                 .position = .{
                     .x = boundaries.position.x,
@@ -1060,6 +1058,20 @@ const BillboardObject = struct {
                 .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
             },
         };
+    }
+
+    fn getTint(self: BillboardObject) util.Color {
+        return .{
+            .r = self.sprite_data.tint.r,
+            .g = self.sprite_data.tint.g,
+            .b = self.sprite_data.tint.b,
+        };
+    }
+
+    fn setTint(self: *BillboardObject, tint: util.Color) void {
+        self.sprite_data.tint.r = tint.r;
+        self.sprite_data.tint.g = tint.g;
+        self.sprite_data.tint.b = tint.b;
     }
 
     fn cast3DRay(self: BillboardObject, ray: collision.Ray3d) ?collision.Ray3d.ImpactPoint {
