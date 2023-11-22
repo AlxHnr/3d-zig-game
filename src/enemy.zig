@@ -47,17 +47,8 @@ pub const Enemy = struct {
     config: *const Config,
     character: GameCharacter,
     state: State,
+    state_at_previous_tick: RenderSnapshot.State,
 
-    values_from_previous_tick: ValuesForRendering,
-    prepared_render_data: struct {
-        values: ValuesForRendering,
-        should_render_name: bool,
-        should_render_health_bar: bool,
-    },
-
-    const enemy_name_font_scale = 1;
-    const health_bar_scale = 1;
-    const health_bar_height = health_bar_scale * 6;
     const peer_overlap_radius = @as(f32, @floatFromInt(position_grid_cell_size)) / 10.0;
     const peer_flock_radius = peer_overlap_radius * 4.0;
 
@@ -74,27 +65,16 @@ pub const Enemy = struct {
             0,
             config.max_health,
         );
-        const render_values = .{
-            .position = character.moving_circle.getPosition(),
-            .radius = character.moving_circle.radius,
-            .height = character.height,
-            .health = character.health,
-        };
         return .{
             .config = config,
             .character = character,
             .state = .{ .spawning = undefined },
-            .values_from_previous_tick = render_values,
-            .prepared_render_data = .{
-                .values = render_values,
-                .should_render_name = true,
-                .should_render_health_bar = true,
-            },
+            .state_at_previous_tick = RenderSnapshot.State.create(character),
         };
     }
 
     pub fn processElapsedTick(self: *Enemy, context: TickContext) void {
-        self.values_from_previous_tick = self.getValuesForRendering();
+        self.state_at_previous_tick = RenderSnapshot.State.create(self.character);
         switch (self.state) {
             .spawning => self.state = .{ .idle = IdleState.create(context) },
             .idle => |*state| state.handleElapsedTick(self, context),
@@ -104,84 +84,12 @@ pub const Enemy = struct {
         self.character.processElapsedTick(context.map.*);
     }
 
-    pub fn prepareRender(
-        self: *Enemy,
-        camera: ThirdPersonCamera,
-        interval_between_previous_and_current_tick: f32,
-    ) void {
-        const values_to_render = self.values_from_previous_tick.lerp(
-            self.getValuesForRendering(),
-            interval_between_previous_and_current_tick,
-        );
-
-        const distance_from_camera = values_to_render.position
-            .toVector3d().subtract(camera.getPosition()).lengthSquared();
-        const max_text_render_distance = values_to_render.height * 15;
-        const max_health_render_distance = values_to_render.height * 35;
-        self.prepared_render_data = .{
-            .values = values_to_render,
-            .should_render_name = distance_from_camera <
-                max_text_render_distance * max_text_render_distance,
-            .should_render_health_bar = distance_from_camera <
-                max_health_render_distance * max_health_render_distance,
+    pub fn makeRenderSnapshot(self: Enemy) RenderSnapshot {
+        return .{
+            .config = self.config,
+            .current_state = RenderSnapshot.State.create(self.character),
+            .state_at_previous_tick = self.state_at_previous_tick,
         };
-    }
-
-    pub fn getBillboardCount(self: Enemy, cache: PrerenderedNames) usize {
-        var billboard_count: usize = 1; // Enemy sprite.
-        if (self.prepared_render_data.should_render_name) {
-            billboard_count += cache.get(self.config).len;
-        }
-        if (self.prepared_render_data.should_render_health_bar) {
-            billboard_count += 2;
-        }
-
-        return billboard_count;
-    }
-
-    pub fn populateBillboardData(
-        self: Enemy,
-        spritesheet: SpriteSheetTexture,
-        cache: PrerenderedNames,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []rendering.SpriteData,
-    ) void {
-        const offset_to_player_height_factor = 1.2;
-        out[0] = makeSpriteData(
-            self.prepared_render_data.values.position,
-            self.prepared_render_data.values.radius,
-            self.prepared_render_data.values.height,
-            self.config.sprite,
-            spritesheet,
-        );
-
-        var offset_to_name_letters: usize = 1;
-        var pixel_offset_for_name_y: i16 = 0;
-        if (self.prepared_render_data.should_render_health_bar) {
-            populateHealthbarBillboardData(
-                self.prepared_render_data.values,
-                spritesheet,
-                offset_to_player_height_factor,
-                out[1..],
-            );
-            offset_to_name_letters += 2;
-            pixel_offset_for_name_y -= health_bar_height * 2;
-        }
-
-        if (self.prepared_render_data.should_render_name) {
-            const up = math.Vector3d{ .x = 0, .y = 1, .z = 0 };
-            std.mem.copy(
-                rendering.SpriteData,
-                out[offset_to_name_letters..],
-                cache.get(self.config),
-            );
-            const position = self.prepared_render_data.values.position.toVector3d()
-                .add(up.scale(self.prepared_render_data.values.height *
-                offset_to_player_height_factor));
-            for (out[offset_to_name_letters..]) |*billboard_data| {
-                billboard_data.position = .{ .x = position.x, .y = position.y, .z = position.z };
-            }
-        }
     }
 
     pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
@@ -195,26 +103,151 @@ pub const Enemy = struct {
         };
     }
 
-    pub fn populateHealthbarBillboardData(
-        values_to_render: ValuesForRendering,
+    const State = union(enum) {
+        spawning: void,
+        idle: IdleState,
+        attacking: AttackingState,
+        dead: void,
+    };
+};
+
+pub const RenderSnapshot = struct {
+    config: *const Config,
+    current_state: State,
+    state_at_previous_tick: State,
+
+    const enemy_name_font_scale = 1;
+    const health_bar_scale = 1;
+    const health_bar_height = health_bar_scale * 6;
+    const offset_to_player_height_factor = 1.2;
+
+    pub fn getBillboardCount(
+        self: RenderSnapshot,
+        cache: PrerenderedNames,
+        camera: ThirdPersonCamera,
+        interval_between_previous_and_current_tick: f32,
+    ) usize {
+        const state = self.interpolate(camera, interval_between_previous_and_current_tick);
+        var billboard_count: usize = 1; // Enemy sprite.
+        if (state.should_render_name) {
+            billboard_count += cache.get(self.config).len;
+        }
+        if (state.should_render_health_bar) {
+            billboard_count += 2;
+        }
+        return billboard_count;
+    }
+
+    pub fn populateBillboardData(
+        self: RenderSnapshot,
         spritesheet: SpriteSheetTexture,
-        offset_to_player_height_factor: f32,
+        cache: PrerenderedNames,
+        camera: ThirdPersonCamera,
+        interval_between_previous_and_current_tick: f32,
+        /// Must have enough capacity to store all billboards. See getBillboardCount().
+        out: []rendering.SpriteData,
+    ) void {
+        const state = self.interpolate(camera, interval_between_previous_and_current_tick);
+        out[0] = makeSpriteData(
+            state.values.position,
+            state.values.radius,
+            state.values.height,
+            self.config.sprite,
+            spritesheet,
+        );
+
+        var offset_to_name_letters: usize = 1;
+        var pixel_offset_for_name_y: i16 = 0;
+        if (state.should_render_health_bar) {
+            populateHealthbarBillboardData(state, spritesheet, out[1..]);
+            offset_to_name_letters += 2;
+            pixel_offset_for_name_y -= health_bar_height * 2;
+        }
+
+        if (state.should_render_name) {
+            const up = math.Vector3d{ .x = 0, .y = 1, .z = 0 };
+            std.mem.copy(
+                rendering.SpriteData,
+                out[offset_to_name_letters..],
+                cache.get(self.config),
+            );
+            const position = state.values.position.toVector3d()
+                .add(up.scale(state.values.height * offset_to_player_height_factor));
+            for (out[offset_to_name_letters..]) |*billboard_data| {
+                billboard_data.position = .{ .x = position.x, .y = position.y, .z = position.z };
+            }
+        }
+    }
+
+    fn interpolate(self: RenderSnapshot, camera: ThirdPersonCamera, t: f32) InterpolatedState {
+        const values = .{
+            .position = self.state_at_previous_tick.position.lerp(self.current_state.position, t),
+            .radius = math.lerp(self.state_at_previous_tick.radius, self.current_state.radius, t),
+            .height = math.lerp(self.state_at_previous_tick.height, self.current_state.height, t),
+            .health = .{
+                .current = math.lerpU32(
+                    self.state_at_previous_tick.health.current,
+                    self.current_state.health.current,
+                    t,
+                ),
+                .max = math.lerpU32(
+                    self.state_at_previous_tick.health.max,
+                    self.current_state.health.max,
+                    t,
+                ),
+            },
+        };
+        const distance = values.position.toVector3d().subtract(camera.getPosition()).lengthSquared();
+        const max_text_distance = values.height * 15;
+        const max_health_distance = values.height * 35;
+        return .{
+            .values = values,
+            .should_render_name = distance < max_text_distance * max_text_distance,
+            .should_render_health_bar = distance < max_health_distance * max_health_distance,
+        };
+    }
+
+    const State = struct {
+        position: math.FlatVector,
+        radius: f32,
+        height: f32,
+        health: GameCharacter.Health,
+
+        fn create(character: GameCharacter) State {
+            return .{
+                .position = character.moving_circle.getPosition(),
+                .radius = character.moving_circle.radius,
+                .height = character.height,
+                .health = character.health,
+            };
+        }
+    };
+
+    const InterpolatedState = struct {
+        values: State,
+        should_render_name: bool,
+        should_render_health_bar: bool,
+    };
+
+    fn populateHealthbarBillboardData(
+        state: InterpolatedState,
+        spritesheet: SpriteSheetTexture,
         out: []rendering.SpriteData,
     ) void {
         const health_percent =
-            @as(f32, @floatFromInt(values_to_render.health.current)) /
-            @as(f32, @floatFromInt(values_to_render.health.max));
+            @as(f32, @floatFromInt(state.values.health.current)) /
+            @as(f32, @floatFromInt(state.values.health.max));
         const source = spritesheet.getSpriteTexcoords(.white_block);
         const billboard_data = .{
             .position = .{
-                .x = values_to_render.position.x,
-                .y = values_to_render.height * offset_to_player_height_factor,
-                .z = values_to_render.position.z,
+                .x = state.values.position.x,
+                .y = state.values.height * offset_to_player_height_factor,
+                .z = state.values.position.z,
             },
             .size = .{
                 .w = health_bar_scale *
                     // This factor has been determined by trial and error.
-                    std.math.log1p(@as(f32, @floatFromInt(values_to_render.health.max))) * 8,
+                    std.math.log1p(@as(f32, @floatFromInt(state.values.health.max))) * 8,
                 .h = health_bar_height,
             },
             .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
@@ -237,19 +270,6 @@ pub const Enemy = struct {
         right_half.size.w *= 1 - health_percent;
         right_half.offset_from_origin.x = (billboard_data.size.w - right_half.size.w) / 2;
         right_half.tint = .{ .r = background.r, .g = background.g, .b = background.b };
-    }
-
-    fn getNameText(self: Enemy) [1]text_rendering.TextSegment {
-        return .{.{ .color = Color.white, .text = self.config.name }};
-    }
-
-    fn getValuesForRendering(self: Enemy) ValuesForRendering {
-        return .{
-            .position = self.character.moving_circle.getPosition(),
-            .radius = self.character.moving_circle.radius,
-            .height = self.character.height,
-            .health = self.character.health,
-        };
     }
 };
 
@@ -282,8 +302,8 @@ pub const PrerenderedNames = struct {
                 text_segment,
                 .{ .x = 0, .y = 0, .z = 0 },
                 0,
-                Enemy.health_bar_height * 2,
-                spritesheet.getFontSizeMultiple(Enemy.enemy_name_font_scale),
+                RenderSnapshot.health_bar_height * 2,
+                spritesheet.getFontSizeMultiple(RenderSnapshot.enemy_name_font_scale),
                 spritesheet,
                 billboard_data,
             );
@@ -313,36 +333,6 @@ pub const PrerenderedNames = struct {
         }
         break :blk addresses;
     };
-};
-
-const State = union(enum) {
-    spawning: void,
-    idle: IdleState,
-    attacking: AttackingState,
-    dead: void,
-};
-
-const ValuesForRendering = struct {
-    position: math.FlatVector,
-    radius: f32,
-    height: f32,
-    health: GameCharacter.Health,
-
-    pub fn lerp(
-        self: ValuesForRendering,
-        other: ValuesForRendering,
-        t: f32,
-    ) ValuesForRendering {
-        return .{
-            .position = self.position.lerp(other.position, t),
-            .radius = math.lerp(self.radius, other.radius, t),
-            .height = math.lerp(self.height, other.height, t),
-            .health = .{
-                .current = math.lerpU32(self.health.current, other.health.current, t),
-                .max = math.lerpU32(self.health.max, other.health.max, t),
-            },
-        };
-    }
 };
 
 const IdleState = struct {
@@ -434,8 +424,8 @@ const AttackingState = struct {
             AverageAccumulator.create(enemy.character.acceleration_direction);
         while (iterator.next()) |peer| {
             // Ignore self.
-            if (math.isEqual(enemy.values_from_previous_tick.position.x, peer.position.x) and
-                math.isEqual(enemy.values_from_previous_tick.position.z, peer.position.z))
+            if (math.isEqual(enemy.state_at_previous_tick.position.x, peer.position.x) and
+                math.isEqual(enemy.state_at_previous_tick.position.z, peer.position.z))
             {
                 continue;
             }

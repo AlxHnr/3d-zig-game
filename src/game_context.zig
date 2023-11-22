@@ -309,11 +309,19 @@ pub const Context = struct {
         self.performance_measurements.proceed(.render_enemies);
         var enemy_iterator = self.shared_context.enemy_collection.iterator();
         while (enemy_iterator.next()) |enemy_ptr| {
+            const snapshot = enemy_ptr.makeRenderSnapshot();
+
             start = end;
-            end += enemy_ptr.getBillboardCount(self.prerendered_enemy_names);
-            enemy_ptr.populateBillboardData(
+            end += snapshot.getBillboardCount(
+                self.prerendered_enemy_names,
+                camera,
+                self.interval_between_previous_and_current_tick,
+            );
+            snapshot.populateBillboardData(
                 self.spritesheet,
                 self.prerendered_enemy_names,
+                camera,
+                self.interval_between_previous_and_current_tick,
                 self.billboard_buffer[start..end],
             );
         }
@@ -558,9 +566,12 @@ pub const Context = struct {
         thread_context.enemy_billboard_count = 0;
         var iterator = enemy_iterator;
         while (iterator.next()) |enemy_ptr| {
-            enemy_ptr.prepareRender(camera, self.interval_between_previous_and_current_tick);
             thread_context.enemy_billboard_count +=
-                enemy_ptr.getBillboardCount(self.prerendered_enemy_names);
+                enemy_ptr.makeRenderSnapshot().getBillboardCount(
+                self.prerendered_enemy_names,
+                camera,
+                self.interval_between_previous_and_current_tick,
+            );
         }
     }
 };
