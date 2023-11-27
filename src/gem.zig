@@ -10,23 +10,21 @@ state: State,
 state_at_previous_tick: State,
 
 const Gem = @This();
-const animation_speed = simulation.kphToGameUnitsPerTick(10);
 const height = 1.5;
+const jump_height = 1.5;
+const animation_speed = simulation.kphToGameUnitsPerTick(10);
 
-pub fn create(position: math.FlatVector) Gem {
-    return .{
-        .position = position,
-        .state = .{ .spawn_animation_progress = 0 },
-        .state_at_previous_tick = .{ .spawn_animation_progress = 0 },
-    };
+pub fn create(position: math.FlatVector, originates_from: math.FlatVector) Gem {
+    const state = .{ .spawning = .{ .progress = 0, .source_position = originates_from } };
+    return .{ .position = position, .state = state, .state_at_previous_tick = state };
 }
 
 pub fn processElapsedTick(self: *Gem, context: TickContext) Result {
     self.state_at_previous_tick = self.state;
     switch (self.state) {
-        .spawn_animation_progress => |*progress| {
-            progress.* += animation_speed;
-            if (progress.* > 1) {
+        .spawning => |*spawning| {
+            spawning.progress += animation_speed;
+            if (spawning.progress > 1) {
                 self.state = .{ .waiting = {} };
             }
         },
@@ -36,13 +34,15 @@ pub fn processElapsedTick(self: *Gem, context: TickContext) Result {
                 boundaries,
             ) orelse break :blk;
             if (!context.map.geometry.isSolidWallBetweenPoints(self.position, character_position)) {
-                self.state = .{ .pickup_animation_progress = 0 };
+                self.state = .{
+                    .pickup = .{ .progress = 0, .target_position = character_position },
+                };
                 return .picked_up_by_player;
             }
         },
-        .pickup_animation_progress => |*progress| {
-            progress.* += animation_speed;
-            if (progress.* > 1) {
+        .pickup => |*pickup| {
+            pickup.progress += animation_speed;
+            if (pickup.progress > 1) {
                 self.state = .{ .disappeared = {} };
             }
         },
@@ -89,21 +89,21 @@ pub const RenderSnapshot = struct {
             .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
         };
         switch (state) {
-            .spawn_animation_progress => |progress| {
-                const jump_height = 1.5;
-                const t = (progress - 0.5) * 2;
-                const y = (1 - t * t + result.position.y * progress) * jump_height;
-                result.position = .{
-                    .x = self.position.x,
-                    .y = y,
-                    .z = self.position.z,
-                };
-            },
+            .spawning => |spawning| interpolateJumpAnimation(
+                &result,
+                spawning.source_position,
+                self.position,
+                spawning.progress,
+                false,
+            ),
             .waiting => {},
-            .pickup_animation_progress => |progress| {
-                result.size.w *= 1 - progress;
-                result.size.h *= 1 - progress;
-            },
+            .pickup => |pickup| interpolateJumpAnimation(
+                &result,
+                self.position,
+                pickup.target_position,
+                pickup.progress,
+                true,
+            ),
             .disappeared => {
                 result.size.w = 0;
                 result.size.h = 0;
@@ -112,43 +112,82 @@ pub const RenderSnapshot = struct {
         return result;
     }
 
-    pub fn interpolate(self: RenderSnapshot, t: f32) State {
+    fn interpolate(self: RenderSnapshot, t: f32) State {
         return switch (self.state_at_previous_tick) {
-            .spawn_animation_progress => |old| switch (self.current_state) {
-                .spawn_animation_progress => |current| .{
-                    .spawn_animation_progress = math.lerp(old, current, t),
+            .spawning => |old| switch (self.current_state) {
+                .spawning => |current| .{
+                    .spawning = .{
+                        .progress = math.lerp(old.progress, current.progress, t),
+                        .source_position = old.source_position,
+                    },
                 },
                 .waiting => .{
-                    .spawn_animation_progress = math.lerp(old, 1, t),
+                    .spawning = .{
+                        .progress = math.lerp(old.progress, 1, t),
+                        .source_position = old.source_position,
+                    },
                 },
                 else => unreachable,
             },
             .waiting => switch (self.current_state) {
                 .waiting => .{ .waiting = {} },
-                .pickup_animation_progress => |current| .{
-                    .pickup_animation_progress = math.lerp(0, current, t),
+                .pickup => |current| .{
+                    .pickup = .{
+                        .progress = math.lerp(0, current.progress, t),
+                        .target_position = current.target_position,
+                    },
                 },
                 else => unreachable,
             },
-            .pickup_animation_progress => |old| switch (self.current_state) {
-                .pickup_animation_progress => |current| .{
-                    .pickup_animation_progress = math.lerp(old, current, t),
+            .pickup => |old| switch (self.current_state) {
+                .pickup => |current| .{
+                    .pickup = .{
+                        .progress = math.lerp(old.progress, current.progress, t),
+                        .target_position = old.target_position,
+                    },
                 },
                 .disappeared => .{
-                    .pickup_animation_progress = math.lerp(old, 1, t),
+                    .pickup = .{
+                        .progress = math.lerp(old.progress, 1, t),
+                        .target_position = old.target_position,
+                    },
                 },
                 else => unreachable,
             },
             .disappeared => .{ .disappeared = {} },
         };
     }
+
+    fn interpolateJumpAnimation(
+        to_update: *SpriteData,
+        start_position: math.FlatVector,
+        end_position: math.FlatVector,
+        progress: f32,
+        invert_scale: bool,
+    ) void {
+        const scale = if (invert_scale) 1 - progress else progress;
+        const t = (progress - 0.5) * 2;
+        to_update.size.w *= scale;
+        to_update.size.h *= scale;
+        to_update.position = .{
+            .x = math.lerp(start_position.x, end_position.x, progress),
+            .y = to_update.position.y + (1 - t * t) * jump_height,
+            .z = math.lerp(start_position.z, end_position.z, progress),
+        };
+    }
 };
 
 const State = union(enum) {
-    /// Progresses from 0 to 1.
-    spawn_animation_progress: f32,
+    spawning: struct {
+        /// Progresses from 0 to 1.
+        progress: f32,
+        source_position: math.FlatVector,
+    },
     waiting: void,
-    /// Progresses from 0 to 1.
-    pickup_animation_progress: f32,
+    pickup: struct {
+        /// Progresses from 0 to 1.
+        progress: f32,
+        target_position: math.FlatVector,
+    },
     disappeared: void,
 };
