@@ -821,7 +821,7 @@ test "SpatialGrid: const iterator: region queries" {
 }
 
 test "SpatialCollection: iterator" {
-    var collection = try SpatialCollection.create(std.testing.allocator);
+    var collection = SpatialCollection.create(std.testing.allocator);
     defer collection.destroy();
 
     const handles = .{
@@ -865,7 +865,7 @@ test "SpatialCollection: iterator" {
 }
 
 test "SpatialCollection: iterator: skip cells" {
-    var collection = try SpatialCollection.create(std.testing.allocator);
+    var collection = SpatialCollection.create(std.testing.allocator);
     defer collection.destroy();
 
     _ = try collection.insert(1, .{ .x = -160, .z = -190 });
@@ -904,7 +904,7 @@ test "SpatialCollection: iterator: skip cells" {
 }
 
 test "SpatialCollection: update displaced back references" {
-    var collection = try SpatialCollection.create(std.testing.allocator);
+    var collection = SpatialCollection.create(std.testing.allocator);
     defer collection.destroy();
 
     const handles = .{
