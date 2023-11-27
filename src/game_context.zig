@@ -1,6 +1,7 @@
 const AttackingEnemyPosition = @import("enemy.zig").AttackingEnemyPosition;
 const Enemy = @import("enemy.zig").Enemy;
 const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
+const EnemyRenderSnapshot = @import("enemy.zig").RenderSnapshot;
 const FlowField = @import("flow_field.zig").Field;
 const Gem = @import("gem.zig");
 const Hud = @import("hud.zig").Hud;
@@ -281,28 +282,18 @@ pub const Context = struct {
         const camera = self.main_character
             .getCamera(self.interval_between_previous_and_current_tick);
 
-        var billboards_to_render: usize = 0;
-
-        self.performance_measurements.begin(.render_enemies);
-        for (self.thread_contexts, 0..) |context, thread_id| {
-            var iterator = self.shared_context.enemy_collection.iteratorAdvanced(
-                thread_id,
-                self.thread_contexts.len - 1,
-            );
-            try self.thread_pool.dispatch(
-                prepareEnemyRenderThread,
-                .{ self, context, iterator, camera },
-            );
-        }
-        self.thread_pool.wait();
+        var billboards_to_render: usize = 1; // Player sprite.
         for (self.thread_contexts) |context| {
-            billboards_to_render += context.enemies.billboard_count;
+            for (context.enemies.render_snapshots.items) |snapshot| {
+                billboards_to_render += snapshot.getBillboardCount(
+                    self.prerendered_enemy_names,
+                    camera,
+                    self.interval_between_previous_and_current_tick,
+                );
+            }
             billboards_to_render += context.gems.render_snapshots.items.len;
         }
         self.performance_measurements.pause(.render_enemies);
-
-        billboards_to_render += 1; // Player sprite.
-
         if (self.billboard_buffer.len < billboards_to_render) {
             self.billboard_buffer =
                 try allocator.realloc(self.billboard_buffer, billboards_to_render);
@@ -310,25 +301,23 @@ pub const Context = struct {
 
         var start: usize = 0;
         var end: usize = 0;
-
         self.performance_measurements.proceed(.render_enemies);
-        var enemy_iterator = self.shared_context.enemy_collection.iterator();
-        while (enemy_iterator.next()) |enemy_ptr| {
-            const snapshot = enemy_ptr.makeRenderSnapshot();
-
-            start = end;
-            end += snapshot.getBillboardCount(
-                self.prerendered_enemy_names,
-                camera,
-                self.interval_between_previous_and_current_tick,
-            );
-            snapshot.populateBillboardData(
-                self.spritesheet,
-                self.prerendered_enemy_names,
-                camera,
-                self.interval_between_previous_and_current_tick,
-                self.billboard_buffer[start..end],
-            );
+        for (self.thread_contexts) |context| {
+            for (context.enemies.render_snapshots.items) |snapshot| {
+                start = end;
+                end += snapshot.getBillboardCount(
+                    self.prerendered_enemy_names,
+                    camera,
+                    self.interval_between_previous_and_current_tick,
+                );
+                snapshot.populateBillboardData(
+                    self.spritesheet,
+                    self.prerendered_enemy_names,
+                    camera,
+                    self.interval_between_previous_and_current_tick,
+                    self.billboard_buffer[start..end],
+                );
+            }
         }
         self.performance_measurements.end(.render_enemies);
 
@@ -573,12 +562,12 @@ pub const Context = struct {
                 );
                 try thread_context.enemies.insertion_queue.append(enemy_ptr.*);
             }
-
             if (enemy_ptr.state == .attacking) {
                 try thread_context.enemies.attacking_positions.append(
                     enemy_ptr.makeAttackingEnemyPosition(),
                 );
             }
+            try thread_context.enemies.render_snapshots.append(enemy_ptr.makeRenderSnapshot());
         }
     }
 
@@ -608,24 +597,6 @@ pub const Context = struct {
         }
         thread_context.gems.amount_collected = gems_collected;
     }
-
-    fn prepareEnemyRenderThread(
-        self: *Context,
-        thread_context: *ThreadContext,
-        enemy_iterator: SharedContext.EnemyCollection.Iterator,
-        camera: ThirdPersonCamera,
-    ) void {
-        var billboard_count: usize = 0;
-        var iterator = enemy_iterator;
-        while (iterator.next()) |enemy_ptr| {
-            billboard_count += enemy_ptr.makeRenderSnapshot().getBillboardCount(
-                self.prerendered_enemy_names,
-                camera,
-                self.interval_between_previous_and_current_tick,
-            );
-        }
-        thread_context.enemies.billboard_count = billboard_count;
-    }
 };
 
 const ThreadContext = struct {
@@ -633,7 +604,7 @@ const ThreadContext = struct {
         insertion_queue: std.ArrayList(Enemy),
         removal_queue: std.ArrayList(*EnemyObjectHandle),
         attacking_positions: std.ArrayList(AttackingEnemyPosition),
-        billboard_count: usize,
+        render_snapshots: std.ArrayList(EnemyRenderSnapshot),
     },
     gems: struct {
         amount_collected: u64,
@@ -650,7 +621,7 @@ const ThreadContext = struct {
                 .insertion_queue = std.ArrayList(Enemy).init(allocator),
                 .removal_queue = std.ArrayList(*EnemyObjectHandle).init(allocator),
                 .attacking_positions = std.ArrayList(AttackingEnemyPosition).init(allocator),
-                .billboard_count = 0,
+                .render_snapshots = std.ArrayList(EnemyRenderSnapshot).init(allocator),
             },
             .gems = .{
                 .amount_collected = 0,
@@ -663,6 +634,7 @@ const ThreadContext = struct {
     fn destroy(self: *ThreadContext) void {
         self.gems.render_snapshots.deinit();
         self.gems.removal_queue.deinit();
+        self.enemies.render_snapshots.deinit();
         self.enemies.attacking_positions.deinit();
         self.enemies.removal_queue.deinit();
         self.enemies.insertion_queue.deinit();
@@ -672,7 +644,7 @@ const ThreadContext = struct {
         self.enemies.insertion_queue.clearRetainingCapacity();
         self.enemies.removal_queue.clearRetainingCapacity();
         self.enemies.attacking_positions.clearRetainingCapacity();
-        self.enemies.billboard_count = 0;
+        self.enemies.render_snapshots.clearRetainingCapacity();
         self.gems.amount_collected = 0;
         self.gems.removal_queue.clearRetainingCapacity();
         self.gems.render_snapshots.clearRetainingCapacity();
