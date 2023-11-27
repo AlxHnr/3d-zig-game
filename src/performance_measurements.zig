@@ -7,6 +7,7 @@ pub const Measurements = struct {
         total,
         tick,
         enemy_logic,
+        gem_logic,
         thread_aggregation,
         flow_field,
         thread_aggregation_flow_field,
@@ -85,12 +86,13 @@ pub const Measurements = struct {
     }
 
     pub fn printLogInfo(self: Measurements) void {
-        std.log.info(
-            "⏱️ {d:.2}ms │ ⏲️ {d:.2}ms: 👾{d:.2}ms 🧵{d:.2}ms⟨🌐{d:.2}ms ∧ ↪️ {d:.2}ms⟩ │ 🖌️{d:.2}ms: 👾{d:.2}ms",
+        std.log.err(
+            "⏱️ {d:.2}ms │ ⏲️ {d:.2}ms: 👾{d:.2}ms ♦️ {d:.2}ms 🧵{d:.2}ms⟨🌐{d:.2}ms ∧ ↪️ {d:.2}ms⟩ │ 🖌️{d:.2}ms: 👾{d:.2}ms",
             .{
                 self.getAverage(.total),
                 self.getAverage(.tick),
                 self.getAverage(.enemy_logic),
+                self.getAverage(.gem_logic),
                 self.getAverage(.thread_aggregation_flow_field),
                 self.getAverage(.flow_field),
                 self.getAverage(.thread_aggregation),

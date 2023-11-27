@@ -242,6 +242,11 @@ pub const Context = struct {
                     .getLongest(context.performance_measurements, .enemy_logic);
             }
             self.performance_measurements.copySingleMetric(slowest_thread, .enemy_logic);
+            for (self.thread_contexts) |context| {
+                slowest_thread = slowest_thread
+                    .getLongest(context.performance_measurements, .gem_logic);
+            }
+            self.performance_measurements.copySingleMetric(slowest_thread, .gem_logic);
 
             self.shared_context.dialog_controller.processElapsedTick();
 
@@ -455,6 +460,8 @@ pub const Context = struct {
         attacking_enemy_positions_at_previous_tick: *EnemyPositionGrid,
     ) !void {
         self.performance_measurements.begin(.thread_aggregation);
+        defer self.performance_measurements.end(.thread_aggregation);
+
         for (self.thread_contexts) |context| {
             for (context.enemies.removal_queue.items) |object_handle| {
                 self.shared_context.enemy_collection.remove(object_handle);
@@ -476,11 +483,12 @@ pub const Context = struct {
                 self.shared_context.gem_collection.remove(object_handle);
             }
         }
-        self.performance_measurements.end(.thread_aggregation);
     }
 
     fn recomputeFlowFieldThread(self: *Context) !void {
         self.performance_measurements.begin(.flow_field);
+        defer self.performance_measurements.end(.flow_field);
+
         for (self.thread_contexts) |context| {
             for (context.enemies.attacking_positions.items) |attacking_enemy| {
                 self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
@@ -490,7 +498,6 @@ pub const Context = struct {
             self.main_character.character.moving_circle.getPosition(),
             self.map,
         );
-        self.performance_measurements.end(.flow_field);
     }
 
     fn processEnemyThread(
@@ -566,6 +573,9 @@ pub const Context = struct {
 
     fn processGemThread(self: *Context, thread_id: usize) !void {
         const thread_context = self.thread_contexts[thread_id];
+        thread_context.performance_measurements.begin(.gem_logic);
+        defer thread_context.performance_measurements.end(.gem_logic);
+
         const tick_context = .{
             .map = &self.map,
             .main_character = &self.main_character.character,
