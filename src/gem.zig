@@ -11,8 +11,7 @@ state_at_previous_tick: State,
 
 const Gem = @This();
 const animation_speed = simulation.kphToGameUnitsPerTick(10);
-const width = 0.4;
-const collision_radius = width * 3;
+const height = 1.5;
 
 pub fn create(position: math.FlatVector) Gem {
     return .{
@@ -32,7 +31,7 @@ pub fn processElapsedTick(self: *Gem, context: TickContext) Result {
             }
         },
         .waiting => blk: {
-            const boundaries = .{ .position = self.position, .radius = collision_radius };
+            const boundaries = .{ .position = self.position, .radius = 10 };
             const character_position = context.main_character.moving_circle.hasCollidedWithCircle(
                 boundaries,
             ) orelse break :blk;
@@ -83,18 +82,17 @@ pub const RenderSnapshot = struct {
         var result = SpriteData{
             .position = .{
                 .x = self.position.x,
-                .y = width * sprite_aspect_ratio / 2,
+                .y = height / 2.0,
                 .z = self.position.z,
             },
-            .size = .{ .w = width, .h = width * sprite_aspect_ratio },
+            .size = .{ .w = height / sprite_aspect_ratio, .h = height },
             .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
         };
         switch (state) {
             .spawn_animation_progress => |progress| {
                 const jump_height = 1.5;
-                const length = width * progress;
                 const t = (progress - 0.5) * 2;
-                const y = (1 - t * t + length / 2) * jump_height;
+                const y = (1 - t * t + result.position.y * progress) * jump_height;
                 result.position = .{
                     .x = self.position.x,
                     .y = y,
