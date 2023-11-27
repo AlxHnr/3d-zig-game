@@ -1,6 +1,6 @@
 const DialogController = @import("dialog.zig").Controller;
 const Enemy = @import("enemy.zig").Enemy;
-const GemCollection = @import("gem_collection.zig").Collection;
+const Gem = @import("gem.zig");
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const SpatialCollection = @import("spatial_partitioning/collection.zig").Collection;
 const std = @import("std");
@@ -14,31 +14,29 @@ pub const SharedContext = struct {
     /// just by storing user inputs. This is greatly simplifies netcode.
     rng: std.rand.Xoroshiro128,
 
-    gem_collection: GemCollection,
     enemy_collection: EnemyCollection,
+    gem_collection: GemCollection,
     dialog_controller: DialogController,
 
     pub const EnemyCollection = SpatialCollection(Enemy, 50);
+    pub const GemCollection = SpatialCollection(Gem, 20);
 
     pub fn create(allocator: std.mem.Allocator) !SharedContext {
-        var gem_collection = GemCollection.create(allocator);
-        errdefer gem_collection.destroy();
-
         var dialog_controller = try DialogController.create(allocator);
         errdefer dialog_controller.destroy();
 
         return .{
             .object_id_generator = ObjectIdGenerator.create(),
             .rng = std.rand.Xoroshiro128.init(0),
-            .gem_collection = gem_collection,
             .enemy_collection = EnemyCollection.create(allocator),
+            .gem_collection = GemCollection.create(allocator),
             .dialog_controller = dialog_controller,
         };
     }
 
     pub fn destroy(self: *SharedContext) void {
         self.dialog_controller.destroy();
-        self.enemy_collection.destroy();
         self.gem_collection.destroy();
+        self.enemy_collection.destroy();
     }
 };
