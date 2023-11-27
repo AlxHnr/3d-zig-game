@@ -218,37 +218,20 @@ pub const Context = struct {
             try self.thread_pool.dispatchIgnoreErrors(recomputeFlowFieldThread, .{self});
             self.thread_pool.wait();
             self.performance_measurements.end(.thread_aggregation_flow_field);
-
             for (self.thread_contexts) |context| {
                 self.main_character.gem_count += context.gems.amount_collected;
                 context.reset();
             }
 
             self.performance_measurements.begin(.enemy_logic);
-            for (self.thread_contexts, 0..) |context, thread_id| {
-                var iterator = self.shared_context.enemy_collection.cellGroupIteratorAdvanced(
-                    thread_id,
-                    self.thread_contexts.len - 1,
-                );
+            for (0..self.thread_contexts.len) |thread_id| {
                 try self.thread_pool.dispatchIgnoreErrors(
                     processEnemyThread,
-                    .{
-                        self,
-                        context,
-                        iterator,
-                        attacking_enemy_positions_at_previous_tick,
-                    },
+                    .{ self, thread_id, attacking_enemy_positions_at_previous_tick },
                 );
             }
-            for (self.thread_contexts, 0..) |context, thread_id| {
-                var iterator = self.shared_context.gem_collection.cellGroupIteratorAdvanced(
-                    thread_id,
-                    self.thread_contexts.len - 1,
-                );
-                try self.thread_pool.dispatchIgnoreErrors(
-                    processGemThread,
-                    .{ self, context, iterator },
-                );
+            for (0..self.thread_contexts.len) |thread_id| {
+                try self.thread_pool.dispatchIgnoreErrors(processGemThread, .{ self, thread_id });
             }
             self.thread_pool.wait();
             self.performance_measurements.end(.enemy_logic);
@@ -506,11 +489,12 @@ pub const Context = struct {
 
     fn processEnemyThread(
         self: *Context,
-        thread_context: *ThreadContext,
-        cell_group_iterator: SharedContext.EnemyCollection.CellGroupIterator,
+        thread_id: usize,
         attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
     ) !void {
-        var iterator = cell_group_iterator;
+        const thread_context = self.thread_contexts[thread_id];
+        var iterator = self.shared_context.enemy_collection
+            .cellGroupIteratorAdvanced(thread_id, self.thread_contexts.len - 1);
         while (iterator.next()) |cell_group| {
             try self.processEnemyCellGroup(
                 cell_group,
@@ -571,17 +555,18 @@ pub const Context = struct {
         }
     }
 
-    fn processGemThread(
-        self: *Context,
-        thread_context: *ThreadContext,
-        cell_group_iterator: SharedContext.GemCollection.CellGroupIterator,
-    ) !void {
+    fn processGemThread(self: *Context, thread_id: usize) !void {
+        const thread_context = self.thread_contexts[thread_id];
         const tick_context = .{
             .map = &self.map,
             .main_character = &self.main_character.character,
         };
+
         var gems_collected: u64 = 0;
-        var iterator = cell_group_iterator;
+        var iterator = self.shared_context.gem_collection.cellGroupIteratorAdvanced(
+            thread_id,
+            self.thread_contexts.len - 1,
+        );
         while (iterator.next()) |cell_group| {
             var gem_iterator = cell_group.cell.iterator();
             while (gem_iterator.next()) |gem_ptr| {
