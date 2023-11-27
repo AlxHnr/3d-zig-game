@@ -53,11 +53,8 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             };
             if (!cell.found_existing) {
                 cell.value_ptr.* = UnorderedCollection(T).create(self.allocator);
-                try self.ordered_indices.append(cell_index);
+                try self.ordered_indices.ensureUnusedCapacity(1);
             }
-            errdefer if (!cell.found_existing) {
-                _ = self.ordered_indices.pop();
-            };
 
             const object_ptr = try cell.value_ptr.appendUninitialized();
             errdefer cell.value_ptr.removeLastAppendedItem();
@@ -69,6 +66,11 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
 
             try self.object_ptr_to_back_references.putNoClobber(object_ptr, back_reference);
             errdefer self.object_ptr_to_back_references.remove(object_ptr);
+
+            if (!cell.found_existing) {
+                self.ordered_indices.appendAssumeCapacity(cell_index);
+                std.sort.insertion(CellIndex, self.ordered_indices.items, {}, lessThan);
+            }
 
             return @ptrCast(back_reference);
         }
@@ -138,7 +140,6 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             /// Number cells to skip before advancing to the next cell.
             stride: usize,
         ) CellGroupIterator {
-            std.mem.sort(CellIndex, self.ordered_indices.items, {}, lessThan);
             return .{
                 .cells = &self.cells,
                 .ordered_indices = self.ordered_indices.items,
