@@ -203,8 +203,7 @@ pub const Context = struct {
         {
             self.performance_measurements.begin(.tick);
             self.map.processElapsedTick();
-            self.main_character.processElapsedTick(self.map, &self.shared_context);
-            self.shared_context.gem_collection.processElapsedTick();
+            self.main_character.processElapsedTick(self.map);
 
             _ = self.tick_lifetime_allocator.reset(.retain_capacity);
             var attacking_enemy_positions_at_previous_tick =
@@ -274,9 +273,6 @@ pub const Context = struct {
 
         var billboards_to_render: usize = 0;
 
-        const gems_to_render = self.shared_context.gem_collection.getBillboardCount();
-        billboards_to_render += gems_to_render;
-
         self.performance_measurements.begin(.render_enemies);
         for (self.thread_contexts, 0..) |context, thread_id| {
             var iterator = self.shared_context.enemy_collection.iteratorAdvanced(
@@ -301,13 +297,8 @@ pub const Context = struct {
                 try allocator.realloc(self.billboard_buffer, billboards_to_render);
         }
 
-        self.shared_context.gem_collection.populateBillboardData(
-            self.billboard_buffer[0..gems_to_render],
-            self.spritesheet,
-            self.interval_between_previous_and_current_tick,
-        );
-        var start: usize = gems_to_render;
-        var end: usize = gems_to_render;
+        var start: usize = 0;
+        var end: usize = 0;
 
         self.performance_measurements.proceed(.render_enemies);
         var enemy_iterator = self.shared_context.enemy_collection.iterator();

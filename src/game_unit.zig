@@ -179,11 +179,9 @@ pub const Player = struct {
         self.setTurningDirection(turning_direction);
     }
 
-    pub fn processElapsedTick(self: *Player, map: Map, context: *SharedContext) void {
+    pub fn processElapsedTick(self: *Player, map: Map) void {
         self.values_from_previous_tick = self.getValuesForRendering();
         self.character.processElapsedTick(map);
-        self.gem_count +=
-            context.gem_collection.processCollision(self.character.moving_circle, map.geometry);
 
         self.orientation -= self.turning_direction * rotation_per_tick;
         self.camera.processElapsedTick(
