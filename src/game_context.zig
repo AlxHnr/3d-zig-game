@@ -110,7 +110,9 @@ pub const Context = struct {
         };
         for (thread_contexts) |*context| {
             context.* = try allocator.create(ThreadContext);
-            context.*.* = ThreadContext.create(allocator);
+            errdefer allocator.destroy(context.*);
+
+            context.*.* = try ThreadContext.create(allocator);
             contexts_created += 1;
         }
 
@@ -223,7 +225,6 @@ pub const Context = struct {
                 context.reset();
             }
 
-            self.performance_measurements.begin(.enemy_logic);
             for (0..self.thread_contexts.len) |thread_id| {
                 try self.thread_pool.dispatchIgnoreErrors(
                     processEnemyThread,
@@ -234,15 +235,21 @@ pub const Context = struct {
                 try self.thread_pool.dispatchIgnoreErrors(processGemThread, .{ self, thread_id });
             }
             self.thread_pool.wait();
-            self.performance_measurements.end(.enemy_logic);
+
+            var slowest_thread = self.thread_contexts[0].performance_measurements;
+            for (self.thread_contexts[1..]) |context| {
+                slowest_thread = slowest_thread
+                    .getLongest(context.performance_measurements, .enemy_logic);
+            }
+            self.performance_measurements.copySingleMetric(slowest_thread, .enemy_logic);
 
             self.shared_context.dialog_controller.processElapsedTick();
 
+            self.performance_measurements.end(.tick);
             if (@mod(self.tick_counter, simulation.tickrate) == 0) {
                 self.performance_measurements.updateAverageAndReset();
                 self.performance_measurements.printLogInfo();
             }
-            self.performance_measurements.end(.tick);
         }
 
         const ray_wall_collision = self.map.geometry.cast3DRayToWalls(
@@ -276,15 +283,14 @@ pub const Context = struct {
             }
             billboards_to_render += context.gems.render_snapshots.items.len;
         }
-        self.performance_measurements.pause(.render_enemies);
         if (self.billboard_buffer.len < billboards_to_render) {
             self.billboard_buffer =
                 try allocator.realloc(self.billboard_buffer, billboards_to_render);
         }
 
+        self.performance_measurements.begin(.render_enemies);
         var start: usize = 0;
         var end: usize = 0;
-        self.performance_measurements.proceed(.render_enemies);
         for (self.thread_contexts) |context| {
             for (context.enemies.render_snapshots.items) |snapshot| {
                 start = end;
@@ -493,6 +499,9 @@ pub const Context = struct {
         attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
     ) !void {
         const thread_context = self.thread_contexts[thread_id];
+        thread_context.performance_measurements.begin(.enemy_logic);
+        defer thread_context.performance_measurements.end(.enemy_logic);
+
         var iterator = self.shared_context.enemy_collection
             .cellGroupIteratorAdvanced(thread_id, self.thread_contexts.len - 1);
         while (iterator.next()) |cell_group| {
@@ -585,6 +594,7 @@ pub const Context = struct {
 };
 
 const ThreadContext = struct {
+    performance_measurements: PerformanceMeasurements,
     enemies: struct {
         insertion_queue: std.ArrayList(Enemy),
         removal_queue: std.ArrayList(*EnemyObjectHandle),
@@ -600,8 +610,9 @@ const ThreadContext = struct {
     const EnemyObjectHandle = SharedContext.EnemyCollection.ObjectHandle;
     const GemObjectHandle = SharedContext.GemCollection.ObjectHandle;
 
-    fn create(allocator: std.mem.Allocator) ThreadContext {
+    fn create(allocator: std.mem.Allocator) !ThreadContext {
         return .{
+            .performance_measurements = try PerformanceMeasurements.create(),
             .enemies = .{
                 .insertion_queue = std.ArrayList(Enemy).init(allocator),
                 .removal_queue = std.ArrayList(*EnemyObjectHandle).init(allocator),
@@ -626,6 +637,7 @@ const ThreadContext = struct {
     }
 
     fn reset(self: *ThreadContext) void {
+        self.performance_measurements.updateAverageAndReset();
         self.enemies.insertion_queue.clearRetainingCapacity();
         self.enemies.removal_queue.clearRetainingCapacity();
         self.enemies.attacking_positions.clearRetainingCapacity();

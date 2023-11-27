@@ -67,6 +67,23 @@ pub const Measurements = struct {
         }
     }
 
+    pub fn getLongest(self: Measurements, other: Measurements, metric_type: MetricType) Measurements {
+        if (self.metrics.get(metric_type).accumulated_time >
+            other.metrics.get(metric_type).accumulated_time)
+        {
+            return self;
+        }
+        return other;
+    }
+
+    pub fn copySingleMetric(
+        self: *Measurements,
+        source: Measurements,
+        metric_type_to_copy: MetricType,
+    ) void {
+        self.metrics.getPtr(metric_type_to_copy).* = source.metrics.get(metric_type_to_copy);
+    }
+
     pub fn printLogInfo(self: Measurements) void {
         std.log.info(
             "⏱️ {d:.2}ms │ ⏲️ {d:.2}ms: 👾{d:.2}ms 🧵{d:.2}ms⟨🌐{d:.2}ms ∧ ↪️ {d:.2}ms⟩ │ 🖌️{d:.2}ms: 👾{d:.2}ms",
