@@ -24,9 +24,6 @@ pub const SharedContext = struct {
         var gem_collection = GemCollection.create(allocator);
         errdefer gem_collection.destroy();
 
-        var enemy_collection = try EnemyCollection.create(allocator);
-        errdefer enemy_collection.destroy();
-
         var dialog_controller = try DialogController.create(allocator);
         errdefer dialog_controller.destroy();
 
@@ -34,7 +31,7 @@ pub const SharedContext = struct {
             .object_id_generator = ObjectIdGenerator.create(),
             .rng = std.rand.Xoroshiro128.init(0),
             .gem_collection = gem_collection,
-            .enemy_collection = enemy_collection,
+            .enemy_collection = EnemyCollection.create(allocator),
             .dialog_controller = dialog_controller,
         };
     }

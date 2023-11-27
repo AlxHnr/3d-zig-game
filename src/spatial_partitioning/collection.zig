@@ -20,7 +20,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
         /// removing objects from the collection.
         pub const ObjectHandle = opaque {};
 
-        pub fn create(allocator: std.mem.Allocator) !Self {
+        pub fn create(allocator: std.mem.Allocator) Self {
             return .{
                 .allocator = allocator,
                 .cells = CellMap.init(allocator),
