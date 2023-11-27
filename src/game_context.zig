@@ -2,6 +2,7 @@ const AttackingEnemyPosition = @import("enemy.zig").AttackingEnemyPosition;
 const Enemy = @import("enemy.zig").Enemy;
 const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
 const FlowField = @import("flow_field.zig").Field;
+const Gem = @import("gem.zig");
 const Hud = @import("hud.zig").Hud;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
@@ -210,7 +211,7 @@ pub const Context = struct {
                 EnemyPositionGrid.create(self.tick_lifetime_allocator.allocator());
             self.performance_measurements.begin(.thread_aggregation_flow_field);
             try self.thread_pool.dispatchIgnoreErrors(
-                reindexEnemyGrid,
+                updateSpatialGrids,
                 .{ self, &attacking_enemy_positions_at_previous_tick },
             );
             try self.thread_pool.dispatchIgnoreErrors(recomputeFlowFieldThread, .{self});
@@ -218,9 +219,8 @@ pub const Context = struct {
             self.performance_measurements.end(.thread_aggregation_flow_field);
 
             for (self.thread_contexts) |context| {
-                context.enemies_to_remove.clearRetainingCapacity();
-                context.enemies_to_add.clearRetainingCapacity();
-                context.previous_tick_attacking_enemies.clearRetainingCapacity();
+                self.main_character.gem_count += context.gems.amount_collected;
+                context.reset();
             }
 
             self.performance_measurements.begin(.enemy_logic);
@@ -237,6 +237,16 @@ pub const Context = struct {
                         iterator,
                         attacking_enemy_positions_at_previous_tick,
                     },
+                );
+            }
+            for (self.thread_contexts, 0..) |context, thread_id| {
+                var iterator = self.shared_context.gem_collection.cellGroupIteratorAdvanced(
+                    thread_id,
+                    self.thread_contexts.len - 1,
+                );
+                try self.thread_pool.dispatchIgnoreErrors(
+                    processGemThread,
+                    .{ self, context, iterator },
                 );
             }
             self.thread_pool.wait();
@@ -286,7 +296,8 @@ pub const Context = struct {
         }
         self.thread_pool.wait();
         for (self.thread_contexts) |context| {
-            billboards_to_render += context.enemy_billboard_count;
+            billboards_to_render += context.enemies.billboard_count;
+            billboards_to_render += context.gems.render_snapshots.items.len;
         }
         self.performance_measurements.pause(.render_enemies);
 
@@ -320,6 +331,17 @@ pub const Context = struct {
             );
         }
         self.performance_measurements.end(.render_enemies);
+
+        for (self.thread_contexts) |context| {
+            for (context.gems.render_snapshots.items) |snapshot| {
+                start = end;
+                end += 1;
+                self.billboard_buffer[start] = snapshot.makeBillboardData(
+                    self.spritesheet,
+                    self.interval_between_previous_and_current_tick,
+                );
+            }
+        }
 
         self.billboard_buffer[end] = self.main_character.getBillboardData(
             self.spritesheet,
@@ -450,27 +472,30 @@ pub const Context = struct {
         );
     }
 
-    fn reindexEnemyGrid(
+    fn updateSpatialGrids(
         self: *Context,
         attacking_enemy_positions_at_previous_tick: *EnemyPositionGrid,
     ) !void {
         self.performance_measurements.begin(.thread_aggregation);
         for (self.thread_contexts) |context| {
-            for (context.enemies_to_remove.items) |object_handle| {
+            for (context.enemies.removal_queue.items) |object_handle| {
                 self.shared_context.enemy_collection.remove(object_handle);
             }
-            for (context.enemies_to_add.items) |enemy| {
+            for (context.enemies.insertion_queue.items) |enemy| {
                 _ = try self.shared_context.enemy_collection.insert(
                     enemy,
                     enemy.character.moving_circle.getPosition(),
                 );
             }
-            for (context.previous_tick_attacking_enemies.items) |attacking_enemy| {
+            for (context.enemies.attacking_positions.items) |attacking_enemy| {
                 try attacking_enemy_positions_at_previous_tick.insertIntoArea(
                     attacking_enemy,
                     Enemy.makeSpacingBoundaries(attacking_enemy.position)
                         .getOuterBoundingBoxInGameCoordinates(),
                 );
+            }
+            for (context.gems.removal_queue.items) |object_handle| {
+                self.shared_context.gem_collection.remove(object_handle);
             }
         }
         self.performance_measurements.end(.thread_aggregation);
@@ -479,7 +504,7 @@ pub const Context = struct {
     fn recomputeFlowFieldThread(self: *Context) !void {
         self.performance_measurements.begin(.flow_field);
         for (self.thread_contexts) |context| {
-            for (context.previous_tick_attacking_enemies.items) |attacking_enemy| {
+            for (context.enemies.attacking_positions.items) |attacking_enemy| {
                 self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
             }
         }
@@ -539,22 +564,49 @@ pub const Context = struct {
             );
 
             if (enemy_ptr.state == .dead) {
-                try thread_context.enemies_to_remove.append(
+                try thread_context.enemies.removal_queue.append(
                     self.shared_context.enemy_collection.getObjectHandle(enemy_ptr),
                 );
             } else if (new_cell_index.compare(old_cell_index) != .eq) {
-                try thread_context.enemies_to_remove.append(
+                try thread_context.enemies.removal_queue.append(
                     self.shared_context.enemy_collection.getObjectHandle(enemy_ptr),
                 );
-                try thread_context.enemies_to_add.append(enemy_ptr.*);
+                try thread_context.enemies.insertion_queue.append(enemy_ptr.*);
             }
 
             if (enemy_ptr.state == .attacking) {
-                try thread_context.previous_tick_attacking_enemies.append(
+                try thread_context.enemies.attacking_positions.append(
                     enemy_ptr.makeAttackingEnemyPosition(),
                 );
             }
         }
+    }
+
+    fn processGemThread(
+        self: *Context,
+        thread_context: *ThreadContext,
+        cell_group_iterator: SharedContext.GemCollection.CellGroupIterator,
+    ) !void {
+        const tick_context = .{
+            .map = &self.map,
+            .main_character = &self.main_character.character,
+        };
+        var gems_collected: u64 = 0;
+        var iterator = cell_group_iterator;
+        while (iterator.next()) |cell_group| {
+            var gem_iterator = cell_group.cell.iterator();
+            while (gem_iterator.next()) |gem_ptr| {
+                switch (gem_ptr.processElapsedTick(tick_context)) {
+                    .none => {},
+                    .picked_up_by_player => gems_collected += 1,
+                    .disappeared => try thread_context.gems.removal_queue.append(
+                        self.shared_context.gem_collection.getObjectHandle(gem_ptr),
+                    ),
+                }
+                try thread_context.gems.render_snapshots.append(gem_ptr.makeRenderSnapshot());
+            }
+        }
+        thread_context.gems.amount_collected = gems_collected;
     }
 
     fn prepareEnemyRenderThread(
@@ -563,39 +615,66 @@ pub const Context = struct {
         enemy_iterator: SharedContext.EnemyCollection.Iterator,
         camera: ThirdPersonCamera,
     ) void {
-        thread_context.enemy_billboard_count = 0;
+        var billboard_count: usize = 0;
         var iterator = enemy_iterator;
         while (iterator.next()) |enemy_ptr| {
-            thread_context.enemy_billboard_count +=
-                enemy_ptr.makeRenderSnapshot().getBillboardCount(
+            billboard_count += enemy_ptr.makeRenderSnapshot().getBillboardCount(
                 self.prerendered_enemy_names,
                 camera,
                 self.interval_between_previous_and_current_tick,
             );
         }
+        thread_context.enemies.billboard_count = billboard_count;
     }
 };
 
 const ThreadContext = struct {
-    enemies_to_add: std.ArrayList(Enemy),
-    enemies_to_remove: std.ArrayList(*ObjectHandle),
-    previous_tick_attacking_enemies: std.ArrayList(AttackingEnemyPosition),
-    enemy_billboard_count: usize,
+    enemies: struct {
+        insertion_queue: std.ArrayList(Enemy),
+        removal_queue: std.ArrayList(*EnemyObjectHandle),
+        attacking_positions: std.ArrayList(AttackingEnemyPosition),
+        billboard_count: usize,
+    },
+    gems: struct {
+        amount_collected: u64,
+        removal_queue: std.ArrayList(*GemObjectHandle),
+        render_snapshots: std.ArrayList(Gem.RenderSnapshot),
+    },
 
-    const ObjectHandle = SharedContext.EnemyCollection.ObjectHandle;
+    const EnemyObjectHandle = SharedContext.EnemyCollection.ObjectHandle;
+    const GemObjectHandle = SharedContext.GemCollection.ObjectHandle;
 
     fn create(allocator: std.mem.Allocator) ThreadContext {
         return .{
-            .enemies_to_add = std.ArrayList(Enemy).init(allocator),
-            .enemies_to_remove = std.ArrayList(*ObjectHandle).init(allocator),
-            .previous_tick_attacking_enemies = std.ArrayList(AttackingEnemyPosition).init(allocator),
-            .enemy_billboard_count = 0,
+            .enemies = .{
+                .insertion_queue = std.ArrayList(Enemy).init(allocator),
+                .removal_queue = std.ArrayList(*EnemyObjectHandle).init(allocator),
+                .attacking_positions = std.ArrayList(AttackingEnemyPosition).init(allocator),
+                .billboard_count = 0,
+            },
+            .gems = .{
+                .amount_collected = 0,
+                .removal_queue = std.ArrayList(*GemObjectHandle).init(allocator),
+                .render_snapshots = std.ArrayList(Gem.RenderSnapshot).init(allocator),
+            },
         };
     }
 
     fn destroy(self: *ThreadContext) void {
-        self.previous_tick_attacking_enemies.deinit();
-        self.enemies_to_remove.deinit();
-        self.enemies_to_add.deinit();
+        self.gems.render_snapshots.deinit();
+        self.gems.removal_queue.deinit();
+        self.enemies.attacking_positions.deinit();
+        self.enemies.removal_queue.deinit();
+        self.enemies.insertion_queue.deinit();
+    }
+
+    fn reset(self: *ThreadContext) void {
+        self.enemies.insertion_queue.clearRetainingCapacity();
+        self.enemies.removal_queue.clearRetainingCapacity();
+        self.enemies.attacking_positions.clearRetainingCapacity();
+        self.enemies.billboard_count = 0;
+        self.gems.amount_collected = 0;
+        self.gems.removal_queue.clearRetainingCapacity();
+        self.gems.render_snapshots.clearRetainingCapacity();
     }
 };
