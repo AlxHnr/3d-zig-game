@@ -1,6 +1,6 @@
 const DialogController = @import("dialog.zig").Controller;
 const Enemy = @import("enemy.zig").Enemy;
-const GemCollection = @import("gems.zig").Collection;
+const GemCollection = @import("gem_collection.zig").Collection;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const SpatialCollection = @import("spatial_partitioning/collection.zig").Collection;
 const std = @import("std");

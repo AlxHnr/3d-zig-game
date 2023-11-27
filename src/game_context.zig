@@ -16,7 +16,6 @@ const collision = @import("collision.zig");
 const dialog = @import("dialog.zig");
 const enemy_presets = @import("enemy_presets.zig");
 const game_unit = @import("game_unit.zig");
-const gems = @import("gems.zig");
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
 const simulation = @import("simulation.zig");
