@@ -53,7 +53,7 @@ pub const Controller = struct {
     ) !void {
         var total_sprites: usize = 0;
         for (self.dialog_stack.items) |*dialog| {
-            try dialog.prepareRender(self.allocator, interval_between_previous_and_current_tick);
+            try dialog.prepareRender(interval_between_previous_and_current_tick);
             total_sprites += dialog.getSpriteCount();
         }
 
@@ -149,12 +149,10 @@ const Dialog = union(enum) {
 
     pub fn prepareRender(
         self: *Dialog,
-        allocator: std.mem.Allocator,
         interval_between_previous_and_current_tick: f32,
     ) !void {
         return switch (self.*) {
             inline else => |*subtype| subtype.prepareRender(
-                allocator,
                 interval_between_previous_and_current_tick,
             ),
         };
@@ -238,11 +236,9 @@ const Prompt = struct {
 
     pub fn prepareRender(
         self: *Prompt,
-        allocator: std.mem.Allocator,
         interval_between_previous_and_current_tick: f32,
     ) !void {
         try self.text_block.animated_text_block.prepareRender(
-            allocator,
             interval_between_previous_and_current_tick,
         );
     }
@@ -381,12 +377,10 @@ const ChoiceBox = struct {
 
     pub fn prepareRender(
         self: *ChoiceBox,
-        allocator: std.mem.Allocator,
         interval_between_previous_and_current_tick: f32,
     ) !void {
         for (self.text_blocks) |*text_block| {
             try text_block.animated_text_block.prepareRender(
-                allocator,
                 interval_between_previous_and_current_tick,
             );
         }
@@ -603,9 +597,8 @@ const SlideInAnimationBox = struct {
 
 /// Reveals a text block character by character.
 const AnimatedTextBlock = struct {
-    /// Non-owning slice.
     original_segments: []const text_rendering.TextSegment,
-    segments_to_render: []text_rendering.TextSegment,
+    reusable_buffer: text_rendering.ReusableBuffer,
     spritesheet: *const SpriteSheetTexture,
     codepoint_progress: AnimationState,
     widget: *ui.Widget,
@@ -624,7 +617,7 @@ const AnimatedTextBlock = struct {
 
         return .{
             .original_segments = segments,
-            .segments_to_render = &.{},
+            .reusable_buffer = text_rendering.ReusableBuffer.create(allocator),
             .spritesheet = spritesheet,
             .codepoint_progress = AnimationState.create(
                 0,
@@ -635,8 +628,8 @@ const AnimatedTextBlock = struct {
     }
 
     pub fn destroy(self: *AnimatedTextBlock, allocator: std.mem.Allocator) void {
+        self.reusable_buffer.destroy();
         allocator.destroy(self.widget);
-        text_rendering.freeTextSegments(allocator, self.segments_to_render);
     }
 
     /// Returned widget will be invalidated when destroy() is being called on the given text block.
@@ -655,25 +648,19 @@ const AnimatedTextBlock = struct {
 
     pub fn prepareRender(
         self: *AnimatedTextBlock,
-        allocator: std.mem.Allocator,
         interval_between_previous_and_current_tick: f32,
     ) !void {
         const codepoints_to_reveal = @as(usize, @intFromFloat(
             self.codepoint_progress.getInterval(interval_between_previous_and_current_tick),
         ));
-
-        const segments_to_render = try text_rendering.truncateTextSegments(
-            allocator,
+        const truncated_segments = try text_rendering.truncateTextSegments(
+            &self.reusable_buffer,
             self.original_segments,
             codepoints_to_reveal,
         );
-        errdefer text_rendering.freeTextSegments(allocator, segments_to_render);
-
         self.widget.* = .{
-            .text = ui.Text.wrap(segments_to_render, self.spritesheet, dialog_text_scale),
+            .text = ui.Text.wrap(truncated_segments, self.spritesheet, dialog_text_scale),
         };
-        text_rendering.freeTextSegments(allocator, self.segments_to_render);
-        self.segments_to_render = segments_to_render;
     }
 
     pub fn getSpriteCount(self: AnimatedTextBlock) usize {
@@ -750,7 +737,8 @@ fn wrapNpcDialog(npc_name: []const u8, message_text: []const u8) [3]text_renderi
 }
 
 const PackagedAnimatedTextBlock = struct {
-    reformatted_segments: []text_rendering.TextSegment,
+    reusable_buffer: text_rendering.ReusableBuffer,
+    reformatted_segments: []const text_rendering.TextSegment,
     animated_text_block: AnimatedTextBlock,
     minimum_size_widget: *ui.Widget,
 };
@@ -765,9 +753,11 @@ fn makePackagedAnimatedTextBlock(
     const max_line_length =
         std.mem.indexOfScalar(u8, sample_content, '\n') orelse sample_content.len;
 
-    var reformatted_segments =
-        try text_rendering.reflowTextBlock(allocator, text_block, max_line_length);
-    errdefer text_rendering.freeTextSegments(allocator, reformatted_segments);
+    var reusable_buffer = text_rendering.ReusableBuffer.create(allocator);
+    errdefer reusable_buffer.destroy();
+
+    const reformatted_segments =
+        try text_rendering.reflowTextBlock(&reusable_buffer, text_block, max_line_length);
 
     var animated_text_block =
         try AnimatedTextBlock.wrap(allocator, reformatted_segments, spritesheet);
@@ -790,6 +780,7 @@ fn makePackagedAnimatedTextBlock(
     ) };
 
     return .{
+        .reusable_buffer = reusable_buffer,
         .reformatted_segments = reformatted_segments,
         .animated_text_block = animated_text_block,
         .minimum_size_widget = minimum_size_widget,
@@ -802,5 +793,5 @@ fn freePackagedAnimatedTextBlock(
 ) void {
     allocator.destroy(text_block.minimum_size_widget);
     text_block.animated_text_block.destroy(allocator);
-    text_rendering.freeTextSegments(allocator, text_block.reformatted_segments);
+    text_block.reusable_buffer.destroy();
 }

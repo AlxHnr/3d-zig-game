@@ -254,15 +254,16 @@ fn expectSegmentColors(
 }
 
 test "Text rendering: reflow text segments" {
-    const allocator = std.testing.allocator;
     const TextSegment = text_rendering.TextSegment;
     const reflow = text_rendering.reflowTextBlock;
     const white = util.Color.white;
 
+    var reusable_buffer = text_rendering.ReusableBuffer.create(std.testing.allocator);
+    defer reusable_buffer.destroy();
+
     // Empty text block.
     {
-        const segments = try reflow(allocator, &[_]TextSegment{}, 30);
-        defer text_rendering.freeTextSegments(allocator, segments); // Test no-op.
+        const segments = try reflow(&reusable_buffer, &[_]TextSegment{}, 30);
         try expect(segments.len == 0);
     }
 
@@ -273,8 +274,7 @@ test "Text rendering: reflow text segments" {
             .{ .color = white, .text = "" },
             .{ .color = white, .text = "  " },
         };
-        const segments = try reflow(allocator, &text_block, 0);
-        defer text_rendering.freeTextSegments(allocator, segments); // Test no-op.
+        const segments = try reflow(&reusable_buffer, &text_block, 0);
         try expect(segments.len == 0);
     }
 
@@ -285,8 +285,7 @@ test "Text rendering: reflow text segments" {
             .{ .color = white, .text = " example text" },
             .{ .color = white, .text = " with words." },
         };
-        const segments = try reflow(allocator, &text_block, 0);
-        defer text_rendering.freeTextSegments(allocator, segments);
+        const segments = try reflow(&reusable_buffer, &text_block, 0);
         try expectSegments(segments, &[_][]const u8{
             "This",   "\n",      "is", "\n",   "a",  "\n",   "long",
             "\n",     "example", "\n", "text", "\n", "with", "\n",
@@ -301,8 +300,7 @@ test "Text rendering: reflow text segments" {
             .{ .color = white, .text = " example text" },
             .{ .color = white, .text = " with words." },
         };
-        const segments = try reflow(allocator, &text_block, 10);
-        defer text_rendering.freeTextSegments(allocator, segments);
+        const segments = try reflow(&reusable_buffer, &text_block, 10);
         try expectSegments(segments, &[_][]const u8{
             "This",   " ",       "is", " ",    "a", "\n",   "long",
             "\n",     "example", "\n", "text", " ", "with", "\n",
@@ -317,8 +315,7 @@ test "Text rendering: reflow text segments" {
             .{ .color = white, .text = "example\ntext " },
             .{ .color = white, .text = "with words." },
         };
-        const segments = try reflow(allocator, &text_block, 12);
-        defer text_rendering.freeTextSegments(allocator, segments);
+        const segments = try reflow(&reusable_buffer, &text_block, 12);
         try expectSegments(segments, &[_][]const u8{
             "This",   " ",       "is", " ",    "a", "\n",   "long",
             " ",      "example", "\n", "text", " ", "with", "\n",
@@ -332,8 +329,7 @@ test "Text rendering: reflow text segments" {
             .{ .color = white, .text = "This is a long\n\n" },
             .{ .color = white, .text = "example\\ntext." },
         };
-        const segments = try reflow(allocator, &text_block, 100);
-        defer text_rendering.freeTextSegments(allocator, segments);
+        const segments = try reflow(&reusable_buffer, &text_block, 100);
         try expectSegments(segments, &[_][]const u8{
             "This", " ", "is", " ", "a", " ", "long", "\n", "\n", "example", "\n", "\n", "text.",
         });
@@ -348,8 +344,7 @@ test "Text rendering: reflow text segments" {
             .{ .color = white, .text = "age progr" },
             .{ .color = white, .text = "amming" },
         };
-        const segments = try reflow(allocator, &text_block, 3);
-        defer text_rendering.freeTextSegments(allocator, segments);
+        const segments = try reflow(&reusable_buffer, &text_block, 3);
         try expectSegments(segments, &[_][]const u8{
             "Progr", "\n", "amming", "\n", "langu",  "\n",
             "age",   "\n", "progr",  "\n", "amming",
@@ -365,8 +360,7 @@ test "Text rendering: reflow text segments" {
             .{ .color = green, .text = " example text" },
             .{ .color = red, .text = " with words." },
         };
-        const segments = try reflow(allocator, &text_block, 12);
-        defer text_rendering.freeTextSegments(allocator, segments);
+        const segments = try reflow(&reusable_buffer, &text_block, 12);
         try expectSegments(segments, &[_][]const u8{
             "This",   " ",       "is", " ",    "a", "\n",   "long",
             " ",      "example", "\n", "text", " ", "with", "\n",
@@ -384,32 +378,31 @@ test "Text rendering: truncate text segments" {
     const white = util.Color.white;
     const green = util.Color.fromRgb8(0, 255, 0);
     const red = util.Color.fromRgb8(255, 0, 0);
-    const allocator = std.testing.allocator;
     const text_block = [_]text_rendering.TextSegment{
         .{ .color = white, .text = "This is a löñg" },
         .{ .color = green, .text = " example\ntext" },
         .{ .color = red, .text = " with words." },
     };
 
+    var reusable_buffer = text_rendering.ReusableBuffer.create(std.testing.allocator);
+    defer reusable_buffer.destroy();
+
     // Length 0.
     {
-        const segments = try text_rendering.truncateTextSegments(allocator, &text_block, 0);
-        defer text_rendering.freeTextSegments(allocator, segments);
+        const segments = try text_rendering.truncateTextSegments(&reusable_buffer, &text_block, 0);
         try expect(segments.len == 0);
     }
 
     // Length 20.
     {
-        const segments = try text_rendering.truncateTextSegments(allocator, &text_block, 20);
-        defer text_rendering.freeTextSegments(allocator, segments);
+        const segments = try text_rendering.truncateTextSegments(&reusable_buffer, &text_block, 20);
         try expectSegments(segments, &[_][]const u8{ "This is a löñg", " examp" });
         try expectSegmentColors(segments, &[_]util.Color{ white, green });
     }
 
     // Length 32.
     {
-        const segments = try text_rendering.truncateTextSegments(allocator, &text_block, 32);
-        defer text_rendering.freeTextSegments(allocator, segments);
+        const segments = try text_rendering.truncateTextSegments(&reusable_buffer, &text_block, 32);
         try expectSegments(
             segments,
             &[_][]const u8{ "This is a löñg", " example\ntext", " with" },
@@ -419,8 +412,7 @@ test "Text rendering: truncate text segments" {
 
     // Length 1000.
     {
-        const segments = try text_rendering.truncateTextSegments(allocator, &text_block, 1000);
-        defer text_rendering.freeTextSegments(allocator, segments);
+        const segments = try text_rendering.truncateTextSegments(&reusable_buffer, &text_block, 1000);
         try expectSegments(
             segments,
             &[_][]const u8{ "This is a löñg", " example\ntext", " with words." },

@@ -148,20 +148,19 @@ pub fn populateSpriteData(
 }
 
 /// Retokenize the given text segments to ensure that lines approximate the specified length. Empty
-/// lines can be specified explicitly by either "\n\n" or "\\n". The returned segments must be freed
-/// with freeTextSegments().
+/// lines can be specified explicitly by either "\n\n" or "\\n". Returns a slice into the given
+/// reusable text buffer.
 pub fn reflowTextBlock(
-    allocator: std.mem.Allocator,
+    reusable_buffer: *ReusableBuffer,
     segments: []const TextSegment,
     new_line_length: usize,
-) ![]TextSegment {
-    var result: []TextSegment = &.{};
-    errdefer freeTextSegments(allocator, result);
+) ![]const TextSegment {
+    reusable_buffer.segments.clearRetainingCapacity();
+    reusable_buffer.buffer.clearRetainingCapacity();
 
     var current_line_length: usize = 0;
     for (segments) |segment| {
-        const patched_segment = try injectNewlineTokens(segment.text, allocator);
-        defer allocator.free(patched_segment);
+        const patched_segment = try injectNewlineTokens(segment.text, &reusable_buffer.helpers);
 
         var token_iterator = std.mem.tokenizeAny(u8, patched_segment, "\n ");
         while (token_iterator.next()) |token| {
@@ -169,44 +168,69 @@ pub fn reflowTextBlock(
             const whitespace = " ";
 
             if (std.mem.eql(u8, token, "\\n")) {
-                result = try appendTextSegment(allocator, result, "\n", segment.color);
-                result = try appendTextSegment(allocator, result, "\n", segment.color);
+                try appendTextSegment(reusable_buffer, "\n", segment.color);
+                try appendTextSegment(reusable_buffer, "\n", segment.color);
                 current_line_length = 0;
             } else if (current_line_length == 0) {
-                result = try appendTextSegment(allocator, result, token, segment.color);
+                try appendTextSegment(reusable_buffer, token, segment.color);
                 current_line_length = token_length;
             } else if (current_line_length + whitespace.len + token_length > new_line_length) {
-                result = try appendTextSegment(allocator, result, "\n", segment.color);
-                result = try appendTextSegment(allocator, result, token, segment.color);
+                try appendTextSegment(reusable_buffer, "\n", segment.color);
+                try appendTextSegment(reusable_buffer, token, segment.color);
                 current_line_length = token_length;
             } else {
-                result = try appendTextSegment(allocator, result, whitespace, segment.color);
-                result = try appendTextSegment(allocator, result, token, segment.color);
+                try appendTextSegment(reusable_buffer, whitespace, segment.color);
+                try appendTextSegment(reusable_buffer, token, segment.color);
                 current_line_length += whitespace.len + token_length;
             }
         }
     }
 
-    return result;
+    reusable_buffer.fixInvalidatedSegmentsAfterArrayGrowth();
+    return reusable_buffer.segments.items;
 }
 
-/// Release all text segments and free the given slice.
-pub fn freeTextSegments(allocator: std.mem.Allocator, segments: []TextSegment) void {
-    for (segments) |segment| {
-        allocator.free(segment.text);
+pub const ReusableBuffer = struct {
+    segments: std.ArrayList(TextSegment),
+    buffer: std.ArrayList(u8),
+    helpers: [2]std.ArrayList(u8),
+
+    pub fn create(allocator: std.mem.Allocator) ReusableBuffer {
+        return .{
+            .segments = std.ArrayList(TextSegment).init(allocator),
+            .buffer = std.ArrayList(u8).init(allocator),
+            .helpers = .{
+                std.ArrayList(u8).init(allocator),
+                std.ArrayList(u8).init(allocator),
+            },
+        };
     }
-    allocator.free(segments);
-}
 
-/// Return enough subsegments to contain not more than the given amount of codepoints. Returned copy
-/// must be freed with freeTextSegments(). Newlines count as 1 codepoint.
+    pub fn destroy(self: *ReusableBuffer) void {
+        self.helpers[1].deinit();
+        self.helpers[0].deinit();
+        self.buffer.deinit();
+        self.segments.deinit();
+    }
+
+    fn fixInvalidatedSegmentsAfterArrayGrowth(self: *ReusableBuffer) void {
+        var index: usize = 0;
+        for (self.segments.items) |*segment| {
+            segment.text = self.buffer.items[index..][0..segment.text.len];
+            index += segment.text.len;
+        }
+    }
+};
+
+/// Return enough subsegments to contain not more than the specified amount of codepoints. Returns a
+/// slice into the given reusable text buffer. Newlines count as 1 codepoint.
 pub fn truncateTextSegments(
-    allocator: std.mem.Allocator,
+    reusable_buffer: *ReusableBuffer,
     segments: []const TextSegment,
     max_total_codepoints: usize,
-) ![]TextSegment {
-    var result: []TextSegment = &.{};
-    errdefer freeTextSegments(allocator, result);
+) ![]const TextSegment {
+    reusable_buffer.segments.clearRetainingCapacity();
+    reusable_buffer.buffer.clearRetainingCapacity();
 
     var remaining_codepoints = max_total_codepoints;
     for (segments) |segment| {
@@ -229,16 +253,12 @@ pub fn truncateTextSegments(
             current_segment_bytes += slice.len;
         }
 
-        result = try appendTextSegment(
-            allocator,
-            result,
-            segment.text[0..current_segment_bytes],
-            segment.color,
-        );
+        try appendTextSegment(reusable_buffer, segment.text[0..current_segment_bytes], segment.color);
         remaining_codepoints -= current_segment_codepoints;
     }
 
-    return result;
+    reusable_buffer.fixInvalidatedSegmentsAfterArrayGrowth();
+    return reusable_buffer.segments.items;
 }
 
 const TextSegmentInfo = struct {
@@ -366,29 +386,31 @@ fn populateSpriteDataRaw(
     }
 }
 
-/// Reallocates the given text segments and appends a copy of the specified colored text.
+/// Append the specified text segments to the given reusable buffer. May invalidate the segments in
+/// the given reusable buffer, see `ReusableBuffer.fixInvalidatedSegmentsAfterArrayGrowth()`.
 fn appendTextSegment(
-    allocator: std.mem.Allocator,
-    segments: []TextSegment,
+    reusable_buffer: *ReusableBuffer,
     text: []const u8,
     color: Color,
-) ![]TextSegment {
-    const text_copy = try allocator.dupe(u8, text);
-    errdefer allocator.free(text_copy);
+) !void {
+    const text_start = reusable_buffer.buffer.items.len;
+    try reusable_buffer.segments.ensureUnusedCapacity(1);
+    try reusable_buffer.buffer.ensureUnusedCapacity(text.len);
 
-    var result = try allocator.realloc(segments, segments.len + 1);
-    result[result.len - 1].text = text_copy;
-    result[result.len - 1].color = color;
-    return result;
+    reusable_buffer.buffer.appendSliceAssumeCapacity(text);
+    reusable_buffer.segments.appendAssumeCapacity(.{
+        .text = reusable_buffer.buffer.items[text_start..],
+        .color = color,
+    });
 }
 
-/// Replaces all occurrences of "\n\n" and "\\n" in the given string with " \\n ".
-fn injectNewlineTokens(segment: []const u8, allocator: std.mem.Allocator) ![]u8 {
-    var step1 = try allocator.alloc(u8, std.mem.replacementSize(u8, segment, "\n\n", "\\n"));
-    defer allocator.free(step1);
-    _ = std.mem.replace(u8, segment, "\n\n", "\\n", step1);
+/// Replace all occurrences of "\n\n" and "\\n" in the given string with " \\n ". Returns a slice
+/// pointing into the given helper buffers.
+fn injectNewlineTokens(segment: []const u8, helpers: *[2]std.ArrayList(u8)) ![]const u8 {
+    try helpers[0].resize(std.mem.replacementSize(u8, segment, "\n\n", "\\n"));
+    _ = std.mem.replace(u8, segment, "\n\n", "\\n", helpers[0].items);
 
-    var step2 = try allocator.alloc(u8, std.mem.replacementSize(u8, step1, "\\n", " \\n "));
-    _ = std.mem.replace(u8, step1, "\\n", " \\n ", step2);
-    return step2;
+    try helpers[1].resize(std.mem.replacementSize(u8, helpers[0].items, "\\n", " \\n "));
+    _ = std.mem.replace(u8, helpers[0].items, "\\n", " \\n ", helpers[1].items);
+    return helpers[1].items;
 }
