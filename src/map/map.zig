@@ -9,8 +9,8 @@ pub const Map = struct {
     geometry: Geometry,
 
     /// Returned object will keep a reference to the given allocator.
-    pub fn createEmpty(allocator: std.mem.Allocator) !Map {
-        var geometry = try Geometry.create(allocator);
+    pub fn createEmpty(allocator: std.mem.Allocator, object_id_generator: *ObjectIdGenerator) !Map {
+        var geometry = try Geometry.create(allocator, object_id_generator);
         errdefer geometry.destroy();
 
         return .{ .geometry = geometry };

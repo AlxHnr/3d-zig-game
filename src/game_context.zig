@@ -4,6 +4,7 @@ const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
 const EnemyRenderSnapshot = @import("enemy.zig").RenderSnapshot;
 const FlowField = @import("flow_field.zig").Field;
 const Gem = @import("gem.zig");
+const GeometryRenderer = @import("map/geometry.zig").Renderer;
 const Hud = @import("hud.zig").Hud;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
@@ -36,6 +37,7 @@ pub const Context = struct {
 
     map_file_path: []const u8,
     map: Map,
+    geometry_renderer: GeometryRenderer,
     shared_context: SharedContext,
     tileable_textures: textures.TileableArrayTexture,
     spritesheet: textures.SpriteSheetTexture,
@@ -82,6 +84,9 @@ pub const Context = struct {
             map_file_path,
         );
         errdefer map.destroy();
+
+        var geometry_renderer = try GeometryRenderer.create();
+        errdefer geometry_renderer.destroy();
 
         var counter: usize = 0;
         while (counter < 10000) : (counter += 1) {
@@ -137,6 +142,7 @@ pub const Context = struct {
 
             .map_file_path = map_file_path_buffer,
             .map = map,
+            .geometry_renderer = geometry_renderer,
             .shared_context = shared_context,
             .tileable_textures = tileable_textures,
             .spritesheet = spritesheet,
@@ -169,6 +175,7 @@ pub const Context = struct {
         self.spritesheet.destroy();
         self.tileable_textures.destroy();
         self.shared_context.destroy();
+        self.geometry_renderer.destroy();
         self.map.destroy();
         allocator.free(self.map_file_path);
         self.main_character_flow_field.destroy(allocator);
@@ -207,6 +214,7 @@ pub const Context = struct {
         {
             self.performance_measurements.begin(.tick);
             self.map.processElapsedTick();
+            try self.map.geometry.syncToRenderer(&self.geometry_renderer);
             self.main_character.processElapsedTick(self.map);
 
             _ = self.tick_lifetime_allocator.reset(.retain_capacity);
@@ -336,7 +344,7 @@ pub const Context = struct {
             screen_dimensions,
             self.max_camera_distance,
         );
-        self.map.render(
+        self.geometry_renderer.render(
             vp_matrix,
             screen_dimensions,
             camera.getDirectionToTarget(),

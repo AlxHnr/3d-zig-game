@@ -15,6 +15,8 @@ const util = @import("../util.zig");
 
 const Geometry = @This();
 
+id: u64,
+change_counter: u32,
 allocator: std.mem.Allocator,
 
 walls: struct {
@@ -26,7 +28,6 @@ walls: struct {
     /// be collected trough them.
     translucent: std.ArrayList(Wall),
 },
-wall_renderer: rendering.WallRenderer,
 
 spatial_wall_index: struct { all: SpatialGrid, solid: SpatialGrid },
 obstacle_grid: ObstacleGrid,
@@ -35,10 +36,8 @@ obstacle_grid: ObstacleGrid,
 /// leads to the last floor in the array being shown above all others.
 floors: std.ArrayList(Floor),
 floor_animation_state: animation.FourStepCycle,
-floor_renderer: rendering.FloorRenderer,
 
 billboard_objects: std.ArrayList(BillboardObject),
-billboard_renderer: rendering.BillboardRenderer,
 
 pub const obstacle_grid_cell_size = 5;
 
@@ -47,21 +46,18 @@ const SpatialGrid =
     spatial_partitioning.Grid(collision.Rectangle, spatial_grid_cell_size, .insert_remove);
 
 /// Stores the given allocator internally for its entire lifetime.
-pub fn create(allocator: std.mem.Allocator) !Geometry {
-    var wall_renderer = try rendering.WallRenderer.create();
-    errdefer wall_renderer.destroy();
-    var floor_renderer = try rendering.FloorRenderer.create();
-    errdefer floor_renderer.destroy();
-    var billboard_renderer = try rendering.BillboardRenderer.create();
-    errdefer billboard_renderer.destroy();
-
+pub fn create(
+    allocator: std.mem.Allocator,
+    object_id_generator: *util.ObjectIdGenerator,
+) !Geometry {
     return .{
+        .id = object_id_generator.makeNewId(),
+        .change_counter = 0,
         .allocator = allocator,
         .walls = .{
             .solid = std.ArrayList(Wall).init(allocator),
             .translucent = std.ArrayList(Wall).init(allocator),
         },
-        .wall_renderer = wall_renderer,
         .spatial_wall_index = .{
             .all = SpatialGrid.create(allocator),
             .solid = SpatialGrid.create(allocator),
@@ -69,24 +65,18 @@ pub fn create(allocator: std.mem.Allocator) !Geometry {
         .obstacle_grid = ObstacleGrid.create(),
         .floors = std.ArrayList(Floor).init(allocator),
         .floor_animation_state = animation.FourStepCycle.create(),
-        .floor_renderer = floor_renderer,
         .billboard_objects = std.ArrayList(BillboardObject).init(allocator),
-        .billboard_renderer = billboard_renderer,
     };
 }
 
 pub fn destroy(self: *Geometry) void {
-    self.billboard_renderer.destroy();
     self.billboard_objects.deinit();
-
-    self.floor_renderer.destroy();
     self.floors.deinit();
 
     self.obstacle_grid.destroy(self.allocator);
     self.spatial_wall_index.solid.destroy();
     self.spatial_wall_index.all.destroy();
 
-    self.wall_renderer.destroy();
     self.walls.translucent.deinit();
     self.walls.solid.deinit();
 }
@@ -98,7 +88,7 @@ pub fn createFromSerializableData(
     spritesheet: textures.SpriteSheetTexture,
     data: SerializableData,
 ) !Geometry {
-    var geometry = try create(allocator);
+    var geometry = try create(allocator, object_id_generator);
     errdefer geometry.destroy();
 
     for (data.walls) |wall| {
@@ -134,29 +124,6 @@ pub fn createFromSerializableData(
 
     try geometry.updateCache();
     return geometry;
-}
-
-pub fn render(
-    self: Geometry,
-    vp_matrix: math.Matrix,
-    screen_dimensions: util.ScreenDimensions,
-    camera_direction_to_target: math.Vector3d,
-    tileable_textures: textures.TileableArrayTexture,
-    spritesheet: textures.SpriteSheetTexture,
-) void {
-    // Prevent floors from overpainting each other.
-    gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
-    self.floor_renderer.render(vp_matrix, tileable_textures.id, self.floor_animation_state);
-    gl.stencilFunc(gl.ALWAYS, 1, 0xff);
-
-    // Fences must be rendered after the floor to allow blending transparent, mipmapped texels.
-    self.wall_renderer.render(vp_matrix, tileable_textures.id);
-    self.billboard_renderer.render(
-        vp_matrix,
-        screen_dimensions,
-        camera_direction_to_target,
-        spritesheet.id,
-    );
 }
 
 pub fn processElapsedTick(self: *Geometry) void {
@@ -207,6 +174,80 @@ pub fn toSerializableData(self: Geometry, allocator: std.mem.Allocator) !Seriali
 
     return .{ .walls = walls, .floors = floors, .billboard_objects = billboards };
 }
+
+pub fn syncToRenderer(self: Geometry, renderer: *Renderer) !void {
+    if (renderer.sync_info == null or
+        renderer.sync_info.?.geometry_object_id != self.id or
+        renderer.sync_info.?.geometry_change_counter != self.change_counter)
+    {
+        try self.uploadWallsToRenderer(&renderer.wall_renderer);
+        try self.uploadFloorsToRenderer(&renderer.floor_renderer);
+        try self.uploadBillboardsToRenderer(&renderer.billboard_renderer);
+    }
+
+    renderer.floor_animation_state = self.floor_animation_state;
+    renderer.sync_info = .{
+        .geometry_object_id = self.id,
+        .geometry_change_counter = self.change_counter,
+    };
+}
+
+pub const Renderer = struct {
+    wall_renderer: rendering.WallRenderer,
+    floor_renderer: rendering.FloorRenderer,
+    floor_animation_state: animation.FourStepCycle,
+    billboard_renderer: rendering.BillboardRenderer,
+    sync_info: ?struct {
+        geometry_object_id: u64,
+        geometry_change_counter: u64,
+    },
+
+    pub fn create() !Renderer {
+        var wall_renderer = try rendering.WallRenderer.create();
+        errdefer wall_renderer.destroy();
+        var floor_renderer = try rendering.FloorRenderer.create();
+        errdefer floor_renderer.destroy();
+        var billboard_renderer = try rendering.BillboardRenderer.create();
+        errdefer billboard_renderer.destroy();
+
+        return .{
+            .wall_renderer = wall_renderer,
+            .floor_renderer = floor_renderer,
+            .floor_animation_state = animation.FourStepCycle.create(),
+            .billboard_renderer = billboard_renderer,
+            .sync_info = null,
+        };
+    }
+
+    pub fn destroy(self: *Renderer) void {
+        self.billboard_renderer.destroy();
+        self.floor_renderer.destroy();
+        self.wall_renderer.destroy();
+    }
+
+    pub fn render(
+        self: Renderer,
+        vp_matrix: math.Matrix,
+        screen_dimensions: util.ScreenDimensions,
+        camera_direction_to_target: math.Vector3d,
+        tileable_textures: textures.TileableArrayTexture,
+        spritesheet: textures.SpriteSheetTexture,
+    ) void {
+        // Prevent floors from overpainting each other.
+        gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
+        self.floor_renderer.render(vp_matrix, tileable_textures.id, self.floor_animation_state);
+        gl.stencilFunc(gl.ALWAYS, 1, 0xff);
+
+        // Fences must be rendered after the floor to allow blending transparent, mipmapped texels.
+        self.wall_renderer.render(vp_matrix, tileable_textures.id);
+        self.billboard_renderer.render(
+            vp_matrix,
+            screen_dimensions,
+            camera_direction_to_target,
+            spritesheet.id,
+        );
+    }
+};
 
 /// Simplified representation of a maps geometry.
 pub const SerializableData = struct {
@@ -607,10 +648,8 @@ fn removeObjectUncached(self: *Geometry, object_id: u64) void {
 }
 
 fn updateCache(self: *Geometry) !void {
+    self.change_counter += 1;
     try self.obstacle_grid.recompute(self.*);
-    try self.uploadWallsToRenderer();
-    try self.uploadFloorsToRenderer();
-    try self.uploadBillboardsToRenderer();
 }
 
 fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !*SpatialGrid.ObjectHandle {
@@ -677,7 +716,7 @@ fn getCloserRayCollision(
     return current_collision;
 }
 
-fn uploadWallsToRenderer(self: *Geometry) !void {
+fn uploadWallsToRenderer(self: Geometry, renderer: *rendering.WallRenderer) !void {
     var data = try self.allocator.alloc(
         rendering.WallRenderer.WallData,
         self.walls.solid.items.len + self.walls.translucent.items.len,
@@ -690,10 +729,10 @@ fn uploadWallsToRenderer(self: *Geometry) !void {
     for (self.walls.translucent.items, 0..) |wall, index| {
         data[self.walls.solid.items.len + index] = wall.getWallData();
     }
-    self.wall_renderer.uploadWalls(data);
+    renderer.uploadWalls(data);
 }
 
-fn uploadFloorsToRenderer(self: *Geometry) !void {
+fn uploadFloorsToRenderer(self: Geometry, renderer: *rendering.FloorRenderer) !void {
     var data =
         try self.allocator.alloc(rendering.FloorRenderer.FloorData, self.floors.items.len);
     defer self.allocator.free(data);
@@ -716,10 +755,10 @@ fn uploadFloorsToRenderer(self: *Geometry) !void {
             },
         };
     }
-    self.floor_renderer.uploadFloors(data);
+    renderer.uploadFloors(data);
 }
 
-fn uploadBillboardsToRenderer(self: *Geometry) !void {
+fn uploadBillboardsToRenderer(self: Geometry, renderer: *rendering.BillboardRenderer) !void {
     var data = try self.allocator.alloc(
         rendering.SpriteData,
         self.billboard_objects.items.len,
@@ -729,7 +768,7 @@ fn uploadBillboardsToRenderer(self: *Geometry) !void {
     for (self.billboard_objects.items, 0..) |billboard, index| {
         data[index] = billboard.sprite_data;
     }
-    self.billboard_renderer.uploadBillboards(data);
+    renderer.uploadBillboards(data);
 }
 
 const Floor = struct {
