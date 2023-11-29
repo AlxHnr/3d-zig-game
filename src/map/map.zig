@@ -1,4 +1,4 @@
-const Geometry = @import("geometry.zig").Geometry;
+const Geometry = @import("geometry.zig");
 const ObjectIdGenerator = @import("../util.zig").ObjectIdGenerator;
 const ScreenDimensions = @import("../util.zig").ScreenDimensions;
 const math = @import("../math.zig");

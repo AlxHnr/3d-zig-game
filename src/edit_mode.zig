@@ -1,5 +1,5 @@
 const Map = @import("map/map.zig").Map;
-const MapGeometry = @import("map/geometry.zig").Geometry;
+const MapGeometry = @import("map/geometry.zig");
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const collision = @import("collision.zig");
 const math = @import("math.zig");

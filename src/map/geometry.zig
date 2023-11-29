@@ -13,715 +13,724 @@ const std = @import("std");
 const textures = @import("../textures.zig");
 const util = @import("../util.zig");
 
-pub const Geometry = struct {
+const Geometry = @This();
+
+allocator: std.mem.Allocator,
+
+walls: struct {
+    /// Solid walls have no transparency and are able to block the camera.
+    solid: std.ArrayList(Wall),
+
+    /// Translucent walls can be partially transparency and get rendered last. This is needed
+    /// for implementing fences. Translucent walls don't obstruct the camera and allow gems to
+    /// be collected trough them.
+    translucent: std.ArrayList(Wall),
+},
+wall_renderer: rendering.WallRenderer,
+
+spatial_wall_index: struct { all: SpatialGrid, solid: SpatialGrid },
+obstacle_grid: ObstacleGrid,
+
+/// Floors in this array will be rendered last to first without overpainting one another. This
+/// leads to the last floor in the array being shown above all others.
+floors: std.ArrayList(Floor),
+floor_animation_state: animation.FourStepCycle,
+floor_renderer: rendering.FloorRenderer,
+
+billboard_objects: std.ArrayList(BillboardObject),
+billboard_renderer: rendering.BillboardRenderer,
+
+pub const obstacle_grid_cell_size = 5;
+
+const spatial_grid_cell_size = 20;
+const SpatialGrid =
+    spatial_partitioning.Grid(collision.Rectangle, spatial_grid_cell_size, .insert_remove);
+
+/// Stores the given allocator internally for its entire lifetime.
+pub fn create(allocator: std.mem.Allocator) !Geometry {
+    var wall_renderer = try rendering.WallRenderer.create();
+    errdefer wall_renderer.destroy();
+    var floor_renderer = try rendering.FloorRenderer.create();
+    errdefer floor_renderer.destroy();
+    var billboard_renderer = try rendering.BillboardRenderer.create();
+    errdefer billboard_renderer.destroy();
+
+    return .{
+        .allocator = allocator,
+        .walls = .{
+            .solid = std.ArrayList(Wall).init(allocator),
+            .translucent = std.ArrayList(Wall).init(allocator),
+        },
+        .wall_renderer = wall_renderer,
+        .spatial_wall_index = .{
+            .all = SpatialGrid.create(allocator),
+            .solid = SpatialGrid.create(allocator),
+        },
+        .obstacle_grid = ObstacleGrid.create(),
+        .floors = std.ArrayList(Floor).init(allocator),
+        .floor_animation_state = animation.FourStepCycle.create(),
+        .floor_renderer = floor_renderer,
+        .billboard_objects = std.ArrayList(BillboardObject).init(allocator),
+        .billboard_renderer = billboard_renderer,
+    };
+}
+
+pub fn destroy(self: *Geometry) void {
+    self.billboard_renderer.destroy();
+    self.billboard_objects.deinit();
+
+    self.floor_renderer.destroy();
+    self.floors.deinit();
+
+    self.obstacle_grid.destroy(self.allocator);
+    self.spatial_wall_index.solid.destroy();
+    self.spatial_wall_index.all.destroy();
+
+    self.wall_renderer.destroy();
+    self.walls.translucent.deinit();
+    self.walls.solid.deinit();
+}
+
+/// Stores the given allocator internally for its entire lifetime.
+pub fn createFromSerializableData(
     allocator: std.mem.Allocator,
+    object_id_generator: *util.ObjectIdGenerator,
+    spritesheet: textures.SpriteSheetTexture,
+    data: SerializableData,
+) !Geometry {
+    var geometry = try create(allocator);
+    errdefer geometry.destroy();
 
-    walls: struct {
-        /// Solid walls have no transparency and are able to block the camera.
-        solid: std.ArrayList(Wall),
-
-        /// Translucent walls can be partially transparency and get rendered last. This is needed
-        /// for implementing fences. Translucent walls don't obstruct the camera and allow gems to
-        /// be collected trough them.
-        translucent: std.ArrayList(Wall),
-    },
-    wall_renderer: rendering.WallRenderer,
-
-    spatial_wall_index: struct { all: SpatialGrid, solid: SpatialGrid },
-    obstacle_grid: ObstacleGrid,
-
-    /// Floors in this array will be rendered last to first without overpainting one another. This
-    /// leads to the last floor in the array being shown above all others.
-    floors: std.ArrayList(Floor),
-    floor_animation_state: animation.FourStepCycle,
-    floor_renderer: rendering.FloorRenderer,
-
-    billboard_objects: std.ArrayList(BillboardObject),
-    billboard_renderer: rendering.BillboardRenderer,
-
-    pub const obstacle_grid_cell_size = 5;
-
-    const spatial_grid_cell_size = 20;
-    const SpatialGrid =
-        spatial_partitioning.Grid(collision.Rectangle, spatial_grid_cell_size, .insert_remove);
-
-    /// Stores the given allocator internally for its entire lifetime.
-    pub fn create(allocator: std.mem.Allocator) !Geometry {
-        var wall_renderer = try rendering.WallRenderer.create();
-        errdefer wall_renderer.destroy();
-        var floor_renderer = try rendering.FloorRenderer.create();
-        errdefer floor_renderer.destroy();
-        var billboard_renderer = try rendering.BillboardRenderer.create();
-        errdefer billboard_renderer.destroy();
-
-        return .{
-            .allocator = allocator,
-            .walls = .{
-                .solid = std.ArrayList(Wall).init(allocator),
-                .translucent = std.ArrayList(Wall).init(allocator),
-            },
-            .wall_renderer = wall_renderer,
-            .spatial_wall_index = .{
-                .all = SpatialGrid.create(allocator),
-                .solid = SpatialGrid.create(allocator),
-            },
-            .obstacle_grid = ObstacleGrid.create(),
-            .floors = std.ArrayList(Floor).init(allocator),
-            .floor_animation_state = animation.FourStepCycle.create(),
-            .floor_renderer = floor_renderer,
-            .billboard_objects = std.ArrayList(BillboardObject).init(allocator),
-            .billboard_renderer = billboard_renderer,
+    for (data.walls) |wall| {
+        const wall_type = std.meta.stringToEnum(WallType, wall.t) orelse {
+            return Error.FailedToDeserializeMapGeometry;
         };
+        _ = try geometry
+            .addWallUncached(object_id_generator, wall.start, wall.end, wall_type);
     }
-
-    pub fn destroy(self: *Geometry) void {
-        self.billboard_renderer.destroy();
-        self.billboard_objects.deinit();
-
-        self.floor_renderer.destroy();
-        self.floors.deinit();
-
-        self.obstacle_grid.destroy(self.allocator);
-        self.spatial_wall_index.solid.destroy();
-        self.spatial_wall_index.all.destroy();
-
-        self.wall_renderer.destroy();
-        self.walls.translucent.deinit();
-        self.walls.solid.deinit();
-    }
-
-    /// Stores the given allocator internally for its entire lifetime.
-    pub fn createFromSerializableData(
-        allocator: std.mem.Allocator,
-        object_id_generator: *util.ObjectIdGenerator,
-        spritesheet: textures.SpriteSheetTexture,
-        data: SerializableData,
-    ) !Geometry {
-        var geometry = try create(allocator);
-        errdefer geometry.destroy();
-
-        for (data.walls) |wall| {
-            const wall_type = std.meta.stringToEnum(WallType, wall.t) orelse {
-                return Error.FailedToDeserializeMapGeometry;
-            };
-            _ = try geometry
-                .addWallUncached(object_id_generator, wall.start, wall.end, wall_type);
-        }
-        for (data.floors) |floor| {
-            const floor_type = std.meta.stringToEnum(FloorType, floor.t) orelse {
-                return Error.FailedToDeserializeMapGeometry;
-            };
-            _ = try geometry.addFloorUncached(
-                object_id_generator,
-                floor.side_a_start,
-                floor.side_a_end,
-                floor.side_b_length,
-                floor_type,
-            );
-        }
-        for (data.billboard_objects) |billboard| {
-            const object_type = std.meta.stringToEnum(BillboardObjectType, billboard.t) orelse {
-                return Error.FailedToDeserializeMapGeometry;
-            };
-            _ = try geometry.addBillboardObjectUncached(
-                object_id_generator,
-                object_type,
-                billboard.pos,
-                spritesheet,
-            );
-        }
-
-        try geometry.updateCache();
-        return geometry;
-    }
-
-    pub fn render(
-        self: Geometry,
-        vp_matrix: math.Matrix,
-        screen_dimensions: util.ScreenDimensions,
-        camera_direction_to_target: math.Vector3d,
-        tileable_textures: textures.TileableArrayTexture,
-        spritesheet: textures.SpriteSheetTexture,
-    ) void {
-        // Prevent floors from overpainting each other.
-        gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
-        self.floor_renderer.render(vp_matrix, tileable_textures.id, self.floor_animation_state);
-        gl.stencilFunc(gl.ALWAYS, 1, 0xff);
-
-        // Fences must be rendered after the floor to allow blending transparent, mipmapped texels.
-        self.wall_renderer.render(vp_matrix, tileable_textures.id);
-        self.billboard_renderer.render(
-            vp_matrix,
-            screen_dimensions,
-            camera_direction_to_target,
-            spritesheet.id,
-        );
-    }
-
-    pub fn processElapsedTick(self: *Geometry) void {
-        self.floor_animation_state.processElapsedTick(1 / simulation.millisecondsToTicks(f32, 800));
-    }
-
-    /// Returned result must be freed with freeSerializableData().
-    pub fn toSerializableData(self: Geometry, allocator: std.mem.Allocator) !SerializableData {
-        var walls = try allocator.alloc(
-            SerializableData.Wall,
-            self.walls.solid.items.len + self.walls.translucent.items.len,
-        );
-        errdefer allocator.free(walls);
-        for (self.walls.solid.items, 0..) |wall, index| {
-            walls[index] = .{
-                .t = @tagName(wall.wall_type),
-                .start = wall.start_position,
-                .end = wall.end_position,
-            };
-        }
-        for (self.walls.translucent.items, 0..) |wall, index| {
-            walls[self.walls.solid.items.len + index] = .{
-                .t = @tagName(wall.wall_type),
-                .start = wall.start_position,
-                .end = wall.end_position,
-            };
-        }
-
-        var floors = try allocator.alloc(SerializableData.Floor, self.floors.items.len);
-        errdefer allocator.free(floors);
-        for (self.floors.items, 0..) |floor, index| {
-            floors[index] = .{
-                .t = @tagName(floor.floor_type),
-                .side_a_start = floor.side_a_start,
-                .side_a_end = floor.side_a_end,
-                .side_b_length = floor.side_b_length,
-            };
-        }
-
-        var billboards = try allocator.alloc(SerializableData.BillboardObject, self.billboard_objects.items.len);
-        errdefer allocator.free(billboards);
-        for (self.billboard_objects.items, 0..) |billboard, index| {
-            billboards[index] = .{
-                .t = @tagName(billboard.object_type),
-                .pos = billboard.boundaries.position,
-            };
-        }
-
-        return .{ .walls = walls, .floors = floors, .billboard_objects = billboards };
-    }
-
-    /// Simplified representation of a maps geometry.
-    pub const SerializableData = struct {
-        walls: []SerializableData.Wall,
-        floors: []SerializableData.Floor,
-        billboard_objects: []SerializableData.BillboardObject,
-
-        pub const Wall = struct {
-            /// Type enum as string.
-            t: []const u8,
-            start: math.FlatVector,
-            end: math.FlatVector,
+    for (data.floors) |floor| {
+        const floor_type = std.meta.stringToEnum(FloorType, floor.t) orelse {
+            return Error.FailedToDeserializeMapGeometry;
         };
-
-        pub const Floor = struct {
-            /// Type enum as string.
-            t: []const u8,
-            side_a_start: math.FlatVector,
-            side_a_end: math.FlatVector,
-            side_b_length: f32,
-        };
-
-        pub const BillboardObject = struct {
-            /// Type enum as string.
-            t: []const u8,
-            pos: math.FlatVector,
-        };
-    };
-
-    pub fn freeSerializableData(allocator: std.mem.Allocator, data: *SerializableData) void {
-        allocator.free(data.billboard_objects);
-        allocator.free(data.floors);
-        allocator.free(data.walls);
-    }
-
-    pub const WallType = enum {
-        small_wall,
-        medium_wall,
-        castle_wall,
-        castle_tower,
-        metal_fence,
-        short_metal_fence,
-        tall_hedge,
-        giga_wall,
-    };
-
-    /// Returns the object id of the created wall on success.
-    pub fn addWall(
-        self: *Geometry,
-        object_id_generator: *util.ObjectIdGenerator,
-        start_position: math.FlatVector,
-        end_position: math.FlatVector,
-        wall_type: WallType,
-    ) !u64 {
-        const wall_id = try self.addWallUncached(
+        _ = try geometry.addFloorUncached(
             object_id_generator,
-            start_position,
-            end_position,
-            wall_type,
-        );
-        errdefer self.removeObjectUncached(wall_id);
-        try self.updateCache();
-        return wall_id;
-    }
-
-    pub fn removeObject(self: *Geometry, object_id: u64) !void {
-        self.removeObjectUncached(object_id);
-        try self.updateCache();
-    }
-
-    /// If the given object id does not exist, this function will do nothing.
-    pub fn updateWall(
-        self: *Geometry,
-        object_id: u64,
-        start_position: math.FlatVector,
-        end_position: math.FlatVector,
-    ) !void {
-        var wall = self.findWall(object_id) orelse return;
-        var old_wall = wall.*;
-        wall.* = Wall.create(
-            object_id,
-            old_wall.wall_type,
-            start_position,
-            end_position,
-        );
-        wall.tint = old_wall.tint;
-
-        self.removeWallFromSpatialGrid(&old_wall);
-        wall.grid_handles.all =
-            try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
-        if (!Wall.isFence(wall.wall_type)) {
-            wall.grid_handles.solid =
-                try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
-        }
-        try self.updateCache();
-    }
-
-    pub const FloorType = enum {
-        grass,
-        stone,
-        water,
-    };
-
-    /// Side a and b can be chosen arbitrarily, but must be adjacent. Returns the object id of the
-    /// created floor on success.
-    pub fn addFloor(
-        self: *Geometry,
-        object_id_generator: *util.ObjectIdGenerator,
-        side_a_start: math.FlatVector,
-        side_a_end: math.FlatVector,
-        side_b_length: f32,
-        floor_type: FloorType,
-    ) !u64 {
-        const floor_id = try self.addFloorUncached(
-            object_id_generator,
-            side_a_start,
-            side_a_end,
-            side_b_length,
+            floor.side_a_start,
+            floor.side_a_end,
+            floor.side_b_length,
             floor_type,
         );
-        errdefer self.removeObjectUncached(floor_id);
-        try self.updateCache();
-        return floor_id;
+    }
+    for (data.billboard_objects) |billboard| {
+        const object_type = std.meta.stringToEnum(BillboardObjectType, billboard.t) orelse {
+            return Error.FailedToDeserializeMapGeometry;
+        };
+        _ = try geometry.addBillboardObjectUncached(
+            object_id_generator,
+            object_type,
+            billboard.pos,
+            spritesheet,
+        );
     }
 
-    /// If the given object id does not exist, this function will do nothing.
-    pub fn updateFloor(
-        self: *Geometry,
-        object_id: u64,
+    try geometry.updateCache();
+    return geometry;
+}
+
+pub fn render(
+    self: Geometry,
+    vp_matrix: math.Matrix,
+    screen_dimensions: util.ScreenDimensions,
+    camera_direction_to_target: math.Vector3d,
+    tileable_textures: textures.TileableArrayTexture,
+    spritesheet: textures.SpriteSheetTexture,
+) void {
+    // Prevent floors from overpainting each other.
+    gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
+    self.floor_renderer.render(vp_matrix, tileable_textures.id, self.floor_animation_state);
+    gl.stencilFunc(gl.ALWAYS, 1, 0xff);
+
+    // Fences must be rendered after the floor to allow blending transparent, mipmapped texels.
+    self.wall_renderer.render(vp_matrix, tileable_textures.id);
+    self.billboard_renderer.render(
+        vp_matrix,
+        screen_dimensions,
+        camera_direction_to_target,
+        spritesheet.id,
+    );
+}
+
+pub fn processElapsedTick(self: *Geometry) void {
+    self.floor_animation_state.processElapsedTick(1 / simulation.millisecondsToTicks(f32, 800));
+}
+
+/// Returned result must be freed with freeSerializableData().
+pub fn toSerializableData(self: Geometry, allocator: std.mem.Allocator) !SerializableData {
+    var walls = try allocator.alloc(
+        SerializableData.Wall,
+        self.walls.solid.items.len + self.walls.translucent.items.len,
+    );
+    errdefer allocator.free(walls);
+    for (self.walls.solid.items, 0..) |wall, index| {
+        walls[index] = .{
+            .t = @tagName(wall.wall_type),
+            .start = wall.start_position,
+            .end = wall.end_position,
+        };
+    }
+    for (self.walls.translucent.items, 0..) |wall, index| {
+        walls[self.walls.solid.items.len + index] = .{
+            .t = @tagName(wall.wall_type),
+            .start = wall.start_position,
+            .end = wall.end_position,
+        };
+    }
+
+    var floors = try allocator.alloc(SerializableData.Floor, self.floors.items.len);
+    errdefer allocator.free(floors);
+    for (self.floors.items, 0..) |floor, index| {
+        floors[index] = .{
+            .t = @tagName(floor.floor_type),
+            .side_a_start = floor.side_a_start,
+            .side_a_end = floor.side_a_end,
+            .side_b_length = floor.side_b_length,
+        };
+    }
+
+    var billboards = try allocator.alloc(SerializableData.BillboardObject, self.billboard_objects.items.len);
+    errdefer allocator.free(billboards);
+    for (self.billboard_objects.items, 0..) |billboard, index| {
+        billboards[index] = .{
+            .t = @tagName(billboard.object_type),
+            .pos = billboard.boundaries.position,
+        };
+    }
+
+    return .{ .walls = walls, .floors = floors, .billboard_objects = billboards };
+}
+
+/// Simplified representation of a maps geometry.
+pub const SerializableData = struct {
+    walls: []SerializableData.Wall,
+    floors: []SerializableData.Floor,
+    billboard_objects: []SerializableData.BillboardObject,
+
+    pub const Wall = struct {
+        /// Type enum as string.
+        t: []const u8,
+        start: math.FlatVector,
+        end: math.FlatVector,
+    };
+
+    pub const Floor = struct {
+        /// Type enum as string.
+        t: []const u8,
         side_a_start: math.FlatVector,
         side_a_end: math.FlatVector,
         side_b_length: f32,
-    ) !void {
-        var floor = self.findFloor(object_id) orelse return;
-        const tint = floor.tint;
-        floor.* = Floor.create(
-            object_id,
-            floor.floor_type,
-            side_a_start,
-            side_a_end,
-            side_b_length,
-        );
+    };
+
+    pub const BillboardObject = struct {
+        /// Type enum as string.
+        t: []const u8,
+        pos: math.FlatVector,
+    };
+};
+
+pub fn freeSerializableData(allocator: std.mem.Allocator, data: *SerializableData) void {
+    allocator.free(data.billboard_objects);
+    allocator.free(data.floors);
+    allocator.free(data.walls);
+}
+
+pub const WallType = enum {
+    small_wall,
+    medium_wall,
+    castle_wall,
+    castle_tower,
+    metal_fence,
+    short_metal_fence,
+    tall_hedge,
+    giga_wall,
+};
+
+/// Returns the object id of the created wall on success.
+pub fn addWall(
+    self: *Geometry,
+    object_id_generator: *util.ObjectIdGenerator,
+    start_position: math.FlatVector,
+    end_position: math.FlatVector,
+    wall_type: WallType,
+) !u64 {
+    const wall_id = try self.addWallUncached(
+        object_id_generator,
+        start_position,
+        end_position,
+        wall_type,
+    );
+    errdefer self.removeObjectUncached(wall_id);
+    try self.updateCache();
+    return wall_id;
+}
+
+pub fn removeObject(self: *Geometry, object_id: u64) !void {
+    self.removeObjectUncached(object_id);
+    try self.updateCache();
+}
+
+/// If the given object id does not exist, this function will do nothing.
+pub fn updateWall(
+    self: *Geometry,
+    object_id: u64,
+    start_position: math.FlatVector,
+    end_position: math.FlatVector,
+) !void {
+    var wall = self.findWall(object_id) orelse return;
+    var old_wall = wall.*;
+    wall.* = Wall.create(
+        object_id,
+        old_wall.wall_type,
+        start_position,
+        end_position,
+    );
+    wall.tint = old_wall.tint;
+
+    self.removeWallFromSpatialGrid(&old_wall);
+    wall.grid_handles.all =
+        try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
+    if (!Wall.isFence(wall.wall_type)) {
+        wall.grid_handles.solid =
+            try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
+    }
+    try self.updateCache();
+}
+
+pub const FloorType = enum {
+    grass,
+    stone,
+    water,
+};
+
+/// Side a and b can be chosen arbitrarily, but must be adjacent. Returns the object id of the
+/// created floor on success.
+pub fn addFloor(
+    self: *Geometry,
+    object_id_generator: *util.ObjectIdGenerator,
+    side_a_start: math.FlatVector,
+    side_a_end: math.FlatVector,
+    side_b_length: f32,
+    floor_type: FloorType,
+) !u64 {
+    const floor_id = try self.addFloorUncached(
+        object_id_generator,
+        side_a_start,
+        side_a_end,
+        side_b_length,
+        floor_type,
+    );
+    errdefer self.removeObjectUncached(floor_id);
+    try self.updateCache();
+    return floor_id;
+}
+
+/// If the given object id does not exist, this function will do nothing.
+pub fn updateFloor(
+    self: *Geometry,
+    object_id: u64,
+    side_a_start: math.FlatVector,
+    side_a_end: math.FlatVector,
+    side_b_length: f32,
+) !void {
+    var floor = self.findFloor(object_id) orelse return;
+    const tint = floor.tint;
+    floor.* = Floor.create(
+        object_id,
+        floor.floor_type,
+        side_a_start,
+        side_a_end,
+        side_b_length,
+    );
+    floor.tint = tint;
+    try self.updateCache();
+}
+
+pub const BillboardObjectType = enum {
+    small_bush,
+};
+
+/// Returns the object id of the created billboard object on success.
+pub fn addBillboardObject(
+    self: *Geometry,
+    object_id_generator: *util.ObjectIdGenerator,
+    object_type: BillboardObjectType,
+    position: math.FlatVector,
+    spritesheet: textures.SpriteSheetTexture,
+) !u64 {
+    const billboard_id = try self.addBillboardObjectUncached(
+        object_id_generator,
+        object_type,
+        position,
+        spritesheet,
+    );
+    errdefer self.removeObjectUncached(billboard_id);
+    try self.updateCache();
+    return billboard_id;
+}
+
+pub fn tintObject(self: *Geometry, object_id: u64, tint: util.Color) !void {
+    if (self.findWall(object_id)) |wall| {
+        wall.tint = tint;
+    } else if (self.findFloor(object_id)) |floor| {
         floor.tint = tint;
-        try self.updateCache();
+    } else if (self.findBillboardObject(object_id)) |billboard| {
+        billboard.setTint(tint);
     }
+    try self.updateCache();
+}
 
-    pub const BillboardObjectType = enum {
-        small_bush,
-    };
-
-    /// Returns the object id of the created billboard object on success.
-    pub fn addBillboardObject(
-        self: *Geometry,
-        object_id_generator: *util.ObjectIdGenerator,
-        object_type: BillboardObjectType,
-        position: math.FlatVector,
-        spritesheet: textures.SpriteSheetTexture,
-    ) !u64 {
-        const billboard_id = try self.addBillboardObjectUncached(
-            object_id_generator,
-            object_type,
-            position,
-            spritesheet,
-        );
-        errdefer self.removeObjectUncached(billboard_id);
-        try self.updateCache();
-        return billboard_id;
+pub fn untintObject(self: *Geometry, object_id: u64) !void {
+    if (self.findWall(object_id)) |wall| {
+        wall.tint = Wall.getDefaultTint(wall.wall_type);
+    } else if (self.findFloor(object_id)) |floor| {
+        floor.tint = Floor.getDefaultTint(floor.floor_type);
+    } else if (self.findBillboardObject(object_id)) |billboard| {
+        billboard.setTint(BillboardObject.getDefaultTint(billboard.object_type));
     }
+    try self.updateCache();
+}
 
-    pub fn tintObject(self: *Geometry, object_id: u64, tint: util.Color) !void {
-        if (self.findWall(object_id)) |wall| {
-            wall.tint = tint;
-        } else if (self.findFloor(object_id)) |floor| {
-            floor.tint = tint;
-        } else if (self.findBillboardObject(object_id)) |billboard| {
-            billboard.setTint(tint);
-        }
-        try self.updateCache();
+pub const RayCollision = struct {
+    object_id: u64,
+    impact_point: collision.Ray3d.ImpactPoint,
+};
+
+/// Find the id of the closest wall hit by the given ray, if available.
+pub fn cast3DRayToWalls(
+    self: Geometry,
+    ray: collision.Ray3d,
+    ignore_fences: bool,
+) ?RayCollision {
+    var result: ?RayCollision = null;
+    for (self.walls.solid.items) |wall| {
+        result = getCloserRayCollision(wall.collidesWithRay(ray), wall.object_id, result);
     }
-
-    pub fn untintObject(self: *Geometry, object_id: u64) !void {
-        if (self.findWall(object_id)) |wall| {
-            wall.tint = Wall.getDefaultTint(wall.wall_type);
-        } else if (self.findFloor(object_id)) |floor| {
-            floor.tint = Floor.getDefaultTint(floor.floor_type);
-        } else if (self.findBillboardObject(object_id)) |billboard| {
-            billboard.setTint(BillboardObject.getDefaultTint(billboard.object_type));
-        }
-        try self.updateCache();
-    }
-
-    pub const RayCollision = struct {
-        object_id: u64,
-        impact_point: collision.Ray3d.ImpactPoint,
-    };
-
-    /// Find the id of the closest wall hit by the given ray, if available.
-    pub fn cast3DRayToWalls(
-        self: Geometry,
-        ray: collision.Ray3d,
-        ignore_fences: bool,
-    ) ?RayCollision {
-        var result: ?RayCollision = null;
-        for (self.walls.solid.items) |wall| {
+    if (!ignore_fences) {
+        for (self.walls.translucent.items) |wall| {
             result = getCloserRayCollision(wall.collidesWithRay(ray), wall.object_id, result);
         }
-        if (!ignore_fences) {
-            for (self.walls.translucent.items) |wall| {
-                result = getCloserRayCollision(wall.collidesWithRay(ray), wall.object_id, result);
-            }
-        }
+    }
+    return result;
+}
+
+/// Find the id of the closest object hit by the given ray, if available.
+pub fn cast3DRayToObjects(self: Geometry, ray: collision.Ray3d) ?RayCollision {
+    var result = self.cast3DRayToWalls(ray, false);
+    for (self.billboard_objects.items) |billboard| {
+        result = getCloserRayCollision(billboard.cast3DRay(ray), billboard.object_id, result);
+    }
+
+    // Walls and billboards are covering floors and are prioritized.
+    if (result != null) {
         return result;
     }
 
-    /// Find the id of the closest object hit by the given ray, if available.
-    pub fn cast3DRayToObjects(self: Geometry, ray: collision.Ray3d) ?RayCollision {
-        var result = self.cast3DRayToWalls(ray, false);
-        for (self.billboard_objects.items) |billboard| {
-            result = getCloserRayCollision(billboard.cast3DRay(ray), billboard.object_id, result);
-        }
-
-        // Walls and billboards are covering floors and are prioritized.
-        if (result != null) {
-            return result;
-        }
-
-        const impact_point = ray.collidesWithGround() orelse return null;
-        for (self.floors.items, 0..) |_, index| {
-            // The last floor in this array is always drawn at the top.
-            const floor = self.floors.items[self.floors.items.len - index - 1];
-            if (floor.boundaries.collidesWithPoint(impact_point.position.toFlatVector())) {
-                return RayCollision{
-                    .object_id = floor.object_id,
-                    .impact_point = impact_point,
-                };
-            }
-        }
-        return null;
-    }
-
-    /// If a collision occurs, return a displacement vector for moving the given circle out of the
-    /// map geometry. The returned displacement vector must be added to the given circles position
-    /// to resolve the collision.
-    pub fn collidesWithCircle(
-        self: Geometry,
-        circle: collision.Circle,
-        ignore_fences: bool,
-    ) ?math.FlatVector {
-        var found_collision = false;
-        var displaced_circle = circle;
-
-        const spatial_index = if (ignore_fences)
-            &self.spatial_wall_index.solid
-        else
-            &self.spatial_wall_index.all;
-
-        // Move displaced_circle out of all walls.
-        var iterator = spatial_index.areaIterator(circle.getOuterBoundingBoxInGameCoordinates());
-        while (iterator.next()) |boundaries| {
-            if (displaced_circle.collidesWithRectangle(boundaries)) |displacement_vector| {
-                displaced_circle.position = displaced_circle.position.add(displacement_vector);
-                found_collision = true;
-            }
-        }
-
-        return if (found_collision)
-            displaced_circle.position.subtract(circle.position)
-        else
-            null;
-    }
-
-    /// Check if two points are separated by a solid wall. Fences are not solid.
-    pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVector, b: math.FlatVector) bool {
-        var iterator = self.spatial_wall_index.solid.straightLineIterator(a, b);
-        while (iterator.next()) |boundaries| {
-            if (boundaries.collidesWithLine(a, b)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    pub const TileType = ObstacleGrid.TileType;
-
-    /// Return the type of obstacles bordering on the tile specified by the given position. This
-    /// check has the granularity of `obstacle_grid_cell_size` and is imprecise.
-    pub fn getObstacleTile(self: Geometry, position: math.FlatVector) TileType {
-        return self.obstacle_grid.getObstacleTile(position);
-    }
-
-    /// Returns the object id of the created wall on success.
-    fn addWallUncached(
-        self: *Geometry,
-        object_id_generator: *util.ObjectIdGenerator,
-        start_position: math.FlatVector,
-        end_position: math.FlatVector,
-        wall_type: WallType,
-    ) !u64 {
-        const wall = try if (Wall.isFence(wall_type))
-            self.walls.translucent.addOne()
-        else
-            self.walls.solid.addOne();
-        wall.* = Wall.create(
-            object_id_generator.makeNewId(),
-            wall_type,
-            start_position,
-            end_position,
-        );
-        errdefer if (Wall.isFence(wall_type)) {
-            _ = self.walls.translucent.pop();
-        } else {
-            _ = self.walls.solid.pop();
-        };
-
-        errdefer self.removeWallFromSpatialGrid(wall);
-        wall.grid_handles.all = try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
-        if (!Wall.isFence(wall_type)) {
-            wall.grid_handles.solid =
-                try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
-        }
-
-        return wall.object_id;
-    }
-
-    fn addFloorUncached(
-        self: *Geometry,
-        object_id_generator: *util.ObjectIdGenerator,
-        side_a_start: math.FlatVector,
-        side_a_end: math.FlatVector,
-        side_b_length: f32,
-        floor_type: FloorType,
-    ) !u64 {
-        const floor = try self.floors.addOne();
-        floor.* = Floor.create(
-            object_id_generator.makeNewId(),
-            floor_type,
-            side_a_start,
-            side_a_end,
-            side_b_length,
-        );
-        return floor.object_id;
-    }
-
-    fn addBillboardObjectUncached(
-        self: *Geometry,
-        object_id_generator: *util.ObjectIdGenerator,
-        object_type: BillboardObjectType,
-        position: math.FlatVector,
-        spritesheet: textures.SpriteSheetTexture,
-    ) !u64 {
-        const billboard = try self.billboard_objects.addOne();
-        billboard.* = BillboardObject.create(
-            object_id_generator.makeNewId(),
-            object_type,
-            position,
-            spritesheet,
-        );
-        return billboard.object_id;
-    }
-
-    /// If the given object id does not exist, this function will do nothing.
-    fn removeObjectUncached(self: *Geometry, object_id: u64) void {
-        for (self.walls.solid.items, 0..) |*wall, index| {
-            if (wall.object_id == object_id) {
-                self.removeWallFromSpatialGrid(wall);
-                _ = self.walls.solid.orderedRemove(index);
-                return;
-            }
-        }
-        for (self.walls.translucent.items, 0..) |*wall, index| {
-            if (wall.object_id == object_id) {
-                self.removeWallFromSpatialGrid(wall);
-                _ = self.walls.translucent.orderedRemove(index);
-                return;
-            }
-        }
-        for (self.floors.items, 0..) |*floor, index| {
-            if (floor.object_id == object_id) {
-                _ = self.floors.orderedRemove(index);
-                return;
-            }
-        }
-        for (self.billboard_objects.items, 0..) |billboard, index| {
-            if (billboard.object_id == object_id) {
-                _ = self.billboard_objects.orderedRemove(index);
-                return;
-            }
-        }
-    }
-
-    fn updateCache(self: *Geometry) !void {
-        try self.obstacle_grid.recompute(self.*);
-        try self.uploadWallsToRenderer();
-        try self.uploadFloorsToRenderer();
-        try self.uploadBillboardsToRenderer();
-    }
-
-    fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !*SpatialGrid.ObjectHandle {
-        return try grid.insertIntoPolygonBorders(
-            wall.boundaries,
-            &wall.boundaries.getCornersInGameCoordinates(),
-        );
-    }
-
-    fn removeWallFromSpatialGrid(self: *Geometry, wall: *Wall) void {
-        if (wall.grid_handles.all) |handle| {
-            self.spatial_wall_index.all.remove(handle);
-            wall.grid_handles.all = null;
-        }
-        if (!Wall.isFence(wall.wall_type) and wall.grid_handles.solid != null) {
-            self.spatial_wall_index.solid.remove(wall.grid_handles.solid.?);
-            wall.grid_handles.solid = null;
-        }
-    }
-
-    fn findWall(self: *Geometry, object_id: u64) ?*Wall {
-        for (self.walls.solid.items) |*wall| {
-            if (wall.object_id == object_id) {
-                return wall;
-            }
-        }
-        for (self.walls.translucent.items) |*wall| {
-            if (wall.object_id == object_id) {
-                return wall;
-            }
-        }
-        return null;
-    }
-
-    fn findFloor(self: *Geometry, object_id: u64) ?*Floor {
-        for (self.floors.items) |*floor| {
-            if (floor.object_id == object_id) {
-                return floor;
-            }
-        }
-        return null;
-    }
-
-    fn findBillboardObject(self: *Geometry, object_id: u64) ?*BillboardObject {
-        for (self.billboard_objects.items) |*billboard| {
-            if (billboard.object_id == object_id) {
-                return billboard;
-            }
-        }
-        return null;
-    }
-
-    fn getCloserRayCollision(
-        impact_point: ?collision.Ray3d.ImpactPoint,
-        object_id: u64,
-        current_collision: ?RayCollision,
-    ) ?RayCollision {
-        const point = impact_point orelse return current_collision;
-        const current = current_collision orelse
-            return .{ .object_id = object_id, .impact_point = point };
-        if (point.distance_from_start_position < current.impact_point.distance_from_start_position) {
-            return .{ .object_id = object_id, .impact_point = point };
-        }
-        return current_collision;
-    }
-
-    fn uploadWallsToRenderer(self: *Geometry) !void {
-        var data = try self.allocator.alloc(
-            rendering.WallRenderer.WallData,
-            self.walls.solid.items.len + self.walls.translucent.items.len,
-        );
-        defer self.allocator.free(data);
-
-        for (self.walls.solid.items, 0..) |wall, index| {
-            data[index] = wall.getWallData();
-        }
-        for (self.walls.translucent.items, 0..) |wall, index| {
-            data[self.walls.solid.items.len + index] = wall.getWallData();
-        }
-        self.wall_renderer.uploadWalls(data);
-    }
-
-    fn uploadFloorsToRenderer(self: *Geometry) !void {
-        var data =
-            try self.allocator.alloc(rendering.FloorRenderer.FloorData, self.floors.items.len);
-        defer self.allocator.free(data);
-
-        // Upload floors in reverse-order, so they won't be overpainted by floors below them.
-        var index: usize = 0;
-        while (index < self.floors.items.len) : (index += 1) {
-            const floor = self.floors.items[self.floors.items.len - index - 1];
-            const side_a_length = floor.side_a_end.subtract(floor.side_a_start).length();
-            data[index] = .{
-                .properties = makeRenderingAttributes(
-                    floor.model_matrix,
-                    floor.getTextureLayerId(),
-                    floor.tint,
-                ),
-                .affected_by_animation_cycle = if (floor.isAffectedByAnimationCycle()) 1 else 0,
-                .texture_repeat_dimensions = .{
-                    .x = floor.side_b_length / floor.getTextureScale(),
-                    .y = side_a_length / floor.getTextureScale(),
-                },
+    const impact_point = ray.collidesWithGround() orelse return null;
+    for (self.floors.items, 0..) |_, index| {
+        // The last floor in this array is always drawn at the top.
+        const floor = self.floors.items[self.floors.items.len - index - 1];
+        if (floor.boundaries.collidesWithPoint(impact_point.position.toFlatVector())) {
+            return RayCollision{
+                .object_id = floor.object_id,
+                .impact_point = impact_point,
             };
         }
-        self.floor_renderer.uploadFloors(data);
+    }
+    return null;
+}
+
+/// If a collision occurs, return a displacement vector for moving the given circle out of the
+/// map geometry. The returned displacement vector must be added to the given circles position
+/// to resolve the collision.
+pub fn collidesWithCircle(
+    self: Geometry,
+    circle: collision.Circle,
+    ignore_fences: bool,
+) ?math.FlatVector {
+    var found_collision = false;
+    var displaced_circle = circle;
+
+    const spatial_index = if (ignore_fences)
+        &self.spatial_wall_index.solid
+    else
+        &self.spatial_wall_index.all;
+
+    // Move displaced_circle out of all walls.
+    var iterator = spatial_index.areaIterator(circle.getOuterBoundingBoxInGameCoordinates());
+    while (iterator.next()) |boundaries| {
+        if (displaced_circle.collidesWithRectangle(boundaries)) |displacement_vector| {
+            displaced_circle.position = displaced_circle.position.add(displacement_vector);
+            found_collision = true;
+        }
     }
 
-    fn uploadBillboardsToRenderer(self: *Geometry) !void {
-        var data = try self.allocator.alloc(
-            rendering.SpriteData,
-            self.billboard_objects.items.len,
-        );
-        defer self.allocator.free(data);
+    return if (found_collision)
+        displaced_circle.position.subtract(circle.position)
+    else
+        null;
+}
 
-        for (self.billboard_objects.items, 0..) |billboard, index| {
-            data[index] = billboard.sprite_data;
+/// Check if two points are separated by a solid wall. Fences are not solid.
+pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVector, b: math.FlatVector) bool {
+    var iterator = self.spatial_wall_index.solid.straightLineIterator(a, b);
+    while (iterator.next()) |boundaries| {
+        if (boundaries.collidesWithLine(a, b)) {
+            return true;
         }
-        self.billboard_renderer.uploadBillboards(data);
+    }
+    return false;
+}
+
+/// Return the type of obstacles bordering on the tile specified by the given position. This
+/// check has the granularity of `obstacle_grid_cell_size` and is imprecise.
+pub fn getObstacleTile(self: Geometry, position: math.FlatVector) TileType {
+    return self.obstacle_grid.getObstacleTile(position);
+}
+
+pub const TileType = enum {
+    none,
+    neighbor_of_obstacle,
+    obstacle_tranclucent,
+    obstacle_solid,
+
+    pub fn isObstacle(self: TileType) bool {
+        return self == .obstacle_tranclucent or self == .obstacle_solid;
     }
 };
+
+/// Returns the object id of the created wall on success.
+fn addWallUncached(
+    self: *Geometry,
+    object_id_generator: *util.ObjectIdGenerator,
+    start_position: math.FlatVector,
+    end_position: math.FlatVector,
+    wall_type: WallType,
+) !u64 {
+    const wall = try if (Wall.isFence(wall_type))
+        self.walls.translucent.addOne()
+    else
+        self.walls.solid.addOne();
+    wall.* = Wall.create(
+        object_id_generator.makeNewId(),
+        wall_type,
+        start_position,
+        end_position,
+    );
+    errdefer if (Wall.isFence(wall_type)) {
+        _ = self.walls.translucent.pop();
+    } else {
+        _ = self.walls.solid.pop();
+    };
+
+    errdefer self.removeWallFromSpatialGrid(wall);
+    wall.grid_handles.all = try insertWallIntoSpatialGrid(&self.spatial_wall_index.all, wall.*);
+    if (!Wall.isFence(wall_type)) {
+        wall.grid_handles.solid =
+            try insertWallIntoSpatialGrid(&self.spatial_wall_index.solid, wall.*);
+    }
+
+    return wall.object_id;
+}
+
+fn addFloorUncached(
+    self: *Geometry,
+    object_id_generator: *util.ObjectIdGenerator,
+    side_a_start: math.FlatVector,
+    side_a_end: math.FlatVector,
+    side_b_length: f32,
+    floor_type: FloorType,
+) !u64 {
+    const floor = try self.floors.addOne();
+    floor.* = Floor.create(
+        object_id_generator.makeNewId(),
+        floor_type,
+        side_a_start,
+        side_a_end,
+        side_b_length,
+    );
+    return floor.object_id;
+}
+
+fn addBillboardObjectUncached(
+    self: *Geometry,
+    object_id_generator: *util.ObjectIdGenerator,
+    object_type: BillboardObjectType,
+    position: math.FlatVector,
+    spritesheet: textures.SpriteSheetTexture,
+) !u64 {
+    const billboard = try self.billboard_objects.addOne();
+    billboard.* = BillboardObject.create(
+        object_id_generator.makeNewId(),
+        object_type,
+        position,
+        spritesheet,
+    );
+    return billboard.object_id;
+}
+
+/// If the given object id does not exist, this function will do nothing.
+fn removeObjectUncached(self: *Geometry, object_id: u64) void {
+    for (self.walls.solid.items, 0..) |*wall, index| {
+        if (wall.object_id == object_id) {
+            self.removeWallFromSpatialGrid(wall);
+            _ = self.walls.solid.orderedRemove(index);
+            return;
+        }
+    }
+    for (self.walls.translucent.items, 0..) |*wall, index| {
+        if (wall.object_id == object_id) {
+            self.removeWallFromSpatialGrid(wall);
+            _ = self.walls.translucent.orderedRemove(index);
+            return;
+        }
+    }
+    for (self.floors.items, 0..) |*floor, index| {
+        if (floor.object_id == object_id) {
+            _ = self.floors.orderedRemove(index);
+            return;
+        }
+    }
+    for (self.billboard_objects.items, 0..) |billboard, index| {
+        if (billboard.object_id == object_id) {
+            _ = self.billboard_objects.orderedRemove(index);
+            return;
+        }
+    }
+}
+
+fn updateCache(self: *Geometry) !void {
+    try self.obstacle_grid.recompute(self.*);
+    try self.uploadWallsToRenderer();
+    try self.uploadFloorsToRenderer();
+    try self.uploadBillboardsToRenderer();
+}
+
+fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !*SpatialGrid.ObjectHandle {
+    return try grid.insertIntoPolygonBorders(
+        wall.boundaries,
+        &wall.boundaries.getCornersInGameCoordinates(),
+    );
+}
+
+fn removeWallFromSpatialGrid(self: *Geometry, wall: *Wall) void {
+    if (wall.grid_handles.all) |handle| {
+        self.spatial_wall_index.all.remove(handle);
+        wall.grid_handles.all = null;
+    }
+    if (!Wall.isFence(wall.wall_type) and wall.grid_handles.solid != null) {
+        self.spatial_wall_index.solid.remove(wall.grid_handles.solid.?);
+        wall.grid_handles.solid = null;
+    }
+}
+
+fn findWall(self: *Geometry, object_id: u64) ?*Wall {
+    for (self.walls.solid.items) |*wall| {
+        if (wall.object_id == object_id) {
+            return wall;
+        }
+    }
+    for (self.walls.translucent.items) |*wall| {
+        if (wall.object_id == object_id) {
+            return wall;
+        }
+    }
+    return null;
+}
+
+fn findFloor(self: *Geometry, object_id: u64) ?*Floor {
+    for (self.floors.items) |*floor| {
+        if (floor.object_id == object_id) {
+            return floor;
+        }
+    }
+    return null;
+}
+
+fn findBillboardObject(self: *Geometry, object_id: u64) ?*BillboardObject {
+    for (self.billboard_objects.items) |*billboard| {
+        if (billboard.object_id == object_id) {
+            return billboard;
+        }
+    }
+    return null;
+}
+
+fn getCloserRayCollision(
+    impact_point: ?collision.Ray3d.ImpactPoint,
+    object_id: u64,
+    current_collision: ?RayCollision,
+) ?RayCollision {
+    const point = impact_point orelse return current_collision;
+    const current = current_collision orelse
+        return .{ .object_id = object_id, .impact_point = point };
+    if (point.distance_from_start_position < current.impact_point.distance_from_start_position) {
+        return .{ .object_id = object_id, .impact_point = point };
+    }
+    return current_collision;
+}
+
+fn uploadWallsToRenderer(self: *Geometry) !void {
+    var data = try self.allocator.alloc(
+        rendering.WallRenderer.WallData,
+        self.walls.solid.items.len + self.walls.translucent.items.len,
+    );
+    defer self.allocator.free(data);
+
+    for (self.walls.solid.items, 0..) |wall, index| {
+        data[index] = wall.getWallData();
+    }
+    for (self.walls.translucent.items, 0..) |wall, index| {
+        data[self.walls.solid.items.len + index] = wall.getWallData();
+    }
+    self.wall_renderer.uploadWalls(data);
+}
+
+fn uploadFloorsToRenderer(self: *Geometry) !void {
+    var data =
+        try self.allocator.alloc(rendering.FloorRenderer.FloorData, self.floors.items.len);
+    defer self.allocator.free(data);
+
+    // Upload floors in reverse-order, so they won't be overpainted by floors below them.
+    var index: usize = 0;
+    while (index < self.floors.items.len) : (index += 1) {
+        const floor = self.floors.items[self.floors.items.len - index - 1];
+        const side_a_length = floor.side_a_end.subtract(floor.side_a_start).length();
+        data[index] = .{
+            .properties = makeRenderingAttributes(
+                floor.model_matrix,
+                floor.getTextureLayerId(),
+                floor.tint,
+            ),
+            .affected_by_animation_cycle = if (floor.isAffectedByAnimationCycle()) 1 else 0,
+            .texture_repeat_dimensions = .{
+                .x = floor.side_b_length / floor.getTextureScale(),
+                .y = side_a_length / floor.getTextureScale(),
+            },
+        };
+    }
+    self.floor_renderer.uploadFloors(data);
+}
+
+fn uploadBillboardsToRenderer(self: *Geometry) !void {
+    var data = try self.allocator.alloc(
+        rendering.SpriteData,
+        self.billboard_objects.items.len,
+    );
+    defer self.allocator.free(data);
+
+    for (self.billboard_objects.items, 0..) |billboard, index| {
+        data[index] = billboard.sprite_data;
+    }
+    self.billboard_renderer.uploadBillboards(data);
+}
 
 const Floor = struct {
     object_id: u64,
@@ -1110,17 +1119,6 @@ const ObstacleGrid = struct {
     grid: []TileType,
     map_boundaries: collision.AxisAlignedBoundingBox,
     map_cell_count_horizontal: usize,
-
-    const TileType = enum {
-        none,
-        neighbor_of_obstacle,
-        obstacle_tranclucent,
-        obstacle_solid,
-
-        pub fn isObstacle(self: TileType) bool {
-            return self == .obstacle_tranclucent or self == .obstacle_solid;
-        }
-    };
 
     fn create() ObstacleGrid {
         return .{

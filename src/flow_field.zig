@@ -2,7 +2,7 @@ const AxisAlignedBoundingBox = @import("collision.zig").AxisAlignedBoundingBox;
 const Circle = @import("collision.zig").Circle;
 const FlatVector = @import("math.zig").FlatVector;
 const Map = @import("map/map.zig").Map;
-const cell_side_length = @import("map/geometry.zig").Geometry.obstacle_grid_cell_size;
+const cell_side_length = @import("map/geometry.zig").obstacle_grid_cell_size;
 const std = @import("std");
 
 /// Grid of direction vectors leading towards its center, avoiding obstacles.
