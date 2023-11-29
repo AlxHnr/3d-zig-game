@@ -1,3 +1,4 @@
+const DialogController = @import("dialog.zig").Controller;
 const Error = @import("error.zig").Error;
 const GameContext = @import("game_context.zig").Context;
 const InputButton = @import("game_unit.zig").InputButton;
@@ -5,17 +6,18 @@ const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const edit_mode = @import("edit_mode.zig");
 const gl = @import("gl");
 const math = @import("math.zig");
+const rendering = @import("rendering.zig");
 const sdl = @import("sdl.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 const util = @import("util.zig");
-const rendering = @import("rendering.zig");
 
 const ProgramContext = struct {
     screen_dimensions: util.ScreenDimensions,
     window: *sdl.SDL_Window,
     gl_context: sdl.SDL_GLContext,
     allocator: std.mem.Allocator,
+    dialog_controller: *DialogController,
     game_context: GameContext,
     edit_mode_state: edit_mode.State,
     edit_mode_view: enum { from_behind, top_down },
@@ -78,7 +80,12 @@ const ProgramContext = struct {
         gl.enable(gl.STENCIL_TEST);
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
-        var game_context = try GameContext.create(allocator, default_map_path);
+        var dialog_controller = try allocator.create(DialogController);
+        errdefer allocator.destroy(dialog_controller);
+        dialog_controller.* = try DialogController.create(allocator);
+        errdefer dialog_controller.destroy();
+
+        var game_context = try GameContext.create(allocator, default_map_path, dialog_controller);
         errdefer game_context.destroy(allocator);
 
         var edit_mode_renderer = try EditModeRenderer.create();
@@ -89,6 +96,7 @@ const ProgramContext = struct {
             .window = window.?,
             .gl_context = gl_context,
             .allocator = allocator,
+            .dialog_controller = dialog_controller,
             .game_context = game_context,
             .edit_mode_state = edit_mode.State.create(),
             .edit_mode_view = .from_behind,
@@ -98,6 +106,8 @@ const ProgramContext = struct {
 
     fn destroy(self: *ProgramContext) void {
         self.edit_mode_renderer.destroy(self.allocator);
+        self.dialog_controller.destroy();
+        self.allocator.destroy(self.dialog_controller);
         self.game_context.destroy(self.allocator);
         sdl.SDL_GL_DeleteContext(self.gl_context);
         sdl.SDL_DestroyWindow(self.window);

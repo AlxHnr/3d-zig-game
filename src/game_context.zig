@@ -50,6 +50,9 @@ pub const Context = struct {
     thread_contexts: []*ThreadContext,
     performance_measurements: PerformanceMeasurements,
 
+    /// Non-owning pointer.
+    dialog_controller: *dialog.Controller,
+
     billboard_renderer: rendering.BillboardRenderer,
     billboard_buffer: []rendering.SpriteData,
 
@@ -58,7 +61,12 @@ pub const Context = struct {
     /// Prevents the engine from hanging if ticks take too long and catching up becomes impossible.
     const max_frame_time = std.time.ns_per_s / 10;
 
-    pub fn create(allocator: std.mem.Allocator, map_file_path: []const u8) !Context {
+    pub fn create(
+        allocator: std.mem.Allocator,
+        map_file_path: []const u8,
+        /// Returned object will keep a reference to this pointer.
+        dialog_controller: *dialog.Controller,
+    ) !Context {
         var flow_field = try FlowField.create(allocator, 100);
         errdefer flow_field.destroy(allocator);
 
@@ -74,7 +82,7 @@ pub const Context = struct {
         var prerendered_enemy_names = try PrerenderedEnemyNames.create(allocator, spritesheet);
         errdefer prerendered_enemy_names.destroy(allocator);
 
-        var shared_context = try SharedContext.create(allocator);
+        var shared_context = SharedContext.create(allocator);
         errdefer shared_context.destroy();
 
         var map = try loadMap(
@@ -153,6 +161,8 @@ pub const Context = struct {
             .thread_contexts = thread_contexts,
             .performance_measurements = try PerformanceMeasurements.create(),
 
+            .dialog_controller = dialog_controller,
+
             .billboard_renderer = billboard_renderer,
             .billboard_buffer = &.{},
 
@@ -184,12 +194,11 @@ pub const Context = struct {
     pub fn markButtonAsPressed(self: *Context, button: game_unit.InputButton) void {
         self.main_character.markButtonAsPressed(button);
 
-        var dialog_controller = &self.shared_context.dialog_controller;
         switch (button) {
-            .cancel => dialog_controller.sendCommandToCurrentDialog(.cancel),
-            .confirm => dialog_controller.sendCommandToCurrentDialog(.confirm),
-            .forwards => dialog_controller.sendCommandToCurrentDialog(.previous),
-            .backwards => dialog_controller.sendCommandToCurrentDialog(.next),
+            .cancel => self.dialog_controller.sendCommandToCurrentDialog(.cancel),
+            .confirm => self.dialog_controller.sendCommandToCurrentDialog(.confirm),
+            .forwards => self.dialog_controller.sendCommandToCurrentDialog(.previous),
+            .backwards => self.dialog_controller.sendCommandToCurrentDialog(.next),
             else => {},
         }
     }
@@ -200,7 +209,7 @@ pub const Context = struct {
 
     pub fn handleElapsedFrame(self: *Context) !void {
         self.frame_timer.reset();
-        if (self.shared_context.dialog_controller.hasOpenDialogs()) {
+        if (self.dialog_controller.hasOpenDialogs()) {
             self.main_character.markAllButtonsAsReleased();
         }
         self.main_character.applyCurrentInput(self.interval_between_previous_and_current_tick);
@@ -256,7 +265,7 @@ pub const Context = struct {
             }
             self.performance_measurements.copySingleMetric(slowest_thread, .gem_logic);
 
-            self.shared_context.dialog_controller.processElapsedTick();
+            self.dialog_controller.processElapsedTick();
 
             self.performance_measurements.end(.tick);
             if (@mod(self.tick_counter, simulation.tickrate) == 0) {
@@ -372,7 +381,7 @@ pub const Context = struct {
             self.main_character.gem_count,
             self.main_character.character.health.current,
         );
-        try self.shared_context.dialog_controller.render(
+        try self.dialog_controller.render(
             screen_dimensions,
             self.interval_between_previous_and_current_tick,
         );
