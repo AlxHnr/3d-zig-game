@@ -8,10 +8,10 @@ const util = @import("util.zig");
 
 const dialog_text_scale = 2;
 
-/// Stores, renders and dispatches input to dialogs.
+/// Stores, renders and dispatches input to dialogs. Thread safe.
 pub const Controller = struct {
-    /// Non-owning reference.
     allocator: std.mem.Allocator,
+    mutex: std.Thread.Mutex,
     renderer: rendering.SpriteRenderer,
     sprite_buffer: []rendering.SpriteData,
     spritesheet: *SpriteSheetTexture,
@@ -28,6 +28,7 @@ pub const Controller = struct {
 
         return .{
             .allocator = allocator,
+            .mutex = .{},
             .renderer = renderer,
             .sprite_buffer = &.{},
             .spritesheet = spritesheet,
@@ -51,6 +52,9 @@ pub const Controller = struct {
         screen_dimensions: util.ScreenDimensions,
         interval_between_previous_and_current_tick: f32,
     ) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         var total_sprites: usize = 0;
         for (self.dialog_stack.items) |*dialog| {
             try dialog.prepareRender(interval_between_previous_and_current_tick);
@@ -78,6 +82,9 @@ pub const Controller = struct {
     }
 
     pub fn processElapsedTick(self: *Controller) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         var index: usize = 0;
         var dialogs_total = self.dialog_stack.items.len;
 
@@ -96,17 +103,26 @@ pub const Controller = struct {
 
     /// Will do nothing if there is no current dialog.
     pub fn sendCommandToCurrentDialog(self: *Controller, command: Command) void {
-        if (self.hasOpenDialogs()) {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        if (self.dialog_stack.items.len > 0) {
             self.dialog_stack.items[self.dialog_stack.items.len - 1]
                 .processCommand(command);
         }
     }
 
-    pub fn hasOpenDialogs(self: Controller) bool {
+    pub fn hasOpenDialogs(self: *Controller) bool {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         return self.dialog_stack.items.len > 0;
     }
 
     pub fn openNpcDialog(self: *Controller, npc_name: []const u8, message_text: []const u8) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         var prompt = try Prompt.create(self.allocator, self.spritesheet, npc_name, message_text);
         errdefer prompt.destroy(self.allocator);
         try self.dialog_stack.append(.{ .prompt = prompt });
@@ -118,6 +134,9 @@ pub const Controller = struct {
         message_text: []const u8,
         choice_texts: []const []const u8,
     ) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
         var choice_box = try ChoiceBox.create(
             self.allocator,
             self.spritesheet,
