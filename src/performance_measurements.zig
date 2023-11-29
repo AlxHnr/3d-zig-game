@@ -86,7 +86,7 @@ pub const Measurements = struct {
     }
 
     pub fn printLogInfo(self: Measurements) void {
-        std.log.err(
+        std.log.info(
             "⏱️ {d:.2}ms │ ⏲️ {d:.2}ms: 👾{d:.2}ms ♦️ {d:.2}ms 🧵{d:.2}ms⟨🌐{d:.2}ms ∧ ↪️ {d:.2}ms⟩ │ 🖌️{d:.2}ms: 👾{d:.2}ms",
             .{
                 self.getAverage(.total),
