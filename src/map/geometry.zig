@@ -180,9 +180,39 @@ pub fn syncToRenderer(self: Geometry, renderer: *Renderer) !void {
         renderer.sync_info.?.geometry_object_id != self.id or
         renderer.sync_info.?.geometry_change_counter != self.change_counter)
     {
-        try self.uploadWallsToRenderer(&renderer.wall_renderer);
-        try self.uploadFloorsToRenderer(&renderer.floor_renderer);
-        try self.uploadBillboardsToRenderer(&renderer.billboard_renderer);
+        try renderer.wall_data.resize(
+            self.walls.solid.items.len + self.walls.translucent.items.len,
+        );
+        try renderer.floor_data.resize(self.floors.items.len);
+        try renderer.billboard_data.resize(self.billboard_objects.items.len);
+
+        for (self.walls.solid.items, 0..) |wall, index| {
+            renderer.wall_data.items[index] = wall.getWallData();
+        }
+        for (self.walls.translucent.items, self.walls.solid.items.len..) |wall, index| {
+            renderer.wall_data.items[index] = wall.getWallData();
+        }
+        for (0..self.floors.items.len) |index| {
+            const floor = self.floors.items[self.floors.items.len - index - 1]; // Reverse order.
+            const side_a_length = floor.side_a_end.subtract(floor.side_a_start).length();
+            renderer.floor_data.items[index] = .{
+                .properties = makeRenderingAttributes(
+                    floor.model_matrix,
+                    floor.getTextureLayerId(),
+                    floor.tint,
+                ),
+                .affected_by_animation_cycle = if (floor.isAffectedByAnimationCycle()) 1 else 0,
+                .texture_repeat_dimensions = .{
+                    .x = floor.side_b_length / floor.getTextureScale(),
+                    .y = side_a_length / floor.getTextureScale(),
+                },
+            };
+        }
+        for (self.billboard_objects.items, 0..) |billboard, index| {
+            renderer.billboard_data.items[index] = billboard.sprite_data;
+        }
+
+        renderer.needs_reupload = true;
     }
 
     renderer.floor_animation_state = self.floor_animation_state;
@@ -194,15 +224,19 @@ pub fn syncToRenderer(self: Geometry, renderer: *Renderer) !void {
 
 pub const Renderer = struct {
     wall_renderer: rendering.WallRenderer,
+    wall_data: std.ArrayList(rendering.WallRenderer.WallData),
     floor_renderer: rendering.FloorRenderer,
+    floor_data: std.ArrayList(rendering.FloorRenderer.FloorData),
     floor_animation_state: animation.FourStepCycle,
     billboard_renderer: rendering.BillboardRenderer,
+    billboard_data: std.ArrayList(rendering.SpriteData),
     sync_info: ?struct {
         geometry_object_id: u64,
         geometry_change_counter: u64,
     },
+    needs_reupload: bool,
 
-    pub fn create() !Renderer {
+    pub fn create(allocator: std.mem.Allocator) !Renderer {
         var wall_renderer = try rendering.WallRenderer.create();
         errdefer wall_renderer.destroy();
         var floor_renderer = try rendering.FloorRenderer.create();
@@ -212,27 +246,41 @@ pub const Renderer = struct {
 
         return .{
             .wall_renderer = wall_renderer,
+            .wall_data = std.ArrayList(rendering.WallRenderer.WallData).init(allocator),
             .floor_renderer = floor_renderer,
+            .floor_data = std.ArrayList(rendering.FloorRenderer.FloorData).init(allocator),
             .floor_animation_state = animation.FourStepCycle.create(),
             .billboard_renderer = billboard_renderer,
+            .billboard_data = std.ArrayList(rendering.SpriteData).init(allocator),
             .sync_info = null,
+            .needs_reupload = false,
         };
     }
 
     pub fn destroy(self: *Renderer) void {
+        self.billboard_data.deinit();
         self.billboard_renderer.destroy();
+        self.floor_data.deinit();
         self.floor_renderer.destroy();
+        self.wall_data.deinit();
         self.wall_renderer.destroy();
     }
 
     pub fn render(
-        self: Renderer,
+        self: *Renderer,
         vp_matrix: math.Matrix,
         screen_dimensions: util.ScreenDimensions,
         camera_direction_to_target: math.Vector3d,
         tileable_textures: textures.TileableArrayTexture,
         spritesheet: textures.SpriteSheetTexture,
     ) void {
+        if (self.needs_reupload) {
+            self.needs_reupload = false;
+            self.wall_renderer.uploadWalls(self.wall_data.items);
+            self.floor_renderer.uploadFloors(self.floor_data.items);
+            self.billboard_renderer.uploadBillboards(self.billboard_data.items);
+        }
+
         // Prevent floors from overpainting each other.
         gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
         self.floor_renderer.render(vp_matrix, tileable_textures.id, self.floor_animation_state);
@@ -714,61 +762,6 @@ fn getCloserRayCollision(
         return .{ .object_id = object_id, .impact_point = point };
     }
     return current_collision;
-}
-
-fn uploadWallsToRenderer(self: Geometry, renderer: *rendering.WallRenderer) !void {
-    var data = try self.allocator.alloc(
-        rendering.WallRenderer.WallData,
-        self.walls.solid.items.len + self.walls.translucent.items.len,
-    );
-    defer self.allocator.free(data);
-
-    for (self.walls.solid.items, 0..) |wall, index| {
-        data[index] = wall.getWallData();
-    }
-    for (self.walls.translucent.items, 0..) |wall, index| {
-        data[self.walls.solid.items.len + index] = wall.getWallData();
-    }
-    renderer.uploadWalls(data);
-}
-
-fn uploadFloorsToRenderer(self: Geometry, renderer: *rendering.FloorRenderer) !void {
-    var data =
-        try self.allocator.alloc(rendering.FloorRenderer.FloorData, self.floors.items.len);
-    defer self.allocator.free(data);
-
-    // Upload floors in reverse-order, so they won't be overpainted by floors below them.
-    var index: usize = 0;
-    while (index < self.floors.items.len) : (index += 1) {
-        const floor = self.floors.items[self.floors.items.len - index - 1];
-        const side_a_length = floor.side_a_end.subtract(floor.side_a_start).length();
-        data[index] = .{
-            .properties = makeRenderingAttributes(
-                floor.model_matrix,
-                floor.getTextureLayerId(),
-                floor.tint,
-            ),
-            .affected_by_animation_cycle = if (floor.isAffectedByAnimationCycle()) 1 else 0,
-            .texture_repeat_dimensions = .{
-                .x = floor.side_b_length / floor.getTextureScale(),
-                .y = side_a_length / floor.getTextureScale(),
-            },
-        };
-    }
-    renderer.uploadFloors(data);
-}
-
-fn uploadBillboardsToRenderer(self: Geometry, renderer: *rendering.BillboardRenderer) !void {
-    var data = try self.allocator.alloc(
-        rendering.SpriteData,
-        self.billboard_objects.items.len,
-    );
-    defer self.allocator.free(data);
-
-    for (self.billboard_objects.items, 0..) |billboard, index| {
-        data[index] = billboard.sprite_data;
-    }
-    renderer.uploadBillboards(data);
 }
 
 const Floor = struct {

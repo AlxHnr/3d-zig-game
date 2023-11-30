@@ -93,7 +93,7 @@ pub const Context = struct {
         );
         errdefer map.destroy();
 
-        var geometry_renderer = try GeometryRenderer.create();
+        var geometry_renderer = try GeometryRenderer.create(allocator);
         errdefer geometry_renderer.destroy();
 
         var counter: usize = 0;
