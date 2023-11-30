@@ -2,6 +2,7 @@ const DialogController = @import("dialog.zig").Controller;
 const Error = @import("error.zig").Error;
 const GameContext = @import("game_context.zig").Context;
 const InputButton = @import("game_unit.zig").InputButton;
+const RenderLoop = @import("render_loop.zig");
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const edit_mode = @import("edit_mode.zig");
 const gl = @import("gl");
@@ -17,6 +18,8 @@ const ProgramContext = struct {
     window: *sdl.SDL_Window,
     gl_context: sdl.SDL_GLContext,
     allocator: std.mem.Allocator,
+    render_loop: *RenderLoop,
+    render_thread: std.Thread,
     dialog_controller: *DialogController,
     game_context: GameContext,
     edit_mode_state: edit_mode.State,
@@ -52,11 +55,10 @@ const ProgramContext = struct {
             screen_width,
             screen_height,
             sdl.SDL_WINDOW_OPENGL,
-        );
-        if (window == null) {
+        ) orelse {
             std.log.err("failed to create SDL2 window: {s}", .{sdl.SDL_GetError()});
             return Error.FailedToInitializeSDL2Window;
-        }
+        };
         errdefer sdl.SDL_DestroyWindow(window);
 
         const gl_context = sdl.SDL_GL_CreateContext(window);
@@ -80,17 +82,40 @@ const ProgramContext = struct {
         dialog_controller.* = try DialogController.create(allocator);
         errdefer dialog_controller.destroy();
 
-        var game_context = try GameContext.create(allocator, default_map_path, dialog_controller);
+        var render_loop = try allocator.create(RenderLoop);
+        errdefer allocator.destroy(render_loop);
+        render_loop.* = try RenderLoop.create(allocator);
+        errdefer render_loop.destroy();
+
+        var game_context = try GameContext.create(
+            allocator,
+            default_map_path,
+            render_loop,
+            dialog_controller,
+        );
         errdefer game_context.destroy(allocator);
 
         var edit_mode_renderer = try EditModeRenderer.create();
         errdefer edit_mode_renderer.destroy(allocator);
 
+        const screen_dimensions = .{ .width = screen_width, .height = screen_height };
+
+        try sdl.makeGLContextCurrent(null, null);
+        var render_thread = try std.Thread.spawn(
+            .{},
+            renderThread,
+            .{ render_loop, window, gl_context, screen_dimensions },
+        );
+        errdefer render_thread.join();
+        errdefer render_loop.sendStop();
+
         return .{
-            .screen_dimensions = .{ .width = screen_width, .height = screen_height },
-            .window = window.?,
+            .screen_dimensions = screen_dimensions,
+            .window = window,
             .gl_context = gl_context,
             .allocator = allocator,
+            .render_loop = render_loop,
+            .render_thread = render_thread,
             .dialog_controller = dialog_controller,
             .game_context = game_context,
             .edit_mode_state = edit_mode.State.create(),
@@ -101,6 +126,10 @@ const ProgramContext = struct {
 
     fn destroy(self: *ProgramContext) void {
         self.edit_mode_renderer.destroy(self.allocator);
+        self.render_loop.sendStop();
+        self.render_thread.join();
+        self.render_loop.destroy();
+        self.allocator.destroy(self.render_loop);
         self.dialog_controller.destroy();
         self.allocator.destroy(self.dialog_controller);
         self.game_context.destroy(self.allocator);
@@ -109,17 +138,8 @@ const ProgramContext = struct {
     }
 
     fn run(self: *ProgramContext) !void {
-        while (true) {
-            // Timer is stopped in `render()`.
-            self.game_context.performance_measurements.begin(.total);
-
-            const keep_running = try self.processInputs();
-            if (!keep_running) {
-                self.game_context.performance_measurements.end(.total);
-                break;
-            }
+        while (try self.processInputs()) {
             try self.game_context.handleElapsedFrame();
-            try self.render();
         }
     }
 
@@ -218,26 +238,6 @@ const ProgramContext = struct {
         };
     }
 
-    fn render(self: *ProgramContext) !void {
-        gl.clearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
-
-        gl.enable(gl.DEPTH_TEST);
-        try self.game_context.render(self.allocator, self.screen_dimensions);
-
-        gl.disable(gl.DEPTH_TEST);
-        try self.game_context.renderHud(self.allocator, self.screen_dimensions);
-        try self.edit_mode_renderer.render(
-            self.allocator,
-            self.screen_dimensions,
-            self.edit_mode_state,
-            self.game_context,
-        );
-        self.game_context.performance_measurements.end(.total);
-
-        sdl.SDL_GL_SwapWindow(self.window);
-    }
-
     const Position = struct { x: u16, y: u16 };
     fn getMousePosition(self: ProgramContext) Position {
         var mouse_x: c_int = undefined;
@@ -253,6 +253,17 @@ const ProgramContext = struct {
         // Usually a check with SDL_GL_ExtensionSupported() is required, but gl.zig only provides the
         // function name instead of the full extension string.
         return sdl.SDL_GL_GetProcAddress(extension_name);
+    }
+
+    fn renderThread(
+        loop: *RenderLoop,
+        window: *sdl.SDL_Window,
+        gl_context: sdl.SDL_GLContext,
+        screen_dimensions: util.ScreenDimensions,
+    ) void {
+        loop.run(window, gl_context, screen_dimensions) catch |err| {
+            std.log.err("thread failed: {}", .{err});
+        };
     }
 };
 

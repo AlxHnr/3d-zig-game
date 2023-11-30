@@ -4,12 +4,10 @@ const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
 const EnemyRenderSnapshot = @import("enemy.zig").RenderSnapshot;
 const FlowField = @import("flow_field.zig").Field;
 const Gem = @import("gem.zig");
-const GeometryRenderer = @import("map/geometry.zig").Renderer;
-const Hud = @import("hud.zig").Hud;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
-const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
+const RenderLoop = @import("render_loop.zig");
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig").Camera;
@@ -20,7 +18,6 @@ const dialog = @import("dialog.zig");
 const enemy_presets = @import("enemy_presets.zig");
 const game_unit = @import("game_unit.zig");
 const math = @import("math.zig");
-const rendering = @import("rendering.zig");
 const simulation = @import("simulation.zig");
 const std = @import("std");
 const textures = @import("textures.zig");
@@ -32,31 +29,25 @@ pub const Context = struct {
     frame_timer: std.time.Timer,
     main_character: game_unit.Player,
     main_character_flow_field: FlowField,
-    /// Prevents walls from covering the player.
-    max_camera_distance: ?f32,
 
     map_file_path: []const u8,
     map: Map,
-    geometry_renderer: GeometryRenderer,
     shared_context: SharedContext,
-    tileable_textures: textures.TileableArrayTexture,
     spritesheet: textures.SpriteSheetTexture,
-    prerendered_enemy_names: PrerenderedEnemyNames,
 
     /// For objects which die at the end of each tick.
     tick_lifetime_allocator: std.heap.ArenaAllocator,
+    /// Allocated with `tick_lifetime_allocator`.
+    attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
     thread_pool: ThreadPool,
     /// Contexts are not stored in a single contiguous array to avoid false sharing.
     thread_contexts: []*ThreadContext,
     performance_measurements: PerformanceMeasurements,
 
     /// Non-owning pointer.
+    render_loop: *RenderLoop,
+    /// Non-owning pointer.
     dialog_controller: *dialog.Controller,
-
-    billboard_renderer: rendering.BillboardRenderer,
-    billboard_buffer: []rendering.SpriteData,
-
-    hud: Hud,
 
     /// Prevents the engine from hanging if ticks take too long and catching up becomes impossible.
     const max_frame_time = std.time.ns_per_s / 10;
@@ -64,6 +55,8 @@ pub const Context = struct {
     pub fn create(
         allocator: std.mem.Allocator,
         map_file_path: []const u8,
+        /// Returned object will keep a reference to this pointer.
+        render_loop: *RenderLoop,
         /// Returned object will keep a reference to this pointer.
         dialog_controller: *dialog.Controller,
     ) !Context {
@@ -73,14 +66,8 @@ pub const Context = struct {
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);
         errdefer allocator.free(map_file_path_buffer);
 
-        var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
-        errdefer tileable_textures.destroy();
-
         var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
         errdefer spritesheet.destroy();
-
-        var prerendered_enemy_names = try PrerenderedEnemyNames.create(allocator, spritesheet);
-        errdefer prerendered_enemy_names.destroy(allocator);
 
         var shared_context = SharedContext.create(allocator);
         errdefer shared_context.destroy();
@@ -92,9 +79,6 @@ pub const Context = struct {
             map_file_path,
         );
         errdefer map.destroy();
-
-        var geometry_renderer = try GeometryRenderer.create(allocator);
-        errdefer geometry_renderer.destroy();
 
         var counter: usize = 0;
         while (counter < 10000) : (counter += 1) {
@@ -129,12 +113,6 @@ pub const Context = struct {
             contexts_created += 1;
         }
 
-        var billboard_renderer = try rendering.BillboardRenderer.create();
-        errdefer billboard_renderer.destroy();
-
-        var hud = try Hud.create();
-        errdefer hud.destroy(allocator);
-
         return .{
             .tick_timer = try simulation.TickTimer.start(simulation.tickrate),
             .tick_counter = 0,
@@ -146,34 +124,25 @@ pub const Context = struct {
                 spritesheet.getSpriteAspectRatio(.player_back_frame_1),
             ),
             .main_character_flow_field = flow_field,
-            .max_camera_distance = null,
 
             .map_file_path = map_file_path_buffer,
             .map = map,
-            .geometry_renderer = geometry_renderer,
             .shared_context = shared_context,
-            .tileable_textures = tileable_textures,
             .spritesheet = spritesheet,
-            .prerendered_enemy_names = prerendered_enemy_names,
 
             .tick_lifetime_allocator = tick_lifetime_allocator,
             .thread_pool = thread_pool,
+            .attacking_enemy_positions_at_previous_tick = EnemyPositionGrid.create(
+                tick_lifetime_allocator.allocator(),
+            ),
             .thread_contexts = thread_contexts,
             .performance_measurements = try PerformanceMeasurements.create(),
-
+            .render_loop = render_loop,
             .dialog_controller = dialog_controller,
-
-            .billboard_renderer = billboard_renderer,
-            .billboard_buffer = &.{},
-
-            .hud = hud,
         };
     }
 
     pub fn destroy(self: *Context, allocator: std.mem.Allocator) void {
-        self.hud.destroy(allocator);
-        allocator.free(self.billboard_buffer);
-        self.billboard_renderer.destroy();
         for (self.thread_contexts) |context| {
             context.destroy();
             allocator.destroy(context);
@@ -181,11 +150,8 @@ pub const Context = struct {
         allocator.free(self.thread_contexts);
         self.thread_pool.destroy(allocator);
         self.tick_lifetime_allocator.deinit();
-        self.prerendered_enemy_names.destroy(allocator);
         self.spritesheet.destroy();
-        self.tileable_textures.destroy();
         self.shared_context.destroy();
-        self.geometry_renderer.destroy();
         self.map.destroy();
         allocator.free(self.map_file_path);
         self.main_character_flow_field.destroy(allocator);
@@ -223,29 +189,12 @@ pub const Context = struct {
         {
             self.performance_measurements.begin(.tick);
             self.map.processElapsedTick();
-            try self.map.geometry.syncToRenderer(&self.geometry_renderer);
             self.main_character.processElapsedTick(self.map);
-
-            _ = self.tick_lifetime_allocator.reset(.retain_capacity);
-            var attacking_enemy_positions_at_previous_tick =
-                EnemyPositionGrid.create(self.tick_lifetime_allocator.allocator());
-            self.performance_measurements.begin(.thread_aggregation_flow_field);
-            try self.thread_pool.dispatchIgnoreErrors(
-                updateSpatialGrids,
-                .{ self, &attacking_enemy_positions_at_previous_tick },
-            );
-            try self.thread_pool.dispatchIgnoreErrors(recomputeFlowFieldThread, .{self});
-            self.thread_pool.wait();
-            self.performance_measurements.end(.thread_aggregation_flow_field);
-            for (self.thread_contexts) |context| {
-                self.main_character.gem_count += context.gems.amount_collected;
-                context.reset();
-            }
 
             for (0..self.thread_contexts.len) |thread_id| {
                 try self.thread_pool.dispatchIgnoreErrors(
                     processEnemyThread,
-                    .{ self, thread_id, attacking_enemy_positions_at_previous_tick },
+                    .{ self, thread_id, self.attacking_enemy_positions_at_previous_tick },
                 );
             }
             for (0..self.thread_contexts.len) |thread_id| {
@@ -253,138 +202,50 @@ pub const Context = struct {
             }
             self.thread_pool.wait();
 
-            var slowest_thread = self.thread_contexts[0].performance_measurements;
-            for (self.thread_contexts[1..]) |context| {
-                slowest_thread = slowest_thread
-                    .getLongest(context.performance_measurements, .enemy_logic);
-            }
-            self.performance_measurements.copySingleMetric(slowest_thread, .enemy_logic);
-            for (self.thread_contexts) |context| {
-                slowest_thread = slowest_thread
-                    .getLongest(context.performance_measurements, .gem_logic);
-            }
-            self.performance_measurements.copySingleMetric(slowest_thread, .gem_logic);
-
+            self.mergeMeasurementsFromSlowestThread(.enemy_logic);
+            self.mergeMeasurementsFromSlowestThread(.gem_logic);
             self.dialog_controller.processElapsedTick();
-
             self.performance_measurements.end(.tick);
+
+            self.performance_measurements.begin(.thread_aggregation_flow_field);
+            _ = self.tick_lifetime_allocator.reset(.retain_capacity);
+            self.attacking_enemy_positions_at_previous_tick = EnemyPositionGrid.create(
+                self.tick_lifetime_allocator.allocator(),
+            );
+            try self.thread_pool.dispatchIgnoreErrors(
+                updateSpatialGridsThread,
+                .{ self, &self.attacking_enemy_positions_at_previous_tick },
+            );
+            try self.thread_pool.dispatchIgnoreErrors(recomputeFlowFieldThread, .{self});
+            self.thread_pool.wait();
+            for (self.thread_contexts) |context| {
+                self.main_character.gem_count += context.gems.amount_collected;
+            }
+            self.performance_measurements.end(.thread_aggregation_flow_field);
+
+            self.performance_measurements.begin(.populate_render_snapshots);
+            {
+                const snapshots = self.render_loop.getLockedSnapshotsForWriting();
+                defer self.render_loop.releaseSnapshotsAfterWriting();
+
+                snapshots.main_character = self.main_character;
+                try self.map.geometry.syncToRenderer(&snapshots.geometry_renderer);
+                for (self.thread_contexts) |context| {
+                    try snapshots.enemies.appendSlice(context.enemies.render_snapshots.items);
+                    try snapshots.gems.appendSlice(context.gems.render_snapshots.items);
+                }
+            }
+            self.performance_measurements.end(.populate_render_snapshots);
+
+            for (self.thread_contexts) |context| {
+                context.reset();
+            }
+
             if (@mod(self.tick_counter, simulation.tickrate) == 0) {
                 self.performance_measurements.updateAverageAndReset();
                 self.performance_measurements.printLogInfo();
             }
         }
-
-        const ray_wall_collision = self.map.geometry.cast3DRayToWalls(
-            self.main_character.getCamera(self.interval_between_previous_and_current_tick)
-                .get3DRayFromTargetToSelf(),
-            true,
-        );
-        self.max_camera_distance = if (ray_wall_collision) |ray_collision|
-            ray_collision.impact_point.distance_from_start_position
-        else
-            null;
-    }
-
-    pub fn render(
-        self: *Context,
-        allocator: std.mem.Allocator,
-        screen_dimensions: ScreenDimensions,
-    ) !void {
-        self.performance_measurements.begin(.render);
-        const camera = self.main_character
-            .getCamera(self.interval_between_previous_and_current_tick);
-
-        var billboards_to_render: usize = 1; // Player sprite.
-        for (self.thread_contexts) |context| {
-            for (context.enemies.render_snapshots.items) |snapshot| {
-                billboards_to_render += snapshot.getBillboardCount(
-                    self.prerendered_enemy_names,
-                    camera,
-                    self.interval_between_previous_and_current_tick,
-                );
-            }
-            billboards_to_render += context.gems.render_snapshots.items.len;
-        }
-        if (self.billboard_buffer.len < billboards_to_render) {
-            self.billboard_buffer =
-                try allocator.realloc(self.billboard_buffer, billboards_to_render);
-        }
-
-        self.performance_measurements.begin(.render_enemies);
-        var start: usize = 0;
-        var end: usize = 0;
-        for (self.thread_contexts) |context| {
-            for (context.enemies.render_snapshots.items) |snapshot| {
-                start = end;
-                end += snapshot.getBillboardCount(
-                    self.prerendered_enemy_names,
-                    camera,
-                    self.interval_between_previous_and_current_tick,
-                );
-                snapshot.populateBillboardData(
-                    self.spritesheet,
-                    self.prerendered_enemy_names,
-                    camera,
-                    self.interval_between_previous_and_current_tick,
-                    self.billboard_buffer[start..end],
-                );
-            }
-        }
-        self.performance_measurements.end(.render_enemies);
-
-        for (self.thread_contexts) |context| {
-            for (context.gems.render_snapshots.items) |snapshot| {
-                start = end;
-                end += 1;
-                self.billboard_buffer[start] = snapshot.makeBillboardData(
-                    self.spritesheet,
-                    self.interval_between_previous_and_current_tick,
-                );
-            }
-        }
-
-        self.billboard_buffer[end] = self.main_character.getBillboardData(
-            self.spritesheet,
-            self.interval_between_previous_and_current_tick,
-        );
-        self.billboard_renderer.uploadBillboards(self.billboard_buffer[0..billboards_to_render]);
-
-        const vp_matrix = camera.getViewProjectionMatrix(
-            screen_dimensions,
-            self.max_camera_distance,
-        );
-        self.geometry_renderer.render(
-            vp_matrix,
-            screen_dimensions,
-            camera.getDirectionToTarget(),
-            self.tileable_textures,
-            self.spritesheet,
-        );
-        self.billboard_renderer.render(
-            vp_matrix,
-            screen_dimensions,
-            camera.getDirectionToTarget(),
-            self.spritesheet.id,
-        );
-        self.performance_measurements.end(.render);
-    }
-
-    pub fn renderHud(
-        self: *Context,
-        allocator: std.mem.Allocator,
-        screen_dimensions: ScreenDimensions,
-    ) !void {
-        try self.hud.render(
-            allocator,
-            screen_dimensions,
-            self.spritesheet,
-            self.main_character.gem_count,
-            self.main_character.character.health.current,
-        );
-        try self.dialog_controller.render(
-            screen_dimensions,
-            self.interval_between_previous_and_current_tick,
-        );
     }
 
     pub fn getMutableMap(self: *Context) *Map {
@@ -430,7 +291,7 @@ pub const Context = struct {
     ) collision.Ray3d {
         return self.main_character
             .getCamera(self.interval_between_previous_and_current_tick)
-            .get3DRay(mouse_x, mouse_y, screen_dimensions, self.max_camera_distance);
+            .get3DRay(mouse_x, mouse_y, screen_dimensions, null);
     }
 
     pub fn increaseCameraDistance(self: *Context, value: f32) void {
@@ -472,7 +333,18 @@ pub const Context = struct {
         );
     }
 
-    fn updateSpatialGrids(
+    fn mergeMeasurementsFromSlowestThread(
+        self: *Context,
+        metric_type: PerformanceMeasurements.MetricType,
+    ) void {
+        var longest = self.thread_contexts[0].performance_measurements;
+        for (self.thread_contexts[1..]) |context| {
+            longest = longest.getLongest(context.performance_measurements, metric_type);
+        }
+        self.performance_measurements.copySingleMetric(longest, metric_type);
+    }
+
+    fn updateSpatialGridsThread(
         self: *Context,
         attacking_enemy_positions_at_previous_tick: *EnemyPositionGrid,
     ) !void {

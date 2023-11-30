@@ -6,6 +6,7 @@ pub const Measurements = struct {
     pub const MetricType = enum {
         total,
         tick,
+        populate_render_snapshots,
         enemy_logic,
         gem_logic,
         thread_aggregation,
