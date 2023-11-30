@@ -66,12 +66,7 @@ const ProgramContext = struct {
         }
         errdefer sdl.SDL_GL_DeleteContext(gl_context);
 
-        if (sdl.SDL_GL_MakeCurrent(window, gl_context) != 0) {
-            std.log.err("failed to set current OpenGL context: {s}", .{
-                sdl.SDL_GetError(),
-            });
-            return Error.FailedToInitializeSDL2Window;
-        }
+        try sdl.makeGLContextCurrent(window, gl_context);
         try gl.load(gl_context, getProcAddress);
 
         gl.enable(gl.CULL_FACE);
