@@ -84,7 +84,7 @@ const ProgramContext = struct {
 
         var render_loop = try allocator.create(RenderLoop);
         errdefer allocator.destroy(render_loop);
-        render_loop.* = try RenderLoop.create(allocator);
+        render_loop.* = RenderLoop.create(allocator);
         errdefer render_loop.destroy();
 
         var game_context = try GameContext.create(

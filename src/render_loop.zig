@@ -1,6 +1,7 @@
 const EnemySnapshot = @import("enemy.zig").RenderSnapshot;
 const GemSnapshot = @import("gem.zig").RenderSnapshot;
 const GeometryRenderer = @import("map/geometry.zig").Renderer;
+const GeometrySnapshot = @import("map/geometry.zig").RenderSnapshot;
 const Player = @import("game_unit.zig").Player;
 const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
@@ -22,17 +23,12 @@ secondary_is_populated: bool,
 mutex: std.Thread.Mutex,
 condition: std.Thread.Condition,
 
-pub fn create(allocator: std.mem.Allocator) !Loop {
-    var current = try Snapshots.create(allocator);
-    errdefer current.destroy();
-    var secondary = try Snapshots.create(allocator);
-    errdefer secondary.destroy();
-
+pub fn create(allocator: std.mem.Allocator) Loop {
     return .{
         .allocator = allocator,
         .keep_running = std.atomic.Atomic(bool).init(true),
-        .current = current,
-        .secondary = secondary,
+        .current = Snapshots.create(allocator),
+        .secondary = Snapshots.create(allocator),
         .secondary_is_populated = false,
         .mutex = .{},
         .condition = .{},
@@ -54,17 +50,20 @@ pub fn run(
 
     var timer = try simulation.TickTimer.start(simulation.tickrate);
 
-    var billboard_renderer = try rendering.BillboardRenderer.create();
-    defer billboard_renderer.destroy();
-
-    var billboard_buffer = std.ArrayList(rendering.SpriteData).init(self.allocator);
-    defer billboard_buffer.deinit();
-
     var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
     defer spritesheet.destroy();
 
     var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
     defer tileable_textures.destroy();
+
+    var geometry_renderer = try GeometryRenderer.create();
+    defer geometry_renderer.destroy();
+
+    var billboard_renderer = try rendering.BillboardRenderer.create();
+    defer billboard_renderer.destroy();
+
+    var billboard_buffer = std.ArrayList(rendering.SpriteData).init(self.allocator);
+    defer billboard_buffer.deinit();
 
     var prerendered_enemy_names = try PrerenderedEnemyNames.create(self.allocator, spritesheet);
     defer prerendered_enemy_names.destroy(self.allocator);
@@ -82,7 +81,6 @@ pub fn run(
         const camera = self.current.main_character.getCamera(lap_result.next_tick_progress);
 
         billboard_buffer.clearRetainingCapacity();
-
         for (self.current.enemies.items) |snapshot| {
             const billboard_count = snapshot.getBillboardCount(
                 prerendered_enemy_names,
@@ -99,13 +97,11 @@ pub fn run(
             );
             billboard_buffer.items.len += billboard_count;
         }
-
         for (self.current.gems.items) |snapshot| {
             try billboard_buffer.append(
                 snapshot.makeBillboardData(spritesheet, lap_result.next_tick_progress),
             );
         }
-
         try billboard_buffer.append(self.current.main_character.getBillboardData(
             spritesheet,
             lap_result.next_tick_progress,
@@ -113,7 +109,8 @@ pub fn run(
         billboard_renderer.uploadBillboards(billboard_buffer.items);
 
         const vp_matrix = camera.getViewProjectionMatrix(screen_dimensions, null);
-        self.current.geometry_renderer.render(
+        geometry_renderer.uploadRenderSnapshot(self.current.geometry);
+        geometry_renderer.render(
             vp_matrix,
             screen_dimensions,
             camera.getDirectionToTarget(),
@@ -159,14 +156,14 @@ pub fn releaseSnapshotsAfterWriting(self: *Loop) void {
 
 pub const Snapshots = struct {
     main_character: Player,
-    geometry_renderer: GeometryRenderer,
+    geometry: GeometrySnapshot,
     enemies: std.ArrayList(EnemySnapshot),
     gems: std.ArrayList(GemSnapshot),
 
-    fn create(allocator: std.mem.Allocator) !Snapshots {
+    fn create(allocator: std.mem.Allocator) Snapshots {
         return .{
             .main_character = Player.create(0, 0, 0),
-            .geometry_renderer = try GeometryRenderer.create(allocator),
+            .geometry = GeometrySnapshot.create(allocator),
             .enemies = std.ArrayList(EnemySnapshot).init(allocator),
             .gems = std.ArrayList(GemSnapshot).init(allocator),
         };
@@ -175,7 +172,7 @@ pub const Snapshots = struct {
     fn destroy(self: *Snapshots) void {
         self.gems.deinit();
         self.enemies.deinit();
-        self.geometry_renderer.destroy();
+        self.geometry.destroy();
     }
 
     fn reset(self: *Snapshots) void {

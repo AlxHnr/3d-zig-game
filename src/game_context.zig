@@ -229,7 +229,7 @@ pub const Context = struct {
                 defer self.render_loop.releaseSnapshotsAfterWriting();
 
                 snapshots.main_character = self.main_character;
-                try self.map.geometry.syncToRenderer(&snapshots.geometry_renderer);
+                try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
                 for (self.thread_contexts) |context| {
                     try snapshots.enemies.appendSlice(context.enemies.render_snapshots.items);
                     try snapshots.gems.appendSlice(context.gems.render_snapshots.items);

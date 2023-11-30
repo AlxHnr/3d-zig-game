@@ -175,68 +175,77 @@ pub fn toSerializableData(self: Geometry, allocator: std.mem.Allocator) !Seriali
     return .{ .walls = walls, .floors = floors, .billboard_objects = billboards };
 }
 
-pub fn syncToRenderer(self: Geometry, renderer: *Renderer) !void {
-    if (renderer.sync_info == null or
-        renderer.sync_info.?.geometry_object_id != self.id or
-        renderer.sync_info.?.geometry_change_counter != self.change_counter)
-    {
-        try renderer.wall_data.resize(
-            self.walls.solid.items.len + self.walls.translucent.items.len,
-        );
-        try renderer.floor_data.resize(self.floors.items.len);
-        try renderer.billboard_data.resize(self.billboard_objects.items.len);
-
-        for (self.walls.solid.items, 0..) |wall, index| {
-            renderer.wall_data.items[index] = wall.getWallData();
-        }
-        for (self.walls.translucent.items, self.walls.solid.items.len..) |wall, index| {
-            renderer.wall_data.items[index] = wall.getWallData();
-        }
-        for (0..self.floors.items.len) |index| {
-            const floor = self.floors.items[self.floors.items.len - index - 1]; // Reverse order.
-            const side_a_length = floor.side_a_end.subtract(floor.side_a_start).length();
-            renderer.floor_data.items[index] = .{
-                .properties = makeRenderingAttributes(
-                    floor.model_matrix,
-                    floor.getTextureLayerId(),
-                    floor.tint,
-                ),
-                .affected_by_animation_cycle = if (floor.isAffectedByAnimationCycle()) 1 else 0,
-                .texture_repeat_dimensions = .{
-                    .x = floor.side_b_length / floor.getTextureScale(),
-                    .y = side_a_length / floor.getTextureScale(),
-                },
-            };
-        }
-        for (self.billboard_objects.items, 0..) |billboard, index| {
-            renderer.billboard_data.items[index] = billboard.sprite_data;
-        }
-
-        renderer.needs_reupload = true;
+pub fn populateRenderSnapshot(self: Geometry, snapshot: *RenderSnapshot) !void {
+    snapshot.floor_animation_state = self.floor_animation_state;
+    if (!snapshot.render_data_upload_info.syncIfNeededWithGeometry(self)) {
+        return;
     }
 
-    renderer.floor_animation_state = self.floor_animation_state;
-    renderer.sync_info = .{
-        .geometry_object_id = self.id,
-        .geometry_change_counter = self.change_counter,
-    };
+    snapshot.wall_data.clearRetainingCapacity();
+    for (self.walls.solid.items) |wall| {
+        try snapshot.wall_data.append(wall.getWallData());
+    }
+    for (self.walls.translucent.items) |wall| {
+        try snapshot.wall_data.append(wall.getWallData());
+    }
+
+    snapshot.floor_data.clearRetainingCapacity();
+    for (0..self.floors.items.len) |index| {
+        const inverted_index = self.floors.items.len - index - 1;
+        const floor = self.floors.items[inverted_index];
+        const side_a_length = floor.side_a_end.subtract(floor.side_a_start).length();
+        try snapshot.floor_data.append(.{
+            .properties = makeRenderingAttributes(
+                floor.model_matrix,
+                floor.getTextureLayerId(),
+                floor.tint,
+            ),
+            .affected_by_animation_cycle = if (floor.isAffectedByAnimationCycle()) 1 else 0,
+            .texture_repeat_dimensions = .{
+                .x = floor.side_b_length / floor.getTextureScale(),
+                .y = side_a_length / floor.getTextureScale(),
+            },
+        });
+    }
+
+    snapshot.billboard_data.clearRetainingCapacity();
+    for (self.billboard_objects.items) |billboard| {
+        try snapshot.billboard_data.append(billboard.sprite_data);
+    }
 }
+
+pub const RenderSnapshot = struct {
+    wall_data: std.ArrayList(rendering.WallRenderer.WallData),
+    floor_data: std.ArrayList(rendering.FloorRenderer.FloorData),
+    floor_animation_state: animation.FourStepCycle,
+    billboard_data: std.ArrayList(rendering.SpriteData),
+    render_data_upload_info: RenderDataUploadInfo,
+
+    pub fn create(allocator: std.mem.Allocator) RenderSnapshot {
+        return .{
+            .wall_data = std.ArrayList(rendering.WallRenderer.WallData).init(allocator),
+            .floor_data = std.ArrayList(rendering.FloorRenderer.FloorData).init(allocator),
+            .floor_animation_state = animation.FourStepCycle.create(),
+            .billboard_data = std.ArrayList(rendering.SpriteData).init(allocator),
+            .render_data_upload_info = RenderDataUploadInfo.create(),
+        };
+    }
+
+    pub fn destroy(self: *RenderSnapshot) void {
+        self.billboard_data.deinit();
+        self.floor_data.deinit();
+        self.wall_data.deinit();
+    }
+};
 
 pub const Renderer = struct {
     wall_renderer: rendering.WallRenderer,
-    wall_data: std.ArrayList(rendering.WallRenderer.WallData),
     floor_renderer: rendering.FloorRenderer,
-    floor_data: std.ArrayList(rendering.FloorRenderer.FloorData),
     floor_animation_state: animation.FourStepCycle,
     billboard_renderer: rendering.BillboardRenderer,
-    billboard_data: std.ArrayList(rendering.SpriteData),
-    sync_info: ?struct {
-        geometry_object_id: u64,
-        geometry_change_counter: u64,
-    },
-    needs_reupload: bool,
+    render_data_upload_info: RenderDataUploadInfo,
 
-    pub fn create(allocator: std.mem.Allocator) !Renderer {
+    pub fn create() !Renderer {
         var wall_renderer = try rendering.WallRenderer.create();
         errdefer wall_renderer.destroy();
         var floor_renderer = try rendering.FloorRenderer.create();
@@ -246,41 +255,36 @@ pub const Renderer = struct {
 
         return .{
             .wall_renderer = wall_renderer,
-            .wall_data = std.ArrayList(rendering.WallRenderer.WallData).init(allocator),
             .floor_renderer = floor_renderer,
-            .floor_data = std.ArrayList(rendering.FloorRenderer.FloorData).init(allocator),
             .floor_animation_state = animation.FourStepCycle.create(),
             .billboard_renderer = billboard_renderer,
-            .billboard_data = std.ArrayList(rendering.SpriteData).init(allocator),
-            .sync_info = null,
-            .needs_reupload = false,
+            .render_data_upload_info = RenderDataUploadInfo.create(),
         };
     }
 
     pub fn destroy(self: *Renderer) void {
-        self.billboard_data.deinit();
         self.billboard_renderer.destroy();
-        self.floor_data.deinit();
         self.floor_renderer.destroy();
-        self.wall_data.deinit();
         self.wall_renderer.destroy();
     }
 
+    pub fn uploadRenderSnapshot(self: *Renderer, snapshot: RenderSnapshot) void {
+        if (self.render_data_upload_info.syncIfNeeded(snapshot.render_data_upload_info)) {
+            self.wall_renderer.uploadWalls(snapshot.wall_data.items);
+            self.floor_renderer.uploadFloors(snapshot.floor_data.items);
+            self.billboard_renderer.uploadBillboards(snapshot.billboard_data.items);
+        }
+        self.floor_animation_state = snapshot.floor_animation_state;
+    }
+
     pub fn render(
-        self: *Renderer,
+        self: Renderer,
         vp_matrix: math.Matrix,
         screen_dimensions: util.ScreenDimensions,
         camera_direction_to_target: math.Vector3d,
         tileable_textures: textures.TileableArrayTexture,
         spritesheet: textures.SpriteSheetTexture,
     ) void {
-        if (self.needs_reupload) {
-            self.needs_reupload = false;
-            self.wall_renderer.uploadWalls(self.wall_data.items);
-            self.floor_renderer.uploadFloors(self.floor_data.items);
-            self.billboard_renderer.uploadBillboards(self.billboard_data.items);
-        }
-
         // Prevent floors from overpainting each other.
         gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
         self.floor_renderer.render(vp_matrix, tileable_textures.id, self.floor_animation_state);
@@ -1145,6 +1149,49 @@ fn makeRenderingAttributes(
         .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
     };
 }
+
+/// Used to prevent reuploading the same unchanged data to the GPU multiple times.
+const RenderDataUploadInfo = struct {
+    has_been_synchronized: bool,
+    geometry_object_id: u64,
+    geometry_change_counter: u64,
+
+    fn create() RenderDataUploadInfo {
+        return .{
+            .has_been_synchronized = false,
+            .geometry_object_id = 0,
+            .geometry_change_counter = 0,
+        };
+    }
+
+    /// Returns false if this object is already up to date.
+    fn syncIfNeeded(self: *RenderDataUploadInfo, newer_state: RenderDataUploadInfo) bool {
+        if (self.has_been_synchronized and
+            self.geometry_object_id == newer_state.geometry_object_id and
+            self.geometry_change_counter == newer_state.geometry_change_counter)
+        {
+            return false;
+        }
+        self.* = newer_state;
+        return true;
+    }
+
+    /// Returns false if this object is already up to date.
+    fn syncIfNeededWithGeometry(self: *RenderDataUploadInfo, geometry: Geometry) bool {
+        if (self.has_been_synchronized and
+            self.geometry_object_id == geometry.id and
+            self.geometry_change_counter == geometry.change_counter)
+        {
+            return false;
+        }
+        self.* = .{
+            .has_been_synchronized = true,
+            .geometry_object_id = geometry.id,
+            .geometry_change_counter = geometry.change_counter,
+        };
+        return true;
+    }
+};
 
 /// Bitset containing all walkable and non-walkable tiles in the map.
 const ObstacleGrid = struct {
