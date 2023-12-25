@@ -1,3 +1,4 @@
+const Color = @import("util.zig").Color;
 const EditModeState = @import("edit_mode.zig").State;
 const EnemySnapshot = @import("enemy.zig").RenderSnapshot;
 const GemSnapshot = @import("gem.zig").RenderSnapshot;
@@ -11,6 +12,7 @@ const rendering = @import("rendering.zig");
 const sdl = @import("sdl.zig");
 const simulation = @import("simulation.zig");
 const std = @import("std");
+const text_rendering = @import("text_rendering.zig");
 const textures = @import("textures.zig");
 
 const Loop = @This();
@@ -30,6 +32,7 @@ extra_data: struct {
     screen_dimensions: ScreenDimensions,
     screen_dimensions_changed: bool,
     edit_mode_state: EditModeState,
+    player_is_on_obstacle_tile: bool,
 },
 
 pub fn create(
@@ -50,6 +53,7 @@ pub fn create(
             .screen_dimensions = screen_dimensions,
             .screen_dimensions_changed = false,
             .edit_mode_state = edit_mode_state,
+            .player_is_on_obstacle_tile = false,
         },
     };
 }
@@ -79,6 +83,9 @@ pub fn run(
 
     var billboard_renderer = try rendering.BillboardRenderer.create();
     defer billboard_renderer.destroy();
+
+    var sprite_renderer = try rendering.SpriteRenderer.create();
+    defer sprite_renderer.destroy();
 
     var billboard_buffer = std.ArrayList(rendering.SpriteData).init(self.allocator);
     defer billboard_buffer.deinit();
@@ -161,7 +168,14 @@ pub fn run(
         );
 
         gl.disable(gl.DEPTH_TEST);
-        // HUD
+        try renderEditMode(
+            extra_data.edit_mode_state,
+            &sprite_renderer,
+            extra_data.screen_dimensions,
+            spritesheet,
+            &billboard_buffer,
+            extra_data.player_is_on_obstacle_tile,
+        );
 
         sdl.SDL_GL_SwapWindow(window);
     }
@@ -179,6 +193,7 @@ pub fn sendExtraData(
     self: *Loop,
     screen_dimensions: ScreenDimensions,
     edit_mode_state: EditModeState,
+    player_is_on_obstacle_tile: bool,
 ) void {
     self.extra_data.mutex.lock();
     defer self.extra_data.mutex.unlock();
@@ -190,6 +205,7 @@ pub fn sendExtraData(
     }
     self.extra_data.screen_dimensions = screen_dimensions;
     self.extra_data.edit_mode_state = edit_mode_state;
+    self.extra_data.player_is_on_obstacle_tile = player_is_on_obstacle_tile;
 }
 
 /// Return a snapshot object to be populated with the latest game state. Must be followed by
@@ -245,4 +261,40 @@ fn swapSnapshots(self: *Loop) void {
         std.mem.swap(Snapshots, &self.current, &self.secondary);
         self.secondary_is_populated = false;
     }
+}
+
+fn renderEditMode(
+    state: EditModeState,
+    renderer: *rendering.SpriteRenderer,
+    screen_dimensions: ScreenDimensions,
+    spritesheet: textures.SpriteSheetTexture,
+    sprite_buffer: *std.ArrayList(rendering.SpriteData),
+    player_is_on_obstacle_tile: bool,
+) !void {
+    var text_buffer: [64]u8 = undefined;
+    const description = try state.describe(&text_buffer);
+
+    const text_color = Color.fromRgb8(0, 0, 0);
+    const segments = [_]text_rendering.TextSegment{
+        .{ .color = text_color, .text = description[0] },
+        .{ .color = text_color, .text = "\n" },
+        .{ .color = text_color, .text = description[1] },
+        .{ .color = text_color, .text = if (player_is_on_obstacle_tile)
+            "\nFlowField: Unreachable"
+        else
+            "" },
+    };
+
+    const sprite_count = text_rendering.getSpriteCount(&segments);
+    try sprite_buffer.resize(sprite_count);
+    text_rendering.populateSpriteData(
+        &segments,
+        0,
+        0,
+        spritesheet.getFontSizeMultiple(2),
+        spritesheet,
+        sprite_buffer.items,
+    );
+    renderer.uploadSprites(sprite_buffer.items);
+    renderer.render(screen_dimensions, spritesheet.id);
 }

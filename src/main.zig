@@ -24,7 +24,6 @@ const ProgramContext = struct {
     game_context: GameContext,
     edit_mode_state: edit_mode.State,
     edit_mode_view: enum { from_behind, top_down },
-    edit_mode_renderer: EditModeRenderer,
 
     const default_map_path = "maps/default.json";
 
@@ -98,9 +97,6 @@ const ProgramContext = struct {
         );
         errdefer game_context.destroy(allocator);
 
-        var edit_mode_renderer = try EditModeRenderer.create();
-        errdefer edit_mode_renderer.destroy(allocator);
-
         try sdl.makeGLContextCurrent(null, null);
         var render_thread =
             try std.Thread.spawn(.{}, renderThread, .{ render_loop, window, gl_context });
@@ -118,12 +114,10 @@ const ProgramContext = struct {
             .game_context = game_context,
             .edit_mode_state = edit_mode_state,
             .edit_mode_view = .from_behind,
-            .edit_mode_renderer = edit_mode_renderer,
         };
     }
 
     fn destroy(self: *ProgramContext) void {
-        self.edit_mode_renderer.destroy(self.allocator);
         self.render_loop.sendStop();
         self.render_thread.join();
         self.render_loop.destroy();
@@ -218,7 +212,11 @@ const ProgramContext = struct {
                 }
             }
         }
-        self.render_loop.sendExtraData(self.screen_dimensions, self.edit_mode_state);
+        self.render_loop.sendExtraData(
+            self.screen_dimensions,
+            self.edit_mode_state,
+            self.game_context.playerIsOnFlowFieldObstacleTile(),
+        );
 
         return true;
     }
@@ -262,69 +260,6 @@ const ProgramContext = struct {
         loop.run(window, gl_context) catch |err| {
             std.log.err("thread failed: {}", .{err});
         };
-    }
-};
-
-const EditModeRenderer = struct {
-    renderer: rendering.SpriteRenderer,
-    sprite_buffer: []rendering.SpriteData,
-    spritesheet: SpriteSheetTexture,
-
-    fn create() !EditModeRenderer {
-        var renderer = try rendering.SpriteRenderer.create();
-        errdefer renderer.destroy();
-
-        var spritesheet = try SpriteSheetTexture.loadFromDisk();
-        errdefer spritesheet.destroy();
-
-        return .{
-            .renderer = renderer,
-            .sprite_buffer = &.{},
-            .spritesheet = spritesheet,
-        };
-    }
-
-    fn destroy(self: *EditModeRenderer, allocator: std.mem.Allocator) void {
-        self.spritesheet.destroy();
-        allocator.free(self.sprite_buffer);
-        self.renderer.destroy();
-    }
-
-    fn render(
-        self: *EditModeRenderer,
-        allocator: std.mem.Allocator,
-        screen_dimensions: util.ScreenDimensions,
-        state: edit_mode.State,
-        game_context: GameContext,
-    ) !void {
-        var text_buffer: [64]u8 = undefined;
-        const description = try state.describe(&text_buffer);
-
-        const text_color = util.Color.fromRgb8(0, 0, 0);
-        const segments = [_]text_rendering.TextSegment{
-            .{ .color = text_color, .text = description[0] },
-            .{ .color = text_color, .text = "\n" },
-            .{ .color = text_color, .text = description[1] },
-            .{ .color = text_color, .text = if (game_context.playerIsOnFlowFieldObstacleTile())
-                "\nFlowField: Unreachable"
-            else
-                "" },
-        };
-
-        const sprite_count = text_rendering.getSpriteCount(&segments);
-        if (self.sprite_buffer.len < sprite_count) {
-            self.sprite_buffer = try allocator.realloc(self.sprite_buffer, sprite_count);
-        }
-        text_rendering.populateSpriteData(
-            &segments,
-            0,
-            0,
-            self.spritesheet.getFontSizeMultiple(2),
-            self.spritesheet,
-            self.sprite_buffer[0..sprite_count],
-        );
-        self.renderer.uploadSprites(self.sprite_buffer[0..sprite_count]);
-        self.renderer.render(screen_dimensions, self.spritesheet.id);
     }
 };
 
