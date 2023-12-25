@@ -1,3 +1,4 @@
+const EditModeState = @import("edit_mode.zig").State;
 const EnemySnapshot = @import("enemy.zig").RenderSnapshot;
 const GemSnapshot = @import("gem.zig").RenderSnapshot;
 const GeometryRenderer = @import("map/geometry.zig").Renderer;
@@ -23,7 +24,19 @@ secondary_is_populated: bool,
 mutex: std.Thread.Mutex,
 condition: std.Thread.Condition,
 
-pub fn create(allocator: std.mem.Allocator) Loop {
+/// Other rendering data which is unrelated to the actual game.
+extra_data: struct {
+    mutex: std.Thread.Mutex,
+    screen_dimensions: ScreenDimensions,
+    screen_dimensions_changed: bool,
+    edit_mode_state: EditModeState,
+},
+
+pub fn create(
+    allocator: std.mem.Allocator,
+    screen_dimensions: ScreenDimensions,
+    edit_mode_state: EditModeState,
+) Loop {
     return .{
         .allocator = allocator,
         .keep_running = std.atomic.Atomic(bool).init(true),
@@ -32,6 +45,12 @@ pub fn create(allocator: std.mem.Allocator) Loop {
         .secondary_is_populated = false,
         .mutex = .{},
         .condition = .{},
+        .extra_data = .{
+            .mutex = .{},
+            .screen_dimensions = screen_dimensions,
+            .screen_dimensions_changed = false,
+            .edit_mode_state = edit_mode_state,
+        },
     };
 }
 
@@ -44,7 +63,6 @@ pub fn run(
     self: *Loop,
     window: *sdl.SDL_Window,
     gl_context: sdl.SDL_GLContext,
-    screen_dimensions: ScreenDimensions,
 ) !void {
     try sdl.makeGLContextCurrent(window, gl_context);
 
@@ -108,18 +126,36 @@ pub fn run(
         ));
         billboard_renderer.uploadBillboards(billboard_buffer.items);
 
-        const vp_matrix = camera.getViewProjectionMatrix(screen_dimensions, null);
+        const extra_data = blk: {
+            self.extra_data.mutex.lock();
+            defer self.extra_data.mutex.unlock();
+
+            const copy = self.extra_data;
+            self.extra_data.screen_dimensions_changed = false;
+            break :blk copy;
+        };
+
+        if (extra_data.screen_dimensions_changed) {
+            gl.viewport(
+                0,
+                0,
+                extra_data.screen_dimensions.width,
+                extra_data.screen_dimensions.height,
+            );
+        }
+
+        const vp_matrix = camera.getViewProjectionMatrix(extra_data.screen_dimensions, null);
         geometry_renderer.uploadRenderSnapshot(self.current.geometry);
         geometry_renderer.render(
             vp_matrix,
-            screen_dimensions,
+            extra_data.screen_dimensions,
             camera.getDirectionToTarget(),
             tileable_textures,
             spritesheet,
         );
         billboard_renderer.render(
             vp_matrix,
-            screen_dimensions,
+            extra_data.screen_dimensions,
             camera.getDirectionToTarget(),
             spritesheet.id,
         );
@@ -137,6 +173,23 @@ pub fn sendStop(self: *Loop) void {
     self.mutex.lock();
     self.condition.signal();
     self.mutex.unlock();
+}
+
+pub fn sendExtraData(
+    self: *Loop,
+    screen_dimensions: ScreenDimensions,
+    edit_mode_state: EditModeState,
+) void {
+    self.extra_data.mutex.lock();
+    defer self.extra_data.mutex.unlock();
+
+    if (self.extra_data.screen_dimensions.width != screen_dimensions.width or
+        self.extra_data.screen_dimensions.height != screen_dimensions.height)
+    {
+        self.extra_data.screen_dimensions_changed = true;
+    }
+    self.extra_data.screen_dimensions = screen_dimensions;
+    self.extra_data.edit_mode_state = edit_mode_state;
 }
 
 /// Return a snapshot object to be populated with the latest game state. Must be followed by

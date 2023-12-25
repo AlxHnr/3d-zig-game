@@ -77,6 +77,9 @@ const ProgramContext = struct {
         gl.enable(gl.STENCIL_TEST);
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
+        const screen_dimensions = .{ .width = screen_width, .height = screen_height };
+        const edit_mode_state = edit_mode.State.create();
+
         var dialog_controller = try allocator.create(DialogController);
         errdefer allocator.destroy(dialog_controller);
         dialog_controller.* = try DialogController.create(allocator);
@@ -84,7 +87,7 @@ const ProgramContext = struct {
 
         var render_loop = try allocator.create(RenderLoop);
         errdefer allocator.destroy(render_loop);
-        render_loop.* = RenderLoop.create(allocator);
+        render_loop.* = RenderLoop.create(allocator, screen_dimensions, edit_mode_state);
         errdefer render_loop.destroy();
 
         var game_context = try GameContext.create(
@@ -98,14 +101,9 @@ const ProgramContext = struct {
         var edit_mode_renderer = try EditModeRenderer.create();
         errdefer edit_mode_renderer.destroy(allocator);
 
-        const screen_dimensions = .{ .width = screen_width, .height = screen_height };
-
         try sdl.makeGLContextCurrent(null, null);
-        var render_thread = try std.Thread.spawn(
-            .{},
-            renderThread,
-            .{ render_loop, window, gl_context, screen_dimensions },
-        );
+        var render_thread =
+            try std.Thread.spawn(.{}, renderThread, .{ render_loop, window, gl_context });
         errdefer render_thread.join();
         errdefer render_loop.sendStop();
 
@@ -118,7 +116,7 @@ const ProgramContext = struct {
             .render_thread = render_thread,
             .dialog_controller = dialog_controller,
             .game_context = game_context,
-            .edit_mode_state = edit_mode.State.create(),
+            .edit_mode_state = edit_mode_state,
             .edit_mode_view = .from_behind,
             .edit_mode_renderer = edit_mode_renderer,
         };
@@ -170,7 +168,6 @@ const ProgramContext = struct {
                     .width = @intCast(event.window.data1),
                     .height = @intCast(event.window.data2),
                 };
-                gl.viewport(0, 0, event.window.data1, event.window.data2);
             } else if (event.type == sdl.SDL_MOUSEBUTTONDOWN) {
                 if (event.button.button == sdl.SDL_BUTTON_LEFT) {
                     try self.edit_mode_state.handleActionAtTarget(
@@ -221,6 +218,8 @@ const ProgramContext = struct {
                 }
             }
         }
+        self.render_loop.sendExtraData(self.screen_dimensions, self.edit_mode_state);
+
         return true;
     }
 
@@ -259,9 +258,8 @@ const ProgramContext = struct {
         loop: *RenderLoop,
         window: *sdl.SDL_Window,
         gl_context: sdl.SDL_GLContext,
-        screen_dimensions: util.ScreenDimensions,
     ) void {
-        loop.run(window, gl_context, screen_dimensions) catch |err| {
+        loop.run(window, gl_context) catch |err| {
             std.log.err("thread failed: {}", .{err});
         };
     }
