@@ -1,4 +1,5 @@
 const Color = @import("util.zig").Color;
+const DialogController = @import("dialog.zig").Controller;
 const EditModeState = @import("edit_mode.zig").State;
 const EnemySnapshot = @import("enemy.zig").RenderSnapshot;
 const GemSnapshot = @import("gem.zig").RenderSnapshot;
@@ -68,6 +69,7 @@ pub fn run(
     self: *Loop,
     window: *sdl.SDL_Window,
     gl_context: sdl.SDL_GLContext,
+    dialog_controller: *DialogController,
 ) !void {
     try sdl.makeGLContextCurrent(window, gl_context);
 
@@ -178,6 +180,7 @@ pub fn run(
             self.current.main_character.gem_count,
             self.current.main_character.character.health.current,
         );
+        try dialog_controller.render(extra_data.screen_dimensions, lap_result.next_tick_progress);
         try renderEditMode(
             extra_data.edit_mode_state,
             &sprite_renderer,

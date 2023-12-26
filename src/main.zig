@@ -98,8 +98,11 @@ const ProgramContext = struct {
         errdefer game_context.destroy(allocator);
 
         try sdl.makeGLContextCurrent(null, null);
-        var render_thread =
-            try std.Thread.spawn(.{}, renderThread, .{ render_loop, window, gl_context });
+        var render_thread = try std.Thread.spawn(
+            .{},
+            renderThread,
+            .{ render_loop, window, gl_context, dialog_controller },
+        );
         errdefer render_thread.join();
         errdefer render_loop.sendStop();
 
@@ -256,8 +259,9 @@ const ProgramContext = struct {
         loop: *RenderLoop,
         window: *sdl.SDL_Window,
         gl_context: sdl.SDL_GLContext,
+        dialog_controller: *DialogController,
     ) void {
-        loop.run(window, gl_context) catch |err| {
+        loop.run(window, gl_context, dialog_controller) catch |err| {
             std.log.err("thread failed: {}", .{err});
         };
     }
