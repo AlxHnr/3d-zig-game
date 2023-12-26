@@ -14,6 +14,7 @@ const simulation = @import("simulation.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 const textures = @import("textures.zig");
+const ui = @import("ui.zig");
 
 const Loop = @This();
 
@@ -168,6 +169,15 @@ pub fn run(
         );
 
         gl.disable(gl.DEPTH_TEST);
+        try renderHud(
+            self.allocator,
+            &sprite_renderer,
+            extra_data.screen_dimensions,
+            spritesheet,
+            &billboard_buffer,
+            self.current.main_character.gem_count,
+            self.current.main_character.character.health.current,
+        );
         try renderEditMode(
             extra_data.edit_mode_state,
             &sprite_renderer,
@@ -263,6 +273,37 @@ fn swapSnapshots(self: *Loop) void {
     }
 }
 
+fn renderHud(
+    allocator: std.mem.Allocator,
+    renderer: *rendering.SpriteRenderer,
+    screen_dimensions: ScreenDimensions,
+    spritesheet: textures.SpriteSheetTexture,
+    sprite_buffer: *std.ArrayList(rendering.SpriteData),
+    gem_count: u64,
+    player_health: u32,
+) !void {
+    var segments = try allocator.alloc(text_rendering.TextSegment, 1);
+    defer allocator.free(segments);
+    var buffer: [64]u8 = undefined;
+    segments[0] = .{
+        .color = Color.fromRgb8(0, 0, 0),
+        .text = try std.fmt.bufPrint(&buffer, "Gems: {}\nHP: {}", .{ gem_count, player_health }),
+    };
+
+    var widget = try allocator.create(ui.Widget);
+    defer allocator.destroy(widget);
+    widget.* = .{ .text = ui.Text.wrap(segments, &spritesheet, 3) };
+
+    try sprite_buffer.resize(widget.getSpriteCount());
+    widget.populateSpriteData(
+        0,
+        screen_dimensions.height - widget.getDimensionsInPixels().height,
+        sprite_buffer.items,
+    );
+    renderer.uploadSprites(sprite_buffer.items);
+    renderer.render(screen_dimensions, spritesheet.id);
+}
+
 fn renderEditMode(
     state: EditModeState,
     renderer: *rendering.SpriteRenderer,
@@ -285,8 +326,7 @@ fn renderEditMode(
             "" },
     };
 
-    const sprite_count = text_rendering.getSpriteCount(&segments);
-    try sprite_buffer.resize(sprite_count);
+    try sprite_buffer.resize(text_rendering.getSpriteCount(&segments));
     text_rendering.populateSpriteData(
         &segments,
         0,
