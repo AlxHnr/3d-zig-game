@@ -154,7 +154,17 @@ pub fn run(
             );
         }
 
-        const vp_matrix = camera.getViewProjectionMatrix(extra_data.screen_dimensions, null);
+        const ray_wall_collision = self.current.geometry
+            .cast3DRayToSolidWalls(camera.get3DRayFromTargetToSelf());
+        const max_camera_distance = if (ray_wall_collision) |impact_point|
+            impact_point.distance_from_start_position
+        else
+            null;
+
+        const vp_matrix = camera.getViewProjectionMatrix(
+            extra_data.screen_dimensions,
+            max_camera_distance,
+        );
         geometry_renderer.uploadRenderSnapshot(self.current.geometry);
         geometry_renderer.render(
             vp_matrix,

@@ -182,8 +182,12 @@ pub fn populateRenderSnapshot(self: Geometry, snapshot: *RenderSnapshot) !void {
     }
 
     snapshot.wall_data.clearRetainingCapacity();
+    snapshot.solid_walls.clearRetainingCapacity();
     for (self.walls.solid.items) |wall| {
         try snapshot.wall_data.append(wall.getWallData());
+        try snapshot.solid_walls.append(
+            .{ .wall_type = wall.wall_type, .boundaries = wall.boundaries },
+        );
     }
     for (self.walls.translucent.items) |wall| {
         try snapshot.wall_data.append(wall.getWallData());
@@ -216,6 +220,7 @@ pub fn populateRenderSnapshot(self: Geometry, snapshot: *RenderSnapshot) !void {
 
 pub const RenderSnapshot = struct {
     wall_data: std.ArrayList(rendering.WallRenderer.WallData),
+    solid_walls: std.ArrayList(PartialWallData),
     floor_data: std.ArrayList(rendering.FloorRenderer.FloorData),
     floor_animation_state: animation.FourStepCycle,
     billboard_data: std.ArrayList(rendering.SpriteData),
@@ -224,6 +229,7 @@ pub const RenderSnapshot = struct {
     pub fn create(allocator: std.mem.Allocator) RenderSnapshot {
         return .{
             .wall_data = std.ArrayList(rendering.WallRenderer.WallData).init(allocator),
+            .solid_walls = std.ArrayList(PartialWallData).init(allocator),
             .floor_data = std.ArrayList(rendering.FloorRenderer.FloorData).init(allocator),
             .floor_animation_state = animation.FourStepCycle.create(),
             .billboard_data = std.ArrayList(rendering.SpriteData).init(allocator),
@@ -234,8 +240,32 @@ pub const RenderSnapshot = struct {
     pub fn destroy(self: *RenderSnapshot) void {
         self.billboard_data.deinit();
         self.floor_data.deinit();
+        self.solid_walls.deinit();
         self.wall_data.deinit();
     }
+
+    pub fn cast3DRayToSolidWalls(
+        self: RenderSnapshot,
+        ray: collision.Ray3d,
+    ) ?collision.Ray3d.ImpactPoint {
+        var ray_collision: ?RayCollision = null;
+        for (self.solid_walls.items) |wall| {
+            ray_collision = getCloserRayCollision(
+                Wall.collidesWithRay(wall.wall_type, wall.boundaries, ray),
+                0, // Not used.
+                ray_collision,
+            );
+        }
+        return if (ray_collision) |result|
+            result.impact_point
+        else
+            null;
+    }
+
+    const PartialWallData = struct {
+        wall_type: WallType,
+        boundaries: collision.Rectangle,
+    };
 };
 
 pub const Renderer = struct {
