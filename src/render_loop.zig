@@ -37,6 +37,9 @@ extra_data: struct {
     player_is_on_obstacle_tile: bool,
 },
 
+/// Value between 0 and 1.
+interpolation_interval_used_in_latest_frame: std.atomic.Atomic(f32),
+
 pub fn create(
     allocator: std.mem.Allocator,
     screen_dimensions: ScreenDimensions,
@@ -57,6 +60,7 @@ pub fn create(
             .edit_mode_state = edit_mode_state,
             .player_is_on_obstacle_tile = false,
         },
+        .interpolation_interval_used_in_latest_frame = std.atomic.Atomic(f32).init(0),
     };
 }
 
@@ -200,8 +204,14 @@ pub fn run(
             extra_data.player_is_on_obstacle_tile,
         );
 
+        self.interpolation_interval_used_in_latest_frame
+            .store(lap_result.next_tick_progress, .Unordered);
         sdl.SDL_GL_SwapWindow(window);
     }
+}
+
+pub fn getInterpolationIntervalUsedInLatestFrame(self: Loop) f32 {
+    return self.interpolation_interval_used_in_latest_frame.load(.Unordered);
 }
 
 pub fn sendStop(self: *Loop) void {
