@@ -25,7 +25,6 @@ const textures = @import("textures.zig");
 pub const Context = struct {
     tick_timer: simulation.TickTimer,
     tick_counter: u32,
-    interval_between_previous_and_current_tick: f32,
     frame_timer: std.time.Timer,
     main_character: game_unit.Player,
     main_character_flow_field: FlowField,
@@ -116,7 +115,6 @@ pub const Context = struct {
         return .{
             .tick_timer = try simulation.TickTimer.start(simulation.tickrate),
             .tick_counter = 0,
-            .interval_between_previous_and_current_tick = 1,
             .frame_timer = try std.time.Timer.start(),
             .main_character = game_unit.Player.create(
                 0,
@@ -178,11 +176,11 @@ pub const Context = struct {
         if (self.dialog_controller.hasOpenDialogs()) {
             self.main_character.markAllButtonsAsReleased();
         }
-        self.main_character.applyCurrentInput(self.interval_between_previous_and_current_tick);
+        self.main_character.applyCurrentInput(
+            self.render_loop.getInterpolationIntervalUsedInLatestFrame(),
+        );
 
         const lap_result = self.tick_timer.lap();
-        self.interval_between_previous_and_current_tick = lap_result.next_tick_progress;
-
         const end_tick = self.tick_counter + lap_result.elapsed_ticks;
         while (self.tick_counter < end_tick and
             self.frame_timer.read() < max_frame_time) : (self.tick_counter += 1)
@@ -289,9 +287,16 @@ pub const Context = struct {
         mouse_y: u16,
         screen_dimensions: ScreenDimensions,
     ) collision.Ray3d {
-        return self.main_character
-            .getCamera(self.interval_between_previous_and_current_tick)
-            .get3DRay(mouse_x, mouse_y, screen_dimensions, null);
+        const camera = self.main_character.getCamera(
+            self.render_loop.getInterpolationIntervalUsedInLatestFrame(),
+        );
+        const ray_wall_collision = self.map.geometry
+            .cast3DRayToWalls(camera.get3DRayFromTargetToSelf());
+        const max_camera_distance = if (ray_wall_collision) |ray_collision|
+            ray_collision.impact_point.distance_from_start_position
+        else
+            null;
+        return camera.get3DRay(mouse_x, mouse_y, screen_dimensions, max_camera_distance);
     }
 
     pub fn increaseCameraDistance(self: *Context, value: f32) void {
@@ -308,7 +313,7 @@ pub const Context = struct {
 
     pub fn getCameraDirection(self: Context) math.Vector3d {
         return self.main_character
-            .getCamera(self.interval_between_previous_and_current_tick)
+            .getCamera(self.render_loop.getInterpolationIntervalUsedInLatestFrame())
             .getDirectionToTarget();
     }
 
