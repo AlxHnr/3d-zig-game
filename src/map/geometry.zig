@@ -497,26 +497,28 @@ pub const RayCollision = struct {
 };
 
 /// Find the id of the closest wall hit by the given ray, if available.
-pub fn cast3DRayToWalls(
-    self: Geometry,
-    ray: collision.Ray3d,
-    ignore_fences: bool,
-) ?RayCollision {
+pub fn cast3DRayToWalls(self: Geometry, ray: collision.Ray3d) ?RayCollision {
     var result: ?RayCollision = null;
     for (self.walls.solid.items) |wall| {
-        result = getCloserRayCollision(wall.collidesWithRay(ray), wall.object_id, result);
+        result = getCloserRayCollision(
+            Wall.collidesWithRay(wall.wall_type, wall.boundaries, ray),
+            wall.object_id,
+            result,
+        );
     }
-    if (!ignore_fences) {
-        for (self.walls.translucent.items) |wall| {
-            result = getCloserRayCollision(wall.collidesWithRay(ray), wall.object_id, result);
-        }
+    for (self.walls.translucent.items) |wall| {
+        result = getCloserRayCollision(
+            Wall.collidesWithRay(wall.wall_type, wall.boundaries, ray),
+            wall.object_id,
+            result,
+        );
     }
     return result;
 }
 
 /// Find the id of the closest object hit by the given ray, if available.
 pub fn cast3DRayToObjects(self: Geometry, ray: collision.Ray3d) ?RayCollision {
-    var result = self.cast3DRayToWalls(ray, false);
+    var result = self.cast3DRayToWalls(ray);
     for (self.billboard_objects.items) |billboard| {
         result = getCloserRayCollision(billboard.cast3DRay(ray), billboard.object_id, result);
     }
@@ -770,7 +772,7 @@ fn getCloserRayCollision(
 
 const Floor = struct {
     object_id: u64,
-    floor_type: Geometry.FloorType,
+    floor_type: FloorType,
     model_matrix: math.Matrix,
     boundaries: collision.Rectangle,
     tint: util.Color,
@@ -783,7 +785,7 @@ const Floor = struct {
     /// Side a and b can be chosen arbitrarily, but must be adjacent.
     fn create(
         object_id: u64,
-        floor_type: Geometry.FloorType,
+        floor_type: FloorType,
         side_a_start: math.FlatVector,
         side_a_end: math.FlatVector,
         side_b_length: f32,
@@ -817,7 +819,7 @@ const Floor = struct {
         };
     }
 
-    fn getDefaultTint(floor_type: Geometry.FloorType) util.Color {
+    fn getDefaultTint(floor_type: FloorType) util.Color {
         return switch (floor_type) {
             else => util.Color.white,
         };
@@ -838,14 +840,14 @@ const Floor = struct {
 
 const Wall = struct {
     object_id: u64,
-    wall_type: Geometry.WallType,
+    wall_type: WallType,
     model_matrix: math.Matrix,
     boundaries: collision.Rectangle,
     tint: util.Color,
 
     grid_handles: struct {
-        all: ?*Geometry.SpatialGrid.ObjectHandle,
-        solid: ?*Geometry.SpatialGrid.ObjectHandle,
+        all: ?*SpatialGrid.ObjectHandle,
+        solid: ?*SpatialGrid.ObjectHandle,
     },
 
     /// Values used to generate this wall.
@@ -854,7 +856,7 @@ const Wall = struct {
 
     fn create(
         object_id: u64,
-        wall_type: Geometry.WallType,
+        wall_type: WallType,
         start_position: math.FlatVector,
         end_position: math.FlatVector,
     ) Wall {
@@ -894,17 +896,18 @@ const Wall = struct {
     }
 
     fn collidesWithRay(
-        self: Wall,
+        wall_type: WallType,
+        boundaries: collision.Rectangle,
         ray: collision.Ray3d,
     ) ?collision.Ray3d.ImpactPoint {
-        const bottom_corners_2d = self.boundaries.getCornersInGameCoordinates();
+        const bottom_corners_2d = boundaries.getCornersInGameCoordinates();
         const bottom_corners = [_]math.Vector3d{
             bottom_corners_2d[0].toVector3d(),
             bottom_corners_2d[1].toVector3d(),
             bottom_corners_2d[2].toVector3d(),
             bottom_corners_2d[3].toVector3d(),
         };
-        const vertical_offset = math.Vector3d.y_axis.scale(getWallTypeHeight(self.wall_type));
+        const vertical_offset = math.Vector3d.y_axis.scale(getWallTypeHeight(wall_type));
         var closest_impact_point: ?collision.Ray3d.ImpactPoint = null;
 
         var side: usize = 0;
@@ -957,7 +960,7 @@ const Wall = struct {
     fn getWallTypeProperties(
         start_position: math.FlatVector,
         end_position: math.FlatVector,
-        wall_type: Geometry.WallType,
+        wall_type: WallType,
     ) WallTypeProperties {
         const fence_thickness = 0.25; // Only needed for collision boundaries, fences are flat.
         var properties = WallTypeProperties{
@@ -1007,7 +1010,7 @@ const Wall = struct {
         return properties;
     }
 
-    fn getWallTypeHeight(wall_type: Geometry.WallType) f32 {
+    fn getWallTypeHeight(wall_type: WallType) f32 {
         return switch (wall_type) {
             .small_wall => 5.0,
             .medium_wall => 10.0,
@@ -1020,14 +1023,14 @@ const Wall = struct {
         };
     }
 
-    fn isFence(wall_type: Geometry.WallType) bool {
+    fn isFence(wall_type: WallType) bool {
         return switch (wall_type) {
             else => false,
             .metal_fence, .short_metal_fence => true,
         };
     }
 
-    fn getDefaultTint(wall_type: Geometry.WallType) util.Color {
+    fn getDefaultTint(wall_type: WallType) util.Color {
         return switch (wall_type) {
             .castle_tower => util.Color.fromRgb8(248, 248, 248),
             .giga_wall => util.Color.fromRgb8(170, 170, 170),
@@ -1065,13 +1068,13 @@ const Wall = struct {
 
 const BillboardObject = struct {
     object_id: u64,
-    object_type: Geometry.BillboardObjectType,
+    object_type: BillboardObjectType,
     boundaries: collision.Circle,
     sprite_data: rendering.SpriteData,
 
     fn create(
         object_id: u64,
-        object_type: Geometry.BillboardObjectType,
+        object_type: BillboardObjectType,
         position: math.FlatVector,
         spritesheet: textures.SpriteSheetTexture,
     ) BillboardObject {
@@ -1131,7 +1134,7 @@ const BillboardObject = struct {
         });
     }
 
-    fn getDefaultTint(object_type: Geometry.BillboardObjectType) util.Color {
+    fn getDefaultTint(object_type: BillboardObjectType) util.Color {
         return switch (object_type) {
             else => util.Color.white,
         };
@@ -1236,7 +1239,7 @@ const ObstacleGrid = struct {
             updateBoundaries(&map_boundaries, wall);
         }
 
-        const cell_size = @as(f32, @floatFromInt(Geometry.obstacle_grid_cell_size));
+        const cell_size = @as(f32, @floatFromInt(obstacle_grid_cell_size));
         const padding_for_storing_extra_neighbors = .{ .x = cell_size, .z = cell_size };
         map_boundaries.min = map_boundaries.min.subtract(padding_for_storing_extra_neighbors);
         map_boundaries.max = map_boundaries.max.add(padding_for_storing_extra_neighbors);
@@ -1324,7 +1327,7 @@ const ObstacleGrid = struct {
     const CellIndex = struct {
         x: isize,
         z: isize,
-        pub const side_length = Geometry.obstacle_grid_cell_size;
+        pub const side_length = obstacle_grid_cell_size;
 
         pub fn fromPosition(position: math.FlatVector) CellIndex {
             return .{
