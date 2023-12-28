@@ -2,6 +2,7 @@ const DialogController = @import("dialog.zig").Controller;
 const Error = @import("error.zig").Error;
 const GameContext = @import("game_context.zig").Context;
 const InputButton = @import("game_unit.zig").InputButton;
+const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
 const RenderLoop = @import("render_loop.zig");
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const edit_mode = @import("edit_mode.zig");
@@ -136,6 +137,7 @@ const ProgramContext = struct {
     fn run(self: *ProgramContext) !void {
         var tick_counter: u32 = 0;
         var tick_timer = try simulation.TickTimer.start(simulation.tickrate);
+        var performance_measurements = try PerformanceMeasurements.create();
 
         main_loop: while (true) {
             const lap_result = tick_timer.lap();
@@ -146,13 +148,21 @@ const ProgramContext = struct {
 
             const tick_upper_limit = 4; // Prevent `elapsed_ticks` from over-accumulating.
             for (0..@min(lap_result.elapsed_ticks, tick_upper_limit)) |_| {
-                if (!try self.processInputs()) {
-                    break :main_loop;
+                {
+                    performance_measurements.begin(.tick_total);
+                    defer performance_measurements.end(.tick_total);
+
+                    if (!try self.processInputs()) {
+                        break :main_loop;
+                    }
+                    try self.game_context.handleElapsedTick(&performance_measurements);
                 }
-                try self.game_context.handleElapsedTick();
 
                 tick_counter += 1;
-                if (@mod(tick_counter, simulation.tickrate) == 0) {}
+                if (@mod(tick_counter, simulation.tickrate) == 0) {
+                    performance_measurements.updateAverageAndReset();
+                    performance_measurements.printTickInfo();
+                }
             }
         }
     }

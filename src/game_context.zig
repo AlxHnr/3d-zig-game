@@ -38,7 +38,6 @@ pub const Context = struct {
     thread_pool: ThreadPool,
     /// Contexts are not stored in a single contiguous array to avoid false sharing.
     thread_contexts: []*ThreadContext,
-    performance_measurements: PerformanceMeasurements,
 
     /// Non-owning pointer.
     render_loop: *RenderLoop,
@@ -126,7 +125,6 @@ pub const Context = struct {
                 tick_lifetime_allocator.allocator(),
             ),
             .thread_contexts = thread_contexts,
-            .performance_measurements = try PerformanceMeasurements.create(),
             .render_loop = render_loop,
             .dialog_controller = dialog_controller,
         };
@@ -163,7 +161,10 @@ pub const Context = struct {
         self.main_character.markButtonAsReleased(button);
     }
 
-    pub fn handleElapsedTick(self: *Context) !void {
+    pub fn handleElapsedTick(
+        self: *Context,
+        performance_measurements: *PerformanceMeasurements,
+    ) !void {
         if (self.dialog_controller.hasOpenDialogs()) {
             self.main_character.markAllButtonsAsReleased();
         }
@@ -171,7 +172,7 @@ pub const Context = struct {
             self.render_loop.getInterpolationIntervalUsedInLatestFrame(),
         );
 
-        self.performance_measurements.begin(.tick);
+        performance_measurements.begin(.logic_total);
         self.map.processElapsedTick();
         self.main_character.processElapsedTick(self.map);
 
@@ -185,29 +186,30 @@ pub const Context = struct {
             try self.thread_pool.dispatchIgnoreErrors(processGemThread, .{ self, thread_id });
         }
         self.thread_pool.wait();
+        self.mergeMeasurementsFromSlowestThread(.enemy_logic, performance_measurements);
+        self.mergeMeasurementsFromSlowestThread(.gem_logic, performance_measurements);
 
-        self.mergeMeasurementsFromSlowestThread(.enemy_logic);
-        self.mergeMeasurementsFromSlowestThread(.gem_logic);
         self.dialog_controller.processElapsedTick();
-        self.performance_measurements.end(.tick);
+        performance_measurements.end(.logic_total);
 
-        self.performance_measurements.begin(.thread_aggregation_flow_field);
         _ = self.tick_lifetime_allocator.reset(.retain_capacity);
         self.attacking_enemy_positions_at_previous_tick = EnemyPositionGrid.create(
             self.tick_lifetime_allocator.allocator(),
         );
         try self.thread_pool.dispatchIgnoreErrors(
             updateSpatialGridsThread,
-            .{ self, &self.attacking_enemy_positions_at_previous_tick },
+            .{ self, &self.attacking_enemy_positions_at_previous_tick, performance_measurements },
         );
-        try self.thread_pool.dispatchIgnoreErrors(recomputeFlowFieldThread, .{self});
+        try self.thread_pool.dispatchIgnoreErrors(
+            recomputeFlowFieldThread,
+            .{ self, performance_measurements },
+        );
         self.thread_pool.wait();
         for (self.thread_contexts) |context| {
             self.main_character.gem_count += context.gems.amount_collected;
         }
-        self.performance_measurements.end(.thread_aggregation_flow_field);
 
-        self.performance_measurements.begin(.populate_render_snapshots);
+        performance_measurements.begin(.populate_render_snapshots);
         {
             const snapshots = self.render_loop.getLockedSnapshotsForWriting();
             defer self.render_loop.releaseSnapshotsAfterWriting();
@@ -219,7 +221,7 @@ pub const Context = struct {
                 try snapshots.gems.appendSlice(context.gems.render_snapshots.items);
             }
         }
-        self.performance_measurements.end(.populate_render_snapshots);
+        performance_measurements.end(.populate_render_snapshots);
 
         for (self.thread_contexts) |context| {
             context.reset();
@@ -322,20 +324,22 @@ pub const Context = struct {
     fn mergeMeasurementsFromSlowestThread(
         self: *Context,
         metric_type: PerformanceMeasurements.MetricType,
+        out: *PerformanceMeasurements,
     ) void {
         var longest = self.thread_contexts[0].performance_measurements;
         for (self.thread_contexts[1..]) |context| {
             longest = longest.getLongest(context.performance_measurements, metric_type);
         }
-        self.performance_measurements.copySingleMetric(longest, metric_type);
+        out.copySingleMetric(longest, metric_type);
     }
 
     fn updateSpatialGridsThread(
         self: *Context,
         attacking_enemy_positions_at_previous_tick: *EnemyPositionGrid,
+        performance_measurements: *PerformanceMeasurements,
     ) !void {
-        self.performance_measurements.begin(.thread_aggregation);
-        defer self.performance_measurements.end(.thread_aggregation);
+        performance_measurements.begin(.spatial_grids);
+        defer performance_measurements.end(.spatial_grids);
 
         for (self.thread_contexts) |context| {
             for (context.enemies.removal_queue.items) |object_handle| {
@@ -360,9 +364,12 @@ pub const Context = struct {
         }
     }
 
-    fn recomputeFlowFieldThread(self: *Context) !void {
-        self.performance_measurements.begin(.flow_field);
-        defer self.performance_measurements.end(.flow_field);
+    fn recomputeFlowFieldThread(
+        self: *Context,
+        performance_measurements: *PerformanceMeasurements,
+    ) !void {
+        performance_measurements.begin(.flow_field);
+        defer performance_measurements.end(.flow_field);
 
         for (self.thread_contexts) |context| {
             for (context.enemies.attacking_positions.items) |attacking_enemy| {

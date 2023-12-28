@@ -4,16 +4,13 @@ pub const Measurements = struct {
     metrics: std.enums.EnumArray(MetricType, Metric),
 
     pub const MetricType = enum {
-        total,
-        tick,
-        populate_render_snapshots,
+        tick_total,
+        logic_total,
         enemy_logic,
         gem_logic,
-        thread_aggregation,
+        spatial_grids,
         flow_field,
-        thread_aggregation_flow_field,
-        render,
-        render_enemies,
+        populate_render_snapshots,
     };
     const Metric = struct {
         timer: std.time.Timer,
@@ -86,19 +83,17 @@ pub const Measurements = struct {
         self.metrics.getPtr(metric_type_to_copy).* = source.metrics.get(metric_type_to_copy);
     }
 
-    pub fn printLogInfo(self: Measurements) void {
+    pub fn printTickInfo(self: Measurements) void {
         std.log.info(
-            "⏱️ {d:.2}ms │ ⏲️ {d:.2}ms: 👾{d:.2}ms ♦️ {d:.2}ms 🧵{d:.2}ms⟨🌐{d:.2}ms ∧ ↪️ {d:.2}ms⟩ │ 🖌️{d:.2}ms: 👾{d:.2}ms",
+            "Avg. Tick: {d:.2}ms: 🧵{d:.2}ms⟨👾{d:.2}ms OR ♦️ {d:.2}ms⟩ 🧵⟨🌐{d:.2}ms AND ↪️ {d:.2}ms⟩ 🖼️{d:.2}ms",
             .{
-                self.getAverage(.total),
-                self.getAverage(.tick),
+                self.getAverage(.tick_total),
+                self.getAverage(.logic_total),
                 self.getAverage(.enemy_logic),
                 self.getAverage(.gem_logic),
-                self.getAverage(.thread_aggregation_flow_field),
                 self.getAverage(.flow_field),
-                self.getAverage(.thread_aggregation),
-                self.getAverage(.render),
-                self.getAverage(.render_enemies),
+                self.getAverage(.spatial_grids),
+                self.getAverage(.populate_render_snapshots),
             },
         );
     }
