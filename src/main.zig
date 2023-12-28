@@ -9,6 +9,7 @@ const gl = @import("gl");
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
 const sdl = @import("sdl.zig");
+const simulation = @import("simulation.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 const util = @import("util.zig");
@@ -133,8 +134,26 @@ const ProgramContext = struct {
     }
 
     fn run(self: *ProgramContext) !void {
-        while (try self.processInputs()) {
-            try self.game_context.handleElapsedFrame();
+        var tick_counter: u32 = 0;
+        var tick_timer = try simulation.TickTimer.start(simulation.tickrate);
+
+        main_loop: while (true) {
+            const lap_result = tick_timer.lap();
+            if (lap_result.elapsed_ticks == 0) {
+                std.time.sleep(lap_result.time_until_next_tick);
+                continue;
+            }
+
+            const tick_upper_limit = 4; // Prevent `elapsed_ticks` from over-accumulating.
+            for (0..@min(lap_result.elapsed_ticks, tick_upper_limit)) |_| {
+                if (!try self.processInputs()) {
+                    break :main_loop;
+                }
+                try self.game_context.handleElapsedTick();
+
+                tick_counter += 1;
+                if (@mod(tick_counter, simulation.tickrate) == 0) {}
+            }
         }
     }
 

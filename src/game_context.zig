@@ -18,14 +18,11 @@ const dialog = @import("dialog.zig");
 const enemy_presets = @import("enemy_presets.zig");
 const game_unit = @import("game_unit.zig");
 const math = @import("math.zig");
-const simulation = @import("simulation.zig");
 const std = @import("std");
 const textures = @import("textures.zig");
 
 pub const Context = struct {
-    tick_timer: simulation.TickTimer,
     tick_counter: u32,
-    frame_timer: std.time.Timer,
     main_character: game_unit.Player,
     main_character_flow_field: FlowField,
 
@@ -47,9 +44,6 @@ pub const Context = struct {
     render_loop: *RenderLoop,
     /// Non-owning pointer.
     dialog_controller: *dialog.Controller,
-
-    /// Prevents the engine from hanging if ticks take too long and catching up becomes impossible.
-    const max_frame_time = std.time.ns_per_s / 10;
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -113,9 +107,7 @@ pub const Context = struct {
         }
 
         return .{
-            .tick_timer = try simulation.TickTimer.start(simulation.tickrate),
             .tick_counter = 0,
-            .frame_timer = try std.time.Timer.start(),
             .main_character = game_unit.Player.create(
                 0,
                 0,
@@ -171,8 +163,7 @@ pub const Context = struct {
         self.main_character.markButtonAsReleased(button);
     }
 
-    pub fn handleElapsedFrame(self: *Context) !void {
-        self.frame_timer.reset();
+    pub fn handleElapsedTick(self: *Context) !void {
         if (self.dialog_controller.hasOpenDialogs()) {
             self.main_character.markAllButtonsAsReleased();
         }
@@ -180,70 +171,60 @@ pub const Context = struct {
             self.render_loop.getInterpolationIntervalUsedInLatestFrame(),
         );
 
-        const lap_result = self.tick_timer.lap();
-        const end_tick = self.tick_counter + lap_result.elapsed_ticks;
-        while (self.tick_counter < end_tick and
-            self.frame_timer.read() < max_frame_time) : (self.tick_counter += 1)
-        {
-            self.performance_measurements.begin(.tick);
-            self.map.processElapsedTick();
-            self.main_character.processElapsedTick(self.map);
+        self.performance_measurements.begin(.tick);
+        self.map.processElapsedTick();
+        self.main_character.processElapsedTick(self.map);
 
-            for (0..self.thread_contexts.len) |thread_id| {
-                try self.thread_pool.dispatchIgnoreErrors(
-                    processEnemyThread,
-                    .{ self, thread_id, self.attacking_enemy_positions_at_previous_tick },
-                );
-            }
-            for (0..self.thread_contexts.len) |thread_id| {
-                try self.thread_pool.dispatchIgnoreErrors(processGemThread, .{ self, thread_id });
-            }
-            self.thread_pool.wait();
-
-            self.mergeMeasurementsFromSlowestThread(.enemy_logic);
-            self.mergeMeasurementsFromSlowestThread(.gem_logic);
-            self.dialog_controller.processElapsedTick();
-            self.performance_measurements.end(.tick);
-
-            self.performance_measurements.begin(.thread_aggregation_flow_field);
-            _ = self.tick_lifetime_allocator.reset(.retain_capacity);
-            self.attacking_enemy_positions_at_previous_tick = EnemyPositionGrid.create(
-                self.tick_lifetime_allocator.allocator(),
-            );
+        for (0..self.thread_contexts.len) |thread_id| {
             try self.thread_pool.dispatchIgnoreErrors(
-                updateSpatialGridsThread,
-                .{ self, &self.attacking_enemy_positions_at_previous_tick },
+                processEnemyThread,
+                .{ self, thread_id, self.attacking_enemy_positions_at_previous_tick },
             );
-            try self.thread_pool.dispatchIgnoreErrors(recomputeFlowFieldThread, .{self});
-            self.thread_pool.wait();
+        }
+        for (0..self.thread_contexts.len) |thread_id| {
+            try self.thread_pool.dispatchIgnoreErrors(processGemThread, .{ self, thread_id });
+        }
+        self.thread_pool.wait();
+
+        self.mergeMeasurementsFromSlowestThread(.enemy_logic);
+        self.mergeMeasurementsFromSlowestThread(.gem_logic);
+        self.dialog_controller.processElapsedTick();
+        self.performance_measurements.end(.tick);
+
+        self.performance_measurements.begin(.thread_aggregation_flow_field);
+        _ = self.tick_lifetime_allocator.reset(.retain_capacity);
+        self.attacking_enemy_positions_at_previous_tick = EnemyPositionGrid.create(
+            self.tick_lifetime_allocator.allocator(),
+        );
+        try self.thread_pool.dispatchIgnoreErrors(
+            updateSpatialGridsThread,
+            .{ self, &self.attacking_enemy_positions_at_previous_tick },
+        );
+        try self.thread_pool.dispatchIgnoreErrors(recomputeFlowFieldThread, .{self});
+        self.thread_pool.wait();
+        for (self.thread_contexts) |context| {
+            self.main_character.gem_count += context.gems.amount_collected;
+        }
+        self.performance_measurements.end(.thread_aggregation_flow_field);
+
+        self.performance_measurements.begin(.populate_render_snapshots);
+        {
+            const snapshots = self.render_loop.getLockedSnapshotsForWriting();
+            defer self.render_loop.releaseSnapshotsAfterWriting();
+
+            snapshots.main_character = self.main_character;
+            try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
             for (self.thread_contexts) |context| {
-                self.main_character.gem_count += context.gems.amount_collected;
-            }
-            self.performance_measurements.end(.thread_aggregation_flow_field);
-
-            self.performance_measurements.begin(.populate_render_snapshots);
-            {
-                const snapshots = self.render_loop.getLockedSnapshotsForWriting();
-                defer self.render_loop.releaseSnapshotsAfterWriting();
-
-                snapshots.main_character = self.main_character;
-                try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
-                for (self.thread_contexts) |context| {
-                    try snapshots.enemies.appendSlice(context.enemies.render_snapshots.items);
-                    try snapshots.gems.appendSlice(context.gems.render_snapshots.items);
-                }
-            }
-            self.performance_measurements.end(.populate_render_snapshots);
-
-            for (self.thread_contexts) |context| {
-                context.reset();
-            }
-
-            if (@mod(self.tick_counter, simulation.tickrate) == 0) {
-                self.performance_measurements.updateAverageAndReset();
-                self.performance_measurements.printLogInfo();
+                try snapshots.enemies.appendSlice(context.enemies.render_snapshots.items);
+                try snapshots.gems.appendSlice(context.gems.render_snapshots.items);
             }
         }
+        self.performance_measurements.end(.populate_render_snapshots);
+
+        for (self.thread_contexts) |context| {
+            context.reset();
+        }
+        self.tick_counter += 1;
     }
 
     pub fn getMutableMap(self: *Context) *Map {
