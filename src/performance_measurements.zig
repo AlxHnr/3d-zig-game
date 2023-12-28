@@ -11,6 +11,14 @@ pub const Measurements = struct {
         spatial_grids,
         flow_field,
         populate_render_snapshots,
+
+        frame_total,
+        frame_wait_for_data,
+        aggregate_enemy_billboards,
+        aggregate_gem_billboards,
+        draw_billboards,
+        render_level_geometry,
+        hud,
     };
     const Metric = struct {
         timer: std.time.Timer,
@@ -85,7 +93,7 @@ pub const Measurements = struct {
 
     pub fn printTickInfo(self: Measurements) void {
         std.log.info(
-            "Avg. Tick: {d:.2}ms: 🧵{d:.2}ms⟨👾{d:.2}ms OR ♦️ {d:.2}ms⟩ 🧵⟨🌐{d:.2}ms AND ↪️ {d:.2}ms⟩ 🖼️{d:.2}ms",
+            "Avg. Tick: {d:.2}ms: 🧵{d:.2}ms⟨👾{d:.2}ms OR ♦️ {d:.2}ms⟩ 🧵⟨🌐{d:.2}ms AND ↪️ {d:.2}ms⟩ ⏱️ 🖼️{d:.2}ms",
             .{
                 self.getAverage(.tick_total),
                 self.getAverage(.logic_total),
@@ -94,6 +102,21 @@ pub const Measurements = struct {
                 self.getAverage(.flow_field),
                 self.getAverage(.spatial_grids),
                 self.getAverage(.populate_render_snapshots),
+            },
+        );
+    }
+
+    pub fn printFrameInfo(self: Measurements) void {
+        std.log.info(
+            "Avg. Frame: {d:.2}ms: ⏱️ 🖼️{d:.2}ms 👾{d:.2}ms ♦️ {d:.2}ms 🖌️{d:.2}ms 🌐{d:.2}ms ℹ️ {d:.2}ms",
+            .{
+                self.getAverage(.frame_total),
+                self.getAverage(.frame_wait_for_data),
+                self.getAverage(.aggregate_enemy_billboards),
+                self.getAverage(.aggregate_gem_billboards),
+                self.getAverage(.draw_billboards),
+                self.getAverage(.render_level_geometry),
+                self.getAverage(.hud),
             },
         );
     }

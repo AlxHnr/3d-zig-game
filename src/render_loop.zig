@@ -5,6 +5,7 @@ const EnemySnapshot = @import("enemy.zig").RenderSnapshot;
 const GemSnapshot = @import("gem.zig").RenderSnapshot;
 const GeometryRenderer = @import("map/geometry.zig").Renderer;
 const GeometrySnapshot = @import("map/geometry.zig").RenderSnapshot;
+const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
 const Player = @import("game_unit.zig").Player;
 const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
@@ -76,8 +77,9 @@ pub fn run(
     dialog_controller: *DialogController,
 ) !void {
     try sdl.makeGLContextCurrent(window, gl_context);
-
     var timer = try simulation.TickTimer.start(simulation.tickrate);
+    var performance_measurements = try PerformanceMeasurements.create();
+    var frame_counter: usize = 0;
 
     var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
     defer spritesheet.destroy();
@@ -101,9 +103,13 @@ pub fn run(
     defer prerendered_enemy_names.destroy(self.allocator);
 
     while (self.keep_running.load(.Unordered)) {
+        performance_measurements.begin(.frame_total);
+
         const lap_result = timer.lap();
         if (lap_result.elapsed_ticks > 0) {
+            performance_measurements.begin(.frame_wait_for_data);
             self.swapSnapshots();
+            performance_measurements.end(.frame_wait_for_data);
         }
 
         gl.clearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
@@ -113,6 +119,7 @@ pub fn run(
         const camera = self.current.main_character.getCamera(lap_result.next_tick_progress);
 
         billboard_buffer.clearRetainingCapacity();
+        performance_measurements.begin(.aggregate_enemy_billboards);
         for (self.current.enemies.items) |snapshot| {
             const billboard_count = snapshot.getBillboardCount(
                 prerendered_enemy_names,
@@ -129,11 +136,16 @@ pub fn run(
             );
             billboard_buffer.items.len += billboard_count;
         }
+        performance_measurements.end(.aggregate_enemy_billboards);
+
+        performance_measurements.begin(.aggregate_gem_billboards);
         for (self.current.gems.items) |snapshot| {
             try billboard_buffer.append(
                 snapshot.makeBillboardData(spritesheet, lap_result.next_tick_progress),
             );
         }
+        performance_measurements.end(.aggregate_gem_billboards);
+
         try billboard_buffer.append(self.current.main_character.getBillboardData(
             spritesheet,
             lap_result.next_tick_progress,
@@ -158,6 +170,7 @@ pub fn run(
             );
         }
 
+        performance_measurements.begin(.render_level_geometry);
         const ray_wall_collision = self.current.geometry
             .cast3DRayToSolidWalls(camera.get3DRayFromTargetToSelf());
         const max_camera_distance = if (ray_wall_collision) |impact_point|
@@ -177,13 +190,18 @@ pub fn run(
             tileable_textures,
             spritesheet,
         );
+        performance_measurements.end(.render_level_geometry);
+
+        performance_measurements.begin(.draw_billboards);
         billboard_renderer.render(
             vp_matrix,
             extra_data.screen_dimensions,
             camera.getDirectionToTarget(),
             spritesheet.id,
         );
+        performance_measurements.end(.draw_billboards);
 
+        performance_measurements.begin(.hud);
         gl.disable(gl.DEPTH_TEST);
         try renderHud(
             self.allocator,
@@ -203,6 +221,15 @@ pub fn run(
             &billboard_buffer,
             extra_data.player_is_on_obstacle_tile,
         );
+        performance_measurements.end(.hud);
+        performance_measurements.end(.frame_total);
+
+        frame_counter += 1;
+        const print_measurements_on_frame = 60;
+        if (@mod(frame_counter, print_measurements_on_frame) == 0) {
+            performance_measurements.updateAverageAndReset();
+            performance_measurements.printFrameInfo();
+        }
 
         self.interpolation_interval_used_in_latest_frame
             .store(lap_result.next_tick_progress, .Unordered);
