@@ -8,7 +8,8 @@ Install the required dependencies, example for Fedora:
 sudo dnf install SDL2-devel SDL2_image-devel
 ```
 
-Install zig 0.11.0 and run `zig build run` inside the projects directory.
+Install zig 0.11.0 and run `zig build run` inside the projects directory. The game is considerably
+faster when built with optimizations: `zig build run -Doptimize=ReleaseFast`.
 
 ## Controls
 
