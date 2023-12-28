@@ -17,7 +17,7 @@ pub const TickTimer = struct {
     /// be non-zero. Fails when no clock is available.
     pub fn start(ticks_per_second: u32) std.time.Timer.Error!TickTimer {
         std.debug.assert(ticks_per_second > 0);
-        return TickTimer{
+        return .{
             .timer = try std.time.Timer.start(),
             .tick_duration = std.time.ns_per_s / ticks_per_second,
             .leftover_time_from_last_tick = 0,
@@ -28,8 +28,9 @@ pub const TickTimer = struct {
     pub fn lap(self: *TickTimer) LapResult {
         const elapsed_time = self.timer.lap() + self.leftover_time_from_last_tick;
         self.leftover_time_from_last_tick = elapsed_time % self.tick_duration;
-        return LapResult{
+        return .{
             .elapsed_ticks = elapsed_time / self.tick_duration,
+            .time_until_next_tick = self.tick_duration - self.leftover_time_from_last_tick,
             .next_tick_progress = @floatCast(
                 @as(
                     f64,
@@ -41,6 +42,7 @@ pub const TickTimer = struct {
 
     pub const LapResult = struct {
         elapsed_ticks: u64,
+        time_until_next_tick: u64,
         /// Value between 0 and 1 denoting how much percent of the next tick has already passed.
         /// This can be used for interpolating between two ticks.
         next_tick_progress: f32,
