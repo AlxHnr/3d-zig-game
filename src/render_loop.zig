@@ -80,6 +80,7 @@ pub fn run(
     var timer = try simulation.TickTimer.start(simulation.tickrate);
     var performance_measurements = try PerformanceMeasurements.create();
     var frame_counter: usize = 0;
+    const refresh_rate = getRefreshRate() orelse 60;
 
     var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
     defer spritesheet.destroy();
@@ -225,8 +226,7 @@ pub fn run(
         performance_measurements.end(.frame_total);
 
         frame_counter += 1;
-        const print_measurements_on_frame = 60;
-        if (@mod(frame_counter, print_measurements_on_frame) == 0) {
+        if (@mod(frame_counter, refresh_rate * 3) == 0) {
             performance_measurements.updateAverageAndReset();
             performance_measurements.printFrameInfo();
         }
@@ -309,6 +309,20 @@ pub const Snapshots = struct {
         self.gems.clearRetainingCapacity();
     }
 };
+
+fn getRefreshRate() ?u32 {
+    var display_mode: sdl.SDL_DisplayMode = undefined;
+    if (sdl.SDL_GetCurrentDisplayMode(0, &display_mode) != 0) {
+        std.log.warn("unable to retrieve display refresh rate: {s}", .{
+            sdl.SDL_GetError(),
+        });
+        return null;
+    }
+    if (display_mode.refresh_rate == 0) {
+        return null;
+    }
+    return @intCast(display_mode.refresh_rate);
+}
 
 fn swapSnapshots(self: *Loop) void {
     self.mutex.lock();

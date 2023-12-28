@@ -159,7 +159,7 @@ const ProgramContext = struct {
                 }
 
                 tick_counter += 1;
-                if (@mod(tick_counter, simulation.tickrate) == 0) {
+                if (@mod(tick_counter, simulation.tickrate * 3) == 0) {
                     performance_measurements.updateAverageAndReset();
                     performance_measurements.printTickInfo();
                 }
