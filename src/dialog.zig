@@ -1,6 +1,7 @@
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
+const simulation = @import("simulation.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 const ui = @import("ui.zig");
@@ -558,7 +559,7 @@ const SlideInAnimationBox = struct {
     }
 
     pub fn processElapsedTick(self: *SlideInAnimationBox) void {
-        self.movement_animation.processElapsedTick(0.2);
+        self.movement_animation.processElapsedTick(simulation.kphToGameUnitsPerTick(43.2));
 
         switch (self.state) {
             .opening, .closing => {
@@ -657,7 +658,7 @@ const AnimatedTextBlock = struct {
     }
 
     pub fn processElapsedTick(self: *AnimatedTextBlock) void {
-        const reveal_codepoints_per_tick = 3;
+        const reveal_codepoints_per_tick = simulation.kphToGameUnitsPerTick(648);
         self.codepoint_progress.processElapsedTick(reveal_codepoints_per_tick);
     }
 

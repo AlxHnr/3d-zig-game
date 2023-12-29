@@ -49,8 +49,13 @@ pub const Enemy = struct {
     state: State,
     state_at_previous_tick: RenderSnapshot.State,
 
-    const peer_overlap_radius = @as(f32, @floatFromInt(position_grid_cell_size)) / 10.0;
-    const peer_flock_radius = peer_overlap_radius * 4.0;
+    const peer_overlap_radius = @as(f32, @floatFromInt(position_grid_cell_size)) / @max(
+        // Values determined by trial and error across a range of tickrates.
+        5.5,
+        (10.0 * (1.05 - std.math.pow(f32, std.math.e, 0.15 -
+            @as(f32, @floatFromInt(simulation.tickrate)) / 19.0))),
+    );
+    const peer_flock_radius = @as(f32, @floatFromInt(position_grid_cell_size)) / 10.0 * 4.0;
 
     pub fn create(
         position: math.FlatVector,
