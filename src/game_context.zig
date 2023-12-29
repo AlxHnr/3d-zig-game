@@ -52,7 +52,7 @@ pub const Context = struct {
         /// Returned object will keep a reference to this pointer.
         dialog_controller: *dialog.Controller,
     ) !Context {
-        var flow_field = try FlowField.create(allocator, 100);
+        var flow_field = try FlowField.create(allocator, 200);
         errdefer flow_field.destroy(allocator);
 
         const map_file_path_buffer = try allocator.dupe(u8, map_file_path);

@@ -5,7 +5,7 @@ const std = @import("std");
 /// speed up the game at runtime, use `TickTimer.start()`. Increasing the tickrate will also
 /// change applied frictions (wall, crowd) and increase the velocity limit. Huge tickrates can break
 /// movement by causing substeps to be shorter than `math.epsilon`.
-pub const tickrate = 60;
+pub const tickrate = 30;
 
 /// Lap timer for measuring elapsed ticks.
 pub const TickTimer = struct {
