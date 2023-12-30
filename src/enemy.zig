@@ -126,59 +126,41 @@ pub const RenderSnapshot = struct {
     const health_bar_height = health_bar_scale * 6;
     const offset_to_player_height_factor = 1.2;
 
-    pub fn getBillboardCount(
-        self: RenderSnapshot,
-        cache: PrerenderedNames,
-        camera: ThirdPersonCamera,
-        interval_between_previous_and_current_tick: f32,
-    ) usize {
-        const state = self.interpolate(camera, interval_between_previous_and_current_tick);
-        var billboard_count: usize = 1; // Enemy sprite.
-        if (state.should_render_name) {
-            billboard_count += cache.get(self.config).len;
-        }
-        if (state.should_render_health_bar) {
-            billboard_count += 2;
-        }
-        return billboard_count;
-    }
-
-    pub fn populateBillboardData(
+    pub fn appendBillboardData(
         self: RenderSnapshot,
         spritesheet: SpriteSheetTexture,
         cache: PrerenderedNames,
         camera: ThirdPersonCamera,
         interval_between_previous_and_current_tick: f32,
-        /// Must have enough capacity to store all billboards. See getBillboardCount().
-        out: []rendering.SpriteData,
-    ) void {
+        out: *std.ArrayList(rendering.SpriteData),
+    ) !void {
         const state = self.interpolate(camera, interval_between_previous_and_current_tick);
-        out[0] = makeSpriteData(
+
+        try out.append(makeSpriteData(
             state.values.position,
             state.values.radius,
             state.values.height,
             self.config.sprite,
             spritesheet,
-        );
+        ));
 
-        var offset_to_name_letters: usize = 1;
-        var pixel_offset_for_name_y: i16 = 0;
         if (state.should_render_health_bar) {
-            populateHealthbarBillboardData(state, spritesheet, out[1..]);
-            offset_to_name_letters += 2;
-            pixel_offset_for_name_y -= health_bar_height * 2;
+            try out.ensureUnusedCapacity(2);
+            populateHealthbarBillboardData(state, spritesheet, out.unusedCapacitySlice());
+            out.items.len += 2;
         }
 
         if (state.should_render_name) {
+            const cached_text = cache.get(self.config);
+            try out.ensureUnusedCapacity(cached_text.len);
+            const out_slice = out.unusedCapacitySlice()[0..cached_text.len];
+            out.items.len += cached_text.len;
+
             const up = math.Vector3d{ .x = 0, .y = 1, .z = 0 };
-            std.mem.copy(
-                rendering.SpriteData,
-                out[offset_to_name_letters..],
-                cache.get(self.config),
-            );
+            std.mem.copy(rendering.SpriteData, out_slice, cached_text);
             const position = state.values.position.toVector3d()
                 .add(up.scale(state.values.height * offset_to_player_height_factor));
-            for (out[offset_to_name_letters..]) |*billboard_data| {
+            for (out_slice) |*billboard_data| {
                 billboard_data.position = .{ .x = position.x, .y = position.y, .z = position.z };
             }
         }

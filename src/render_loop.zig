@@ -122,20 +122,13 @@ pub fn run(
         billboard_buffer.clearRetainingCapacity();
         performance_measurements.begin(.aggregate_enemy_billboards);
         for (self.current.enemies.items) |snapshot| {
-            const billboard_count = snapshot.getBillboardCount(
-                prerendered_enemy_names,
-                camera,
-                lap_result.next_tick_progress,
-            );
-            try billboard_buffer.ensureUnusedCapacity(billboard_count);
-            snapshot.populateBillboardData(
+            try snapshot.appendBillboardData(
                 spritesheet,
                 prerendered_enemy_names,
                 camera,
                 lap_result.next_tick_progress,
-                billboard_buffer.unusedCapacitySlice()[0..billboard_count],
+                &billboard_buffer,
             );
-            billboard_buffer.items.len += billboard_count;
         }
         performance_measurements.end(.aggregate_enemy_billboards);
 
