@@ -93,7 +93,7 @@ pub const Measurements = struct {
 
     pub fn printTickInfo(self: Measurements) void {
         std.log.info(
-            "Avg. Tick: {d:.2}ms: 🧵{d:.2}ms⟨👾{d:.2}ms OR ♦️ {d:.2}ms⟩ 🧵⟨🌐{d:.2}ms AND ↪️ {d:.2}ms⟩ ⏱️ 🖼️{d:.2}ms",
+            "Avg. Tick: {d:.2}ms: 🧵{d:.2}ms⟨👾{d:.2}ms OR ♦️ {d:.2}ms⟩ 🧵⟨🌐{d:.2}ms AND ↪️ {d:.2}ms AND ⏱️ 🖼️{d:.2}ms⟩",
             .{
                 self.getAverage(.tick_total),
                 self.getAverage(.logic_total),

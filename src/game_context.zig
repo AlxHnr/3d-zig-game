@@ -204,26 +204,14 @@ pub const Context = struct {
             recomputeFlowFieldThread,
             .{ self, performance_measurements },
         );
+        try self.thread_pool.dispatchIgnoreErrors(
+            populateRenderSnapshotsThread,
+            .{ self.*, performance_measurements },
+        );
         self.thread_pool.wait();
+
         for (self.thread_contexts) |context| {
             self.main_character.gem_count += context.gems.amount_collected;
-        }
-
-        performance_measurements.begin(.populate_render_snapshots);
-        {
-            const snapshots = self.render_loop.getLockedSnapshotsForWriting();
-            defer self.render_loop.releaseSnapshotsAfterWriting();
-
-            snapshots.main_character = self.main_character;
-            try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
-            for (self.thread_contexts) |context| {
-                try snapshots.enemies.appendSlice(context.enemies.render_snapshots.items);
-                try snapshots.gems.appendSlice(context.gems.render_snapshots.items);
-            }
-        }
-        performance_measurements.end(.populate_render_snapshots);
-
-        for (self.thread_contexts) |context| {
             context.reset();
         }
         self.tick_counter += 1;
@@ -482,6 +470,24 @@ pub const Context = struct {
             }
         }
         thread_context.gems.amount_collected = gems_collected;
+    }
+
+    fn populateRenderSnapshotsThread(
+        self: Context,
+        performance_measurements: *PerformanceMeasurements,
+    ) !void {
+        performance_measurements.begin(.populate_render_snapshots);
+        defer performance_measurements.end(.populate_render_snapshots);
+
+        const snapshots = self.render_loop.getLockedSnapshotsForWriting();
+        defer self.render_loop.releaseSnapshotsAfterWriting();
+
+        snapshots.main_character = self.main_character;
+        try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
+        for (self.thread_contexts) |context| {
+            try snapshots.enemies.appendSlice(context.enemies.render_snapshots.items);
+            try snapshots.gems.appendSlice(context.gems.render_snapshots.items);
+        }
     }
 };
 
