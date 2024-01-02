@@ -1,4 +1,4 @@
-https://user-images.githubusercontent.com/8235638/219977701-62c37deb-5bbb-4a4a-b7ca-da1491b748f6.mp4
+[![](https://alxhnr.github.io/media/3d-zig-game-2024-01-02.png)](https://alxhnr.github.io/media/3d-zig-game-2024-01-02.webm)
 
 # Building and running the game
 
