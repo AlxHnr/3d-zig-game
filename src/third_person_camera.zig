@@ -21,7 +21,7 @@ pub const Camera = struct {
     const default_distance_from_object = 10;
 
     /// Initialize the camera to look down at the given object from behind.
-    pub fn create(target_position: math.FlatVector, target_orientation: f32) Camera {
+    pub fn create(target_position: math.FlatVectorF32, target_orientation: f32) Camera {
         return .{
             .target_position = add3dHeight(target_position),
             .target_orientation = target_orientation,
@@ -124,7 +124,7 @@ pub const Camera = struct {
 
     pub fn processElapsedTick(
         self: *Camera,
-        target_position: math.FlatVector,
+        target_position: math.FlatVectorF32,
         target_orientation: f32,
     ) void {
         var targeted_values = self.*;
@@ -136,7 +136,7 @@ pub const Camera = struct {
     }
 
     pub fn getPosition(self: Camera) math.Vector3d {
-        const target_looking_direction = math.FlatVector{
+        const target_looking_direction = math.FlatVectorF32{
             .x = std.math.sin(self.target_orientation),
             .z = std.math.cos(self.target_orientation),
         };
@@ -150,7 +150,7 @@ pub const Camera = struct {
     }
 
     /// Add a Y offset to the specified target so it is rendered in the bottom part of the screen.
-    fn add3dHeight(target_position: math.FlatVector) math.Vector3d {
+    fn add3dHeight(target_position: math.FlatVectorF32) math.Vector3d {
         return target_position.toVector3d().add(math.Vector3d.y_axis.scale(3));
     }
 

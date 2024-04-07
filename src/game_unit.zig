@@ -22,7 +22,7 @@ pub const InputButton = enum {
 
 pub const GameCharacter = struct {
     moving_circle: MovingCircle,
-    acceleration_direction: math.FlatVector,
+    acceleration_direction: math.FlatVectorF32,
     height: f32,
     movement_speed: f32,
     health: Health,
@@ -30,7 +30,7 @@ pub const GameCharacter = struct {
     pub const Health = struct { current: u32, max: u32 };
 
     pub fn create(
-        position: math.FlatVector,
+        position: math.FlatVectorF32,
         width: f32,
         height: f32,
         movement_speed: f32,
@@ -40,10 +40,10 @@ pub const GameCharacter = struct {
             .moving_circle = MovingCircle.create(
                 position,
                 width / 2,
-                math.FlatVector.zero,
+                math.FlatVectorF32.zero,
                 false,
             ),
-            .acceleration_direction = math.FlatVector.zero,
+            .acceleration_direction = math.FlatVectorF32.zero,
             .height = height,
             .movement_speed = movement_speed,
             .health = .{ .current = max_health, .max = max_health },
@@ -149,7 +149,7 @@ pub const Player = struct {
             .getDirectionToTarget().toFlatVector();
         const right_direction = forward_direction.rotateRightBy90Degrees();
 
-        var acceleration_direction = math.FlatVector.zero;
+        var acceleration_direction = math.FlatVectorF32.zero;
         var turning_direction: f32 = 0;
         if (self.input_state.get(.left)) {
             if (self.input_state.get(.strafe)) {
@@ -244,10 +244,10 @@ pub const Player = struct {
     }
 
     const ValuesForRendering = struct {
-        position: math.FlatVector,
+        position: math.FlatVectorF32,
         radius: f32,
         height: f32,
-        velocity: math.FlatVector,
+        velocity: math.FlatVectorF32,
         camera: ThirdPersonCamera,
         animation_cycle: animation.FourStepCycle,
 
@@ -269,7 +269,7 @@ pub const Player = struct {
 };
 
 pub fn makeSpriteData(
-    position: math.FlatVector,
+    position: math.FlatVectorF32,
     radius: f32,
     height: f32,
     sprite: SpriteSheetTexture.SpriteId,

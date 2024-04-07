@@ -38,8 +38,8 @@ pub const TickContext = struct {
 
 pub const EnemyPositionGrid = SpatialGrid(AttackingEnemyPosition, position_grid_cell_size, .insert_only);
 pub const AttackingEnemyPosition = struct {
-    position: math.FlatVector,
-    acceleration_direction: math.FlatVector,
+    position: math.FlatVectorF32,
+    acceleration_direction: math.FlatVectorF32,
 };
 const position_grid_cell_size = 3;
 
@@ -58,7 +58,7 @@ pub const Enemy = struct {
     const peer_flock_radius = @as(f32, @floatFromInt(position_grid_cell_size)) / 10.0 * 4.0;
 
     pub fn create(
-        position: math.FlatVector,
+        position: math.FlatVectorF32,
         /// Returned object will keep a reference to this config.
         config: *const Config,
         spritesheet: SpriteSheetTexture,
@@ -97,7 +97,7 @@ pub const Enemy = struct {
         };
     }
 
-    pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
+    pub fn makeSpacingBoundaries(position: math.FlatVectorF32) collision.Circle {
         return .{ .position = position, .radius = Enemy.peer_flock_radius };
     }
 
@@ -195,7 +195,7 @@ pub const RenderSnapshot = struct {
     }
 
     const State = struct {
-        position: math.FlatVector,
+        position: math.FlatVectorF32,
         radius: f32,
         height: f32,
         health: GameCharacter.Health,
@@ -355,13 +355,13 @@ const IdleState = struct {
 
         if (context.rng.boolean()) { // Walk.
             const direction = std.math.degreesToRadians(360 * context.rng.float(f32));
-            const forward = math.FlatVector{ .x = 0, .z = -1 };
+            const forward = math.FlatVectorF32{ .x = 0, .z = -1 };
             enemy.character.acceleration_direction = forward.rotate(direction);
             enemy.character.movement_speed = enemy.config.movement_speed.idle;
             self.ticks_until_movement =
                 context.rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(u32, 4));
         } else {
-            enemy.character.acceleration_direction = math.FlatVector.zero;
+            enemy.character.acceleration_direction = math.FlatVectorF32.zero;
             self.ticks_until_movement = context.rng.intRangeAtMost(u32, 0, standing_interval);
         }
     }
@@ -403,7 +403,7 @@ const AttackingState = struct {
         var iterator = context.attacking_enemy_positions_at_previous_tick.areaIterator(
             circle.getOuterBoundingBoxInGameCoordinates(),
         );
-        var combined_displacement_vector = math.FlatVector.zero;
+        var combined_displacement_vector = math.FlatVectorF32.zero;
         var friction_factor: f32 = 1;
         var collides_with_peer = false;
         var average_velocity = AverageAccumulator.create(enemy.character.moving_circle.velocity);
@@ -457,19 +457,19 @@ const AttackingState = struct {
     }
 
     const AverageAccumulator = struct {
-        total: math.FlatVector,
+        total: math.FlatVectorF32,
         count: f32,
 
-        fn create(initial_value: math.FlatVector) AverageAccumulator {
+        fn create(initial_value: math.FlatVectorF32) AverageAccumulator {
             return .{ .total = initial_value, .count = 1 };
         }
 
-        fn add(self: *AverageAccumulator, value: math.FlatVector) void {
+        fn add(self: *AverageAccumulator, value: math.FlatVectorF32) void {
             self.total = self.total.add(value);
             self.count += 1;
         }
 
-        fn compute(self: AverageAccumulator) math.FlatVector {
+        fn compute(self: AverageAccumulator) math.FlatVectorF32 {
             return self.total.scale(1.0 / self.count);
         }
     };

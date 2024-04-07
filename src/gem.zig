@@ -5,7 +5,7 @@ const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const math = @import("math.zig");
 const simulation = @import("simulation.zig");
 
-position: math.FlatVector,
+position: math.FlatVectorF32,
 state: State,
 state_at_previous_tick: State,
 
@@ -14,7 +14,7 @@ const height = 1.5;
 const jump_height = 1.5;
 const animation_speed = simulation.kphToGameUnitsPerTick(10);
 
-pub fn create(position: math.FlatVector, originates_from: math.FlatVector) Gem {
+pub fn create(position: math.FlatVectorF32, originates_from: math.FlatVectorF32) Gem {
     const state = .{ .spawning = .{ .progress = 0, .source_position = originates_from } };
     return .{ .position = position, .state = state, .state_at_previous_tick = state };
 }
@@ -67,7 +67,7 @@ pub fn makeRenderSnapshot(self: Gem) RenderSnapshot {
 }
 
 pub const RenderSnapshot = struct {
-    position: math.FlatVector,
+    position: math.FlatVectorF32,
     current_state: State,
     state_at_previous_tick: State,
 
@@ -160,8 +160,8 @@ pub const RenderSnapshot = struct {
 
     fn interpolateJumpAnimation(
         to_update: *SpriteData,
-        start_position: math.FlatVector,
-        end_position: math.FlatVector,
+        start_position: math.FlatVectorF32,
+        end_position: math.FlatVectorF32,
         progress: f32,
         invert_scale: bool,
     ) void {
@@ -181,13 +181,13 @@ const State = union(enum) {
     spawning: struct {
         /// Progresses from 0 to 1.
         progress: f32,
-        source_position: math.FlatVector,
+        source_position: math.FlatVectorF32,
     },
     waiting: void,
     pickup: struct {
         /// Progresses from 0 to 1.
         progress: f32,
-        target_position: math.FlatVector,
+        target_position: math.FlatVectorF32,
     },
     disappeared: void,
 };

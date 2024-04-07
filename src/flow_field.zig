@@ -1,6 +1,6 @@
 const AxisAlignedBoundingBox = @import("collision.zig").AxisAlignedBoundingBox;
 const Circle = @import("collision.zig").Circle;
-const FlatVector = @import("math.zig").FlatVector;
+const FlatVectorF32 = @import("math.zig").FlatVectorF32;
 const Map = @import("map/map.zig").Map;
 const cell_side_length = @import("map/geometry.zig").obstacle_grid_cell_size;
 const std = @import("std");
@@ -59,7 +59,7 @@ pub const Field = struct {
             .crowd_sampling_counter = 0,
             .integration_field = integration_field,
             .directional_vectors = directional_vectors,
-            .boundaries = .{ .min = FlatVector.zero, .max = FlatVector.zero },
+            .boundaries = .{ .min = FlatVectorF32.zero, .max = FlatVectorF32.zero },
             .queue = PriorityQueue.init(allocator, {}),
         };
     }
@@ -71,7 +71,7 @@ pub const Field = struct {
         allocator.free(self.cell_unit_counter);
     }
 
-    pub fn recompute(self: *Field, new_center_and_destination: FlatVector, map: Map) !void {
+    pub fn recompute(self: *Field, new_center_and_destination: FlatVectorF32, map: Map) !void {
         const target = pushPositionOutOfObstacleCells(new_center_and_destination, map);
         self.boundaries = block: {
             const side_length = @as(f32, @floatFromInt(self.grid_cells_per_side * cell_side_length));
@@ -114,7 +114,7 @@ pub const Field = struct {
 
     // If the given position exists on the flow field, return a directional vector for navigating
     // towards the flow fields center.
-    pub fn getDirection(self: Field, position: FlatVector, map: Map) ?FlatVector {
+    pub fn getDirection(self: Field, position: FlatVectorF32, map: Map) ?FlatVectorF32 {
         const index = self.getIndexFromWorldPosition(position) orelse return null;
         const direction = self.directional_vectors[index];
         if (direction != .none) {
@@ -132,7 +132,7 @@ pub const Field = struct {
     }
 
     /// Incorporate the given position into the next call to `recompute()` to mitigate overcrowding.
-    pub fn sampleCrowd(self: *Field, position: FlatVector) void {
+    pub fn sampleCrowd(self: *Field, position: FlatVectorF32) void {
         if (self.crowd_sampling_counter == 50) {
             self.crowd_sampling_counter = 0;
             if (self.getIndexFromWorldPosition(position)) |index| {
@@ -163,7 +163,7 @@ pub const Field = struct {
         }
     }
 
-    fn pushPositionOutOfObstacleCells(position: FlatVector, map: Map) FlatVector {
+    fn pushPositionOutOfObstacleCells(position: FlatVectorF32, map: Map) FlatVectorF32 {
         if (map.geometry.getObstacleTile(position).isObstacle()) {
             var iterator = GrowingRadiusIterator.create(position, &map);
             while (iterator.next()) |corrected_position| {
@@ -179,7 +179,7 @@ pub const Field = struct {
         return z * self.grid_cells_per_side + x;
     }
 
-    fn getIndexFromWorldPosition(self: Field, world_position: FlatVector) ?usize {
+    fn getIndexFromWorldPosition(self: Field, world_position: FlatVectorF32) ?usize {
         const cell_position = world_position.subtract(self.boundaries.min)
             .scale(1.0 / @as(f32, @floatFromInt(cell_side_length)));
         const x: isize = @intFromFloat(@ceil(cell_position.x));
@@ -192,8 +192,8 @@ pub const Field = struct {
         return self.getIndex(@intCast(x), @intCast(z));
     }
 
-    fn getWorldPosition(self: Field, x: usize, z: usize) FlatVector {
-        return FlatVector.scale(.{
+    fn getWorldPosition(self: Field, x: usize, z: usize) FlatVectorF32 {
+        return FlatVectorF32.scale(.{
             .x = @as(f32, @floatFromInt(x)),
             .z = @as(f32, @floatFromInt(z)),
         }, cell_side_length).add(self.boundaries.min);
@@ -339,7 +339,7 @@ pub const Field = struct {
 
     const CellDirection = struct { x: usize, z: usize, dir: Direction };
 
-    fn toDirectionVector(direction: Direction) FlatVector {
+    fn toDirectionVector(direction: Direction) FlatVectorF32 {
         std.debug.assert(direction != .none);
         return switch (direction) {
             .up_left => .{ .x = -std.math.sqrt1_2, .z = -std.math.sqrt1_2 },
@@ -357,16 +357,16 @@ pub const Field = struct {
     /// Returns all positions encountered when incrementally pushing the specified position further
     /// away from nearby geometry.
     const GrowingRadiusIterator = struct {
-        position: FlatVector,
+        position: FlatVectorF32,
         radius_factor: f32,
         map: *const Map,
 
-        fn create(position: FlatVector, map: *const Map) GrowingRadiusIterator {
+        fn create(position: FlatVectorF32, map: *const Map) GrowingRadiusIterator {
             return .{ .position = position, .radius_factor = 0.5, .map = map };
         }
 
         /// Returns null when there is no nearby geometry.
-        fn next(self: *GrowingRadiusIterator) ?FlatVector {
+        fn next(self: *GrowingRadiusIterator) ?FlatVectorF32 {
             while (self.radius_factor < 9) {
                 const circle = .{
                     .position = self.position,

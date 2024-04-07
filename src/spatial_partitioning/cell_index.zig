@@ -1,4 +1,4 @@
-const FlatVector = @import("../math.zig").FlatVector;
+const FlatVectorF32 = @import("../math.zig").FlatVectorF32;
 const Order = @import("std").math.Order;
 const assert = @import("std").debug.assert;
 
@@ -14,7 +14,7 @@ pub fn Index(comptime cell_side_length: u32) type {
 
         const Self = @This();
 
-        pub fn fromPosition(position: FlatVector) Self {
+        pub fn fromPosition(position: FlatVectorF32) Self {
             return Self{
                 .x = @intFromFloat(position.x / @as(f32, @floatFromInt(cell_side_length))),
                 .z = @intFromFloat(position.z / @as(f32, @floatFromInt(cell_side_length))),

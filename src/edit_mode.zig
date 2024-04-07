@@ -56,7 +56,7 @@ pub const State = struct {
         self: *State,
         map: *Map,
         mouse_ray: collision.Ray3d,
-        camera_direction: math.FlatVector,
+        camera_direction: math.FlatVectorF32,
     ) !void {
         switch (self.mode) {
             .insert_objects => {
@@ -150,7 +150,7 @@ pub const State = struct {
 
     const CurrentlyEditedObject = struct {
         object_id: u64,
-        start_position: math.FlatVector,
+        start_position: math.FlatVectorF32,
     };
 
     fn resetCurrentlyEditedObject(self: *State, map: *Map) !void {
@@ -164,7 +164,7 @@ pub const State = struct {
         self: *State,
         object_id_generator: *util.ObjectIdGenerator,
         map: *Map,
-        position: math.FlatVector,
+        position: math.FlatVectorF32,
         spritesheet: SpriteSheetTexture,
     ) !void {
         const object_type = &self.object_type_to_insert;
@@ -199,8 +199,8 @@ pub const State = struct {
     fn updateCurrentlyInsertedObject(
         self: *State,
         map: *Map,
-        object_end_position: math.FlatVector,
-        camera_direction: math.FlatVector,
+        object_end_position: math.FlatVectorF32,
+        camera_direction: math.FlatVectorF32,
     ) !void {
         const object = self.currently_edited_object orelse return;
         switch (self.object_type_to_insert.used_field) {
@@ -222,7 +222,7 @@ pub const State = struct {
                     side_a_end = object.start_position;
                 }
                 if (camera_right_axis.dotProduct(offset) > 0) {
-                    std.mem.swap(math.FlatVector, &side_a_start, &side_a_end);
+                    std.mem.swap(math.FlatVectorF32, &side_a_start, &side_a_end);
                 }
 
                 try map.geometry.updateFloor(
@@ -240,7 +240,7 @@ pub const State = struct {
 /// Reasonable distance to prevent placing/modifying objects too far away from the camera.
 const max_raycast_distance = 500;
 
-fn cast3DRayToGround(ray: collision.Ray3d) ?math.FlatVector {
+fn cast3DRayToGround(ray: collision.Ray3d) ?math.FlatVectorF32 {
     if (ray.collidesWithGround()) |impact_point| {
         if (impact_point.distance_from_start_position < max_raycast_distance) {
             return impact_point.position.toFlatVector();

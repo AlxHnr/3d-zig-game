@@ -340,22 +340,22 @@ pub const SerializableData = struct {
     pub const Wall = struct {
         /// Type enum as string.
         t: []const u8,
-        start: math.FlatVector,
-        end: math.FlatVector,
+        start: math.FlatVectorF32,
+        end: math.FlatVectorF32,
     };
 
     pub const Floor = struct {
         /// Type enum as string.
         t: []const u8,
-        side_a_start: math.FlatVector,
-        side_a_end: math.FlatVector,
+        side_a_start: math.FlatVectorF32,
+        side_a_end: math.FlatVectorF32,
         side_b_length: f32,
     };
 
     pub const BillboardObject = struct {
         /// Type enum as string.
         t: []const u8,
-        pos: math.FlatVector,
+        pos: math.FlatVectorF32,
     };
 };
 
@@ -380,8 +380,8 @@ pub const WallType = enum {
 pub fn addWall(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
-    start_position: math.FlatVector,
-    end_position: math.FlatVector,
+    start_position: math.FlatVectorF32,
+    end_position: math.FlatVectorF32,
     wall_type: WallType,
 ) !u64 {
     const wall_id = try self.addWallUncached(
@@ -404,8 +404,8 @@ pub fn removeObject(self: *Geometry, object_id: u64) !void {
 pub fn updateWall(
     self: *Geometry,
     object_id: u64,
-    start_position: math.FlatVector,
-    end_position: math.FlatVector,
+    start_position: math.FlatVectorF32,
+    end_position: math.FlatVectorF32,
 ) !void {
     var wall = self.findWall(object_id) orelse return;
     var old_wall = wall.*;
@@ -438,8 +438,8 @@ pub const FloorType = enum {
 pub fn addFloor(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
-    side_a_start: math.FlatVector,
-    side_a_end: math.FlatVector,
+    side_a_start: math.FlatVectorF32,
+    side_a_end: math.FlatVectorF32,
     side_b_length: f32,
     floor_type: FloorType,
 ) !u64 {
@@ -459,8 +459,8 @@ pub fn addFloor(
 pub fn updateFloor(
     self: *Geometry,
     object_id: u64,
-    side_a_start: math.FlatVector,
-    side_a_end: math.FlatVector,
+    side_a_start: math.FlatVectorF32,
+    side_a_end: math.FlatVectorF32,
     side_b_length: f32,
 ) !void {
     var floor = self.findFloor(object_id) orelse return;
@@ -485,7 +485,7 @@ pub fn addBillboardObject(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
     object_type: BillboardObjectType,
-    position: math.FlatVector,
+    position: math.FlatVectorF32,
     spritesheet: textures.SpriteSheetTexture,
 ) !u64 {
     const billboard_id = try self.addBillboardObjectUncached(
@@ -579,7 +579,7 @@ pub fn collidesWithCircle(
     self: Geometry,
     circle: collision.Circle,
     ignore_fences: bool,
-) ?math.FlatVector {
+) ?math.FlatVectorF32 {
     var found_collision = false;
     var displaced_circle = circle;
 
@@ -604,7 +604,7 @@ pub fn collidesWithCircle(
 }
 
 /// Check if two points are separated by a solid wall. Fences are not solid.
-pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVector, b: math.FlatVector) bool {
+pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVectorF32, b: math.FlatVectorF32) bool {
     var iterator = self.spatial_wall_index.solid.straightLineIterator(a, b);
     while (iterator.next()) |boundaries| {
         if (boundaries.collidesWithLine(a, b)) {
@@ -616,7 +616,7 @@ pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVector, b: math.Flat
 
 /// Return the type of obstacles bordering on the tile specified by the given position. This
 /// check has the granularity of `obstacle_grid_cell_size` and is imprecise.
-pub fn getObstacleTile(self: Geometry, position: math.FlatVector) TileType {
+pub fn getObstacleTile(self: Geometry, position: math.FlatVectorF32) TileType {
     return self.obstacle_grid.getObstacleTile(position);
 }
 
@@ -635,8 +635,8 @@ pub const TileType = enum {
 fn addWallUncached(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
-    start_position: math.FlatVector,
-    end_position: math.FlatVector,
+    start_position: math.FlatVectorF32,
+    end_position: math.FlatVectorF32,
     wall_type: WallType,
 ) !u64 {
     const wall = try if (Wall.isFence(wall_type))
@@ -668,8 +668,8 @@ fn addWallUncached(
 fn addFloorUncached(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
-    side_a_start: math.FlatVector,
-    side_a_end: math.FlatVector,
+    side_a_start: math.FlatVectorF32,
+    side_a_end: math.FlatVectorF32,
     side_b_length: f32,
     floor_type: FloorType,
 ) !u64 {
@@ -688,7 +688,7 @@ fn addBillboardObjectUncached(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
     object_type: BillboardObjectType,
-    position: math.FlatVector,
+    position: math.FlatVectorF32,
     spritesheet: textures.SpriteSheetTexture,
 ) !u64 {
     const billboard = try self.billboard_objects.addOne();
@@ -808,16 +808,16 @@ const Floor = struct {
     tint: util.Color,
 
     /// Values used to generate this floor.
-    side_a_start: math.FlatVector,
-    side_a_end: math.FlatVector,
+    side_a_start: math.FlatVectorF32,
+    side_a_end: math.FlatVectorF32,
     side_b_length: f32,
 
     /// Side a and b can be chosen arbitrarily, but must be adjacent.
     fn create(
         object_id: u64,
         floor_type: FloorType,
-        side_a_start: math.FlatVector,
-        side_a_end: math.FlatVector,
+        side_a_start: math.FlatVectorF32,
+        side_a_end: math.FlatVectorF32,
         side_b_length: f32,
     ) Floor {
         const offset_a = side_a_end.subtract(side_a_start);
@@ -881,21 +881,21 @@ const Wall = struct {
     },
 
     /// Values used to generate this wall.
-    start_position: math.FlatVector,
-    end_position: math.FlatVector,
+    start_position: math.FlatVectorF32,
+    end_position: math.FlatVectorF32,
 
     fn create(
         object_id: u64,
         wall_type: WallType,
-        start_position: math.FlatVector,
-        end_position: math.FlatVector,
+        start_position: math.FlatVectorF32,
+        end_position: math.FlatVectorF32,
     ) Wall {
         const wall_type_properties = getWallTypeProperties(start_position, end_position, wall_type);
         const offset = wall_type_properties.corrected_end_position.subtract(
             wall_type_properties.corrected_start_position,
         );
         const length = offset.length();
-        const x_axis = math.FlatVector{ .x = 1, .z = 0 };
+        const x_axis = math.FlatVectorF32{ .x = 1, .z = 0 };
         const rotation_angle = x_axis.computeRotationToOtherVector(offset);
         const height = wall_type_properties.height;
         const thickness = wall_type_properties.thickness;
@@ -904,7 +904,7 @@ const Wall = struct {
         const render_thickness = if (isFence(wall_type)) 0 else thickness;
 
         const side_a_up_offset =
-            math.FlatVector.normalize(.{ .x = offset.z, .z = -offset.x }).scale(thickness / 2);
+            math.FlatVectorF32.normalize(.{ .x = offset.z, .z = -offset.x }).scale(thickness / 2);
         const center = wall_type_properties.corrected_start_position.add(offset.scale(0.5));
         return Wall{
             .object_id = object_id,
@@ -980,16 +980,16 @@ const Wall = struct {
     }
 
     const WallTypeProperties = struct {
-        corrected_start_position: math.FlatVector,
-        corrected_end_position: math.FlatVector,
+        corrected_start_position: math.FlatVectorF32,
+        corrected_end_position: math.FlatVectorF32,
         height: f32,
         thickness: f32,
         texture_scale: f32,
     };
 
     fn getWallTypeProperties(
-        start_position: math.FlatVector,
-        end_position: math.FlatVector,
+        start_position: math.FlatVectorF32,
+        end_position: math.FlatVectorF32,
         wall_type: WallType,
     ) WallTypeProperties {
         const fence_thickness = 0.25; // Only needed for collision boundaries, fences are flat.
@@ -1105,7 +1105,7 @@ const BillboardObject = struct {
     fn create(
         object_id: u64,
         object_type: BillboardObjectType,
-        position: math.FlatVector,
+        position: math.FlatVectorF32,
         spritesheet: textures.SpriteSheetTexture,
     ) BillboardObject {
         const width: f32 = switch (object_type) {
@@ -1235,7 +1235,7 @@ const ObstacleGrid = struct {
     fn create() ObstacleGrid {
         return .{
             .grid = &.{},
-            .map_boundaries = .{ .min = math.FlatVector.zero, .max = math.FlatVector.zero },
+            .map_boundaries = .{ .min = math.FlatVectorF32.zero, .max = math.FlatVectorF32.zero },
             .map_cell_count_horizontal = 1,
         };
     }
@@ -1250,7 +1250,7 @@ const ObstacleGrid = struct {
         {
             self.* = .{
                 .grid = self.grid,
-                .map_boundaries = .{ .min = math.FlatVector.zero, .max = math.FlatVector.zero },
+                .map_boundaries = .{ .min = math.FlatVectorF32.zero, .max = math.FlatVectorF32.zero },
                 .map_cell_count_horizontal = 1,
             };
             return;
@@ -1301,7 +1301,7 @@ const ObstacleGrid = struct {
         }
     }
 
-    fn getObstacleTile(self: ObstacleGrid, position: math.FlatVector) TileType {
+    fn getObstacleTile(self: ObstacleGrid, position: math.FlatVectorF32) TileType {
         if (!self.map_boundaries.collidesWithPoint(position)) {
             return .none;
         }
@@ -1328,8 +1328,8 @@ const ObstacleGrid = struct {
     fn insertLine(
         self: *ObstacleGrid,
         tile_type: TileType,
-        start: math.FlatVector,
-        end: math.FlatVector,
+        start: math.FlatVectorF32,
+        end: math.FlatVectorF32,
     ) void {
         var iterator = cell_line_iterator(CellIndex, start, end);
         while (iterator.next()) |cell_index| {
@@ -1359,7 +1359,7 @@ const ObstacleGrid = struct {
         z: isize,
         pub const side_length = obstacle_grid_cell_size;
 
-        pub fn fromPosition(position: math.FlatVector) CellIndex {
+        pub fn fromPosition(position: math.FlatVectorF32) CellIndex {
             return .{
                 .x = @intFromFloat(position.x / @as(f32, @floatFromInt(side_length))),
                 .z = @intFromFloat(position.z / @as(f32, @floatFromInt(side_length))),

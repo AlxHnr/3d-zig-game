@@ -5,19 +5,19 @@ const std = @import("std");
 
 pub const MovingCircle = struct {
     radius: f32,
-    velocity: math.FlatVector,
+    velocity: math.FlatVectorF32,
     pass_trough_fences: bool,
     /// Contains the position of this object during the substeps of the last tick. The values are
     /// ordered from old to new. The last value contains the current position.
-    trace: [4]math.FlatVector,
+    trace: [4]math.FlatVectorF32,
 
     pub fn create(
-        position: math.FlatVector,
+        position: math.FlatVectorF32,
         radius: f32,
-        velocity: math.FlatVector,
+        velocity: math.FlatVectorF32,
         pass_trough_fences: bool,
     ) MovingCircle {
-        var trace: [4]math.FlatVector = undefined;
+        var trace: [4]math.FlatVectorF32 = undefined;
         for (&trace) |*point| {
             point.* = position;
         }
@@ -29,11 +29,11 @@ pub const MovingCircle = struct {
         };
     }
 
-    pub fn getPosition(self: MovingCircle) math.FlatVector {
+    pub fn getPosition(self: MovingCircle) math.FlatVectorF32 {
         return self.trace[self.trace.len - 1];
     }
 
-    pub fn setPosition(self: *MovingCircle, position: math.FlatVector) void {
+    pub fn setPosition(self: *MovingCircle, position: math.FlatVectorF32) void {
         self.setTrace(&.{position});
     }
 
@@ -67,7 +67,7 @@ pub const MovingCircle = struct {
         self.setTrace(trace[0..index]);
     }
 
-    pub const PositionsDuringContact = struct { self: math.FlatVector, other: math.FlatVector };
+    pub const PositionsDuringContact = struct { self: math.FlatVectorF32, other: math.FlatVectorF32 };
 
     pub fn hasCollidedWith(self: MovingCircle, other: MovingCircle) ?PositionsDuringContact {
         for (self.trace, other.trace) |self_position, other_position| {
@@ -83,7 +83,7 @@ pub const MovingCircle = struct {
 
     /// Check if this object has collided with the given circle during `processElapsedTick()`.
     /// Returns the position of `self` during the substep at which the collision occurred.
-    pub fn hasCollidedWithCircle(self: MovingCircle, other: collision.Circle) ?math.FlatVector {
+    pub fn hasCollidedWithCircle(self: MovingCircle, other: collision.Circle) ?math.FlatVectorF32 {
         for (self.trace) |position| {
             const boundaries = collision.Circle{ .position = position, .radius = self.radius };
             if (boundaries.collidesWithCircle(other)) {
@@ -95,7 +95,7 @@ pub const MovingCircle = struct {
 
     /// Overwrite the positions occupied by this circle during the last tick. Can contain 0 or up to
     /// `self.trace.len` positions.
-    pub fn setTrace(self: *MovingCircle, positions: []const math.FlatVector) void {
+    pub fn setTrace(self: *MovingCircle, positions: []const math.FlatVectorF32) void {
         std.debug.assert(positions.len <= self.trace.len);
 
         // Fill trace position array with interpolated values. This ensures that each trace contains

@@ -23,7 +23,7 @@ const epsilon = math.epsilon;
 const expect = std.testing.expect;
 const expectApproxEqRel = std.testing.expectApproxEqRel;
 
-fn expectXZ(vector: ?math.FlatVector, expected_x: f32, expected_z: f32) !void {
+fn expectXZ(vector: ?math.FlatVectorF32, expected_x: f32, expected_z: f32) !void {
     try expect(vector != null);
     try expectApproxEqRel(expected_x, vector.?.x, epsilon);
     try expectApproxEqRel(expected_z, vector.?.z, epsilon);

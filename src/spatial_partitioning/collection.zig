@@ -1,4 +1,4 @@
-const FlatVector = @import("../math.zig").FlatVector;
+const FlatVectorF32 = @import("../math.zig").FlatVectorF32;
 const UnorderedCollection = @import("../unordered_collection.zig").UnorderedCollection;
 const std = @import("std");
 
@@ -44,7 +44,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
 
         /// Inserts the given object into the collection. Invalidates existing iterators. The same
         /// object id should not be inserted twice.
-        pub fn insert(self: *Self, object: T, position: FlatVector) !*ObjectHandle {
+        pub fn insert(self: *Self, object: T, position: FlatVectorF32) !*ObjectHandle {
             const cell_index = CellIndex.fromPosition(position);
 
             const cell = try self.cells.getOrPut(cell_index);
@@ -99,7 +99,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             return @ptrCast(ptr.?);
         }
 
-        pub fn getCellIndex(_: Self, position: FlatVector) CellIndex {
+        pub fn getCellIndex(_: Self, position: FlatVectorF32) CellIndex {
             return CellIndex.fromPosition(position);
         }
 

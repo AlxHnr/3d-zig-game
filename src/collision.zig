@@ -4,10 +4,10 @@ const std = @import("std");
 const math = @import("math.zig");
 
 pub const AxisAlignedBoundingBox = struct {
-    min: math.FlatVector,
-    max: math.FlatVector,
+    min: math.FlatVectorF32,
+    max: math.FlatVectorF32,
 
-    pub fn collidesWithPoint(self: AxisAlignedBoundingBox, point: math.FlatVector) bool {
+    pub fn collidesWithPoint(self: AxisAlignedBoundingBox, point: math.FlatVectorF32) bool {
         return point.x > self.min.x and
             point.z > self.min.z and
             point.x < self.max.x and
@@ -33,7 +33,7 @@ pub const Rectangle = struct {
             return Rotation{ .sine = std.math.sin(angle), .cosine = std.math.cos(angle) };
         }
 
-        fn rotate(self: Rotation, vector: math.FlatVector) math.FlatVector {
+        fn rotate(self: Rotation, vector: math.FlatVectorF32) math.FlatVectorF32 {
             return .{
                 .x = vector.x * self.cosine + vector.z * self.sine,
                 .z = -vector.x * self.sine + vector.z * self.cosine,
@@ -43,8 +43,8 @@ pub const Rectangle = struct {
 
     /// Takes game-world coordinates. Side a and b can be chosen arbitrarily, but must be adjacent.
     pub fn create(
-        side_a_start: math.FlatVector,
-        side_a_end: math.FlatVector,
+        side_a_start: math.FlatVectorF32,
+        side_a_end: math.FlatVectorF32,
         side_b_length: f32,
     ) Rectangle {
         const side_a_length = side_a_start.subtract(side_a_end).length();
@@ -65,8 +65,8 @@ pub const Rectangle = struct {
     /// Check if this rectangle collides with the given line (game-world coordinates).
     pub fn collidesWithLine(
         self: Rectangle,
-        line_start: math.FlatVector,
-        line_end: math.FlatVector,
+        line_start: math.FlatVectorF32,
+        line_end: math.FlatVectorF32,
     ) bool {
         const start = self.rotation.rotate(line_start);
         const end = self.rotation.rotate(line_end);
@@ -84,12 +84,12 @@ pub const Rectangle = struct {
             lineCollidesWithLine(start, end, corners[3], corners[0]) != null;
     }
 
-    pub fn collidesWithPoint(self: Rectangle, point: math.FlatVector) bool {
+    pub fn collidesWithPoint(self: Rectangle, point: math.FlatVectorF32) bool {
         return self.collidesWithRotatedPoint(self.rotation.rotate(point));
     }
 
-    pub fn getCornersInGameCoordinates(self: Rectangle) [4]math.FlatVector {
-        return [_]math.FlatVector{
+    pub fn getCornersInGameCoordinates(self: Rectangle) [4]math.FlatVectorF32 {
+        return [_]math.FlatVectorF32{
             self.inverse_rotation.rotate(self.aabb.min),
             self.inverse_rotation.rotate(.{ .x = self.aabb.min.x, .z = self.aabb.max.z }),
             self.inverse_rotation.rotate(self.aabb.max),
@@ -110,14 +110,14 @@ pub const Rectangle = struct {
         return result;
     }
 
-    fn collidesWithRotatedPoint(self: Rectangle, rotated_point: math.FlatVector) bool {
+    fn collidesWithRotatedPoint(self: Rectangle, rotated_point: math.FlatVectorF32) bool {
         return self.aabb.collidesWithPoint(rotated_point);
     }
 };
 
 pub const Circle = struct {
     /// Contains game-world coordinates.
-    position: math.FlatVector,
+    position: math.FlatVectorF32,
     radius: f32,
 
     pub fn lerp(self: Circle, other: Circle, t: f32) Circle {
@@ -129,7 +129,7 @@ pub const Circle = struct {
 
     /// If a collision occurs, return a displacement vector for moving self out of other. The
     /// returned displacement vector must be added to self.position to resolve the collision.
-    pub fn collidesWithPoint(self: Circle, point: math.FlatVector) ?math.FlatVector {
+    pub fn collidesWithPoint(self: Circle, point: math.FlatVectorF32) ?math.FlatVectorF32 {
         const center_to_point_offset = self.position.subtract(point);
         if (self.radius * self.radius - center_to_point_offset.lengthSquared() < math.epsilon) {
             return null;
@@ -148,7 +148,7 @@ pub const Circle = struct {
 
     /// If a collision occurs, return a displacement vector for moving self out of other. The
     /// returned displacement vector must be added to self.position to resolve the collision.
-    pub fn collidesWithCircleDisplacementVector(self: Circle, other: Circle) ?math.FlatVector {
+    pub fn collidesWithCircleDisplacementVector(self: Circle, other: Circle) ?math.FlatVectorF32 {
         const combined_circle = Circle{
             .position = self.position,
             .radius = self.radius + other.radius,
@@ -160,9 +160,9 @@ pub const Circle = struct {
     /// returned displacement vector must be added to self.position to resolve the collision.
     pub fn collidesWithLine(
         self: Circle,
-        line_start: math.FlatVector,
-        line_end: math.FlatVector,
-    ) ?math.FlatVector {
+        line_start: math.FlatVectorF32,
+        line_end: math.FlatVectorF32,
+    ) ?math.FlatVectorF32 {
         const line_offset = line_end.subtract(line_start);
         const line_length_squared = line_offset.lengthSquared();
         const circle_to_line_offset = self.position.subtract(line_start);
@@ -194,7 +194,7 @@ pub const Circle = struct {
 
     /// If a collision occurs, return a displacement vector for moving self out of other. The
     /// returned displacement vector must be added to self.position to resolve the collision.
-    pub fn collidesWithRectangle(self: Circle, rectangle: Rectangle) ?math.FlatVector {
+    pub fn collidesWithRectangle(self: Circle, rectangle: Rectangle) ?math.FlatVectorF32 {
         const rotated_self_position = rectangle.rotation.rotate(self.position);
         const reference_point = .{
             .x = std.math.clamp(rotated_self_position.x, rectangle.aabb.min.x, rectangle.aabb.max.x),
@@ -215,9 +215,9 @@ pub const Circle = struct {
         );
         const displacement_vector =
             if (@abs(displacement_x) < @abs(displacement_z))
-            math.FlatVector{ .x = displacement_x, .z = 0 }
+            math.FlatVectorF32{ .x = displacement_x, .z = 0 }
         else
-            math.FlatVector{ .x = 0, .z = displacement_z };
+            math.FlatVectorF32{ .x = 0, .z = displacement_z };
 
         return rectangle.inverse_rotation.rotate(displacement_vector);
     }
@@ -239,11 +239,11 @@ pub const Circle = struct {
 
 /// Returns the intersection point.
 pub fn lineCollidesWithLine(
-    first_line_start: math.FlatVector,
-    first_line_end: math.FlatVector,
-    second_line_start: math.FlatVector,
-    second_line_end: math.FlatVector,
-) ?math.FlatVector {
+    first_line_start: math.FlatVectorF32,
+    first_line_end: math.FlatVectorF32,
+    second_line_start: math.FlatVectorF32,
+    second_line_end: math.FlatVectorF32,
+) ?math.FlatVectorF32 {
     const first_line_lengths = first_line_end.subtract(first_line_start);
     const second_line_lengths = second_line_end.subtract(second_line_start);
     const divisor =
@@ -268,9 +268,9 @@ pub fn lineCollidesWithLine(
 }
 
 pub fn lineCollidesWithPoint(
-    line_start: math.FlatVector,
-    line_end: math.FlatVector,
-    point: math.FlatVector,
+    line_start: math.FlatVectorF32,
+    line_end: math.FlatVectorF32,
+    point: math.FlatVectorF32,
 ) bool {
     const line_offset = line_end.subtract(line_start);
     const line_length_squared = line_offset.lengthSquared();

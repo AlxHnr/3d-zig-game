@@ -34,17 +34,17 @@ pub fn getOverlap(a_start: i16, a_end: i16, b_start: i16, b_end: i16) i16 {
 }
 
 /// Vector on a flat plane with no height information.
-pub const FlatVector = struct {
+pub const FlatVectorF32 = struct {
     x: f32,
     z: f32,
 
-    pub const zero = FlatVector{ .x = 0, .z = 0 };
+    pub const zero = FlatVectorF32{ .x = 0, .z = 0 };
 
-    pub fn toVector3d(self: FlatVector) Vector3d {
+    pub fn toVector3d(self: FlatVectorF32) Vector3d {
         return .{ .x = self.x, .y = 0, .z = self.z };
     }
 
-    pub fn normalize(self: FlatVector) FlatVector {
+    pub fn normalize(self: FlatVectorF32) FlatVectorF32 {
         const own_length = self.length();
         return if (own_length < epsilon)
             self
@@ -52,37 +52,37 @@ pub const FlatVector = struct {
             .{ .x = self.x / own_length, .z = self.z / own_length };
     }
 
-    pub fn lerp(self: FlatVector, other: FlatVector, t: f32) FlatVector {
+    pub fn lerp(self: FlatVectorF32, other: FlatVectorF32, t: f32) FlatVectorF32 {
         return .{ .x = _lerp(self.x, other.x, t), .z = _lerp(self.z, other.z, t) };
     }
 
-    pub fn add(self: FlatVector, other: FlatVector) FlatVector {
+    pub fn add(self: FlatVectorF32, other: FlatVectorF32) FlatVectorF32 {
         return .{ .x = self.x + other.x, .z = self.z + other.z };
     }
 
-    pub fn subtract(self: FlatVector, other: FlatVector) FlatVector {
+    pub fn subtract(self: FlatVectorF32, other: FlatVectorF32) FlatVectorF32 {
         return .{ .x = self.x - other.x, .z = self.z - other.z };
     }
 
-    pub fn scale(self: FlatVector, factor: f32) FlatVector {
+    pub fn scale(self: FlatVectorF32, factor: f32) FlatVectorF32 {
         return .{ .x = self.x * factor, .z = self.z * factor };
     }
 
-    pub fn length(self: FlatVector) f32 {
+    pub fn length(self: FlatVectorF32) f32 {
         return std.math.sqrt(self.lengthSquared());
     }
 
-    pub fn lengthSquared(self: FlatVector) f32 {
+    pub fn lengthSquared(self: FlatVectorF32) f32 {
         return self.x * self.x + self.z * self.z;
     }
 
-    pub fn dotProduct(self: FlatVector, other: FlatVector) f32 {
+    pub fn dotProduct(self: FlatVectorF32, other: FlatVectorF32) f32 {
         return self.x * other.x + self.z * other.z;
     }
 
     /// Get the angle needed to rotate this vector to have the same direction as another vector. The
     /// given vectors don't need to be normalized.
-    pub fn computeRotationToOtherVector(self: FlatVector, other: FlatVector) f32 {
+    pub fn computeRotationToOtherVector(self: FlatVectorF32, other: FlatVectorF32) f32 {
         const other_normalized = other.normalize();
         const angle = std.math.acos(std.math.clamp(self.normalize().dotProduct(
             other_normalized,
@@ -93,21 +93,21 @@ pub const FlatVector = struct {
             angle;
     }
 
-    pub fn negate(self: FlatVector) FlatVector {
+    pub fn negate(self: FlatVectorF32) FlatVectorF32 {
         return .{ .x = -self.x, .z = -self.z };
     }
 
-    pub fn rotate(self: FlatVector, angle: f32) FlatVector {
+    pub fn rotate(self: FlatVectorF32, angle: f32) FlatVectorF32 {
         const sin = std.math.sin(angle);
         const cos = std.math.cos(angle);
         return .{ .x = self.x * cos + self.z * sin, .z = -self.x * sin + self.z * cos };
     }
 
-    pub fn rotateRightBy90Degrees(self: FlatVector) FlatVector {
+    pub fn rotateRightBy90Degrees(self: FlatVectorF32) FlatVectorF32 {
         return .{ .x = -self.z, .z = self.x };
     }
 
-    pub fn projectOnto(self: FlatVector, other: FlatVector) FlatVector {
+    pub fn projectOnto(self: FlatVectorF32, other: FlatVectorF32) FlatVectorF32 {
         return other.scale(self.dotProduct(other) / other.dotProduct(other));
     }
 };
@@ -121,7 +121,7 @@ pub const Vector3d = struct {
     pub const x_axis = Vector3d{ .x = 1, .y = 0, .z = 0 };
 
     /// Will cut off the height component.
-    pub fn toFlatVector(self: Vector3d) FlatVector {
+    pub fn toFlatVector(self: Vector3d) FlatVectorF32 {
         return .{ .x = self.x, .z = self.z };
     }
 

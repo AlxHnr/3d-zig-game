@@ -4,8 +4,8 @@ const std = @import("std");
 /// Visits all cells trough which the specified line passes.
 pub fn iterator(
     comptime CellIndex: type,
-    line_start: math.FlatVector,
-    line_end: math.FlatVector,
+    line_start: math.FlatVectorF32,
+    line_end: math.FlatVectorF32,
 ) Iterator(CellIndex) {
     const f32_max = std.math.floatMax(f32);
 
@@ -41,8 +41,8 @@ pub fn Iterator(comptime CellIndex: type) type {
         current: CellIndex,
         last: CellIndex,
         step: struct { x: i2, z: i2 },
-        step_lengths_to_next_axis: math.FlatVector,
-        distance_to_next_axis: math.FlatVector,
+        step_lengths_to_next_axis: math.FlatVectorF32,
+        distance_to_next_axis: math.FlatVectorF32,
 
         const Self = @This();
 
