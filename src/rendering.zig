@@ -417,7 +417,7 @@ pub const BillboardRenderer = struct {
         self: BillboardRenderer,
         vp_matrix: math.Matrix,
         screen_dimensions: ScreenDimensions,
-        camera_direction: math.Vector3d,
+        camera_direction: math.Vector3dF32,
         texture_id: c_uint,
     ) void {
         const camera_rotation_to_z_axis =

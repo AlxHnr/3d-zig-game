@@ -156,7 +156,7 @@ pub const RenderSnapshot = struct {
             const out_slice = out.unusedCapacitySlice()[0..cached_text.len];
             out.items.len += cached_text.len;
 
-            const up = math.Vector3d{ .x = 0, .y = 1, .z = 0 };
+            const up = math.Vector3dF32{ .x = 0, .y = 1, .z = 0 };
             @memcpy(out_slice, cached_text);
             const position = state.values.position.toVector3d()
                 .add(up.scale(state.values.height * offset_to_player_height_factor));

@@ -79,7 +79,7 @@ pub const Map = struct {
         self: Map,
         vp_matrix: math.Matrix,
         screen_dimensions: ScreenDimensions,
-        camera_direction_to_target: math.Vector3d,
+        camera_direction_to_target: math.Vector3dF32,
         tileable_textures: textures.TileableArrayTexture,
         spritesheet: textures.SpriteSheetTexture,
     ) void {

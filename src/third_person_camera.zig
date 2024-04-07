@@ -6,7 +6,7 @@ const std = @import("std");
 
 /// Camera which smoothly follows an object and auto-rotates across the Y axis.
 pub const Camera = struct {
-    target_position: math.Vector3d,
+    target_position: math.Vector3dF32,
     target_orientation: f32,
 
     distance_from_object: f32,
@@ -66,7 +66,7 @@ pub const Camera = struct {
             .multiply(self.getViewMatrix(max_distance_from_target));
     }
 
-    pub fn getDirectionToTarget(self: Camera) math.Vector3d {
+    pub fn getDirectionToTarget(self: Camera) math.Vector3dF32 {
         return self.target_position.subtract(self.getPosition()).normalize();
     }
 
@@ -96,7 +96,7 @@ pub const Camera = struct {
         /// Optional value to account for walls covering the camera.
         max_distance_from_target: ?f32,
     ) collision.Ray3d {
-        const clip_ray = math.Vector3d{
+        const clip_ray = math.Vector3dF32{
             .x = @as(f32, @floatFromInt(mouse_x)) / @as(f32, @floatFromInt(screen_dimensions.width)) * 2 - 1,
             .y = 1 - @as(f32, @floatFromInt(mouse_y)) / @as(f32, @floatFromInt(screen_dimensions.height)) * 2,
             .z = 0,
@@ -107,7 +107,7 @@ pub const Camera = struct {
             .invert().multiplyVector4d(.{ view_ray[0], view_ray[1], -1, 0 });
         return .{
             .start_position = self.getAdjustedCameraPosition(max_distance_from_target),
-            .direction = math.Vector3d.normalize(.{
+            .direction = math.Vector3dF32.normalize(.{
                 .x = unnormalized_direction[0],
                 .y = unnormalized_direction[1],
                 .z = unnormalized_direction[2],
@@ -135,7 +135,7 @@ pub const Camera = struct {
         self.* = self.lerp(targeted_values, target_follow_speed);
     }
 
-    pub fn getPosition(self: Camera) math.Vector3d {
+    pub fn getPosition(self: Camera) math.Vector3dF32 {
         const target_looking_direction = math.FlatVectorF32{
             .x = std.math.sin(self.target_orientation),
             .z = std.math.cos(self.target_orientation),
@@ -150,14 +150,14 @@ pub const Camera = struct {
     }
 
     /// Add a Y offset to the specified target so it is rendered in the bottom part of the screen.
-    fn add3dHeight(target_position: math.FlatVectorF32) math.Vector3d {
-        return target_position.toVector3d().add(math.Vector3d.y_axis.scale(3));
+    fn add3dHeight(target_position: math.FlatVectorF32) math.Vector3dF32 {
+        return target_position.toVector3d().add(math.Vector3dF32.y_axis.scale(3));
     }
 
     /// Takes an optional distance limit to prevent walls from covering the cameras target object.
     fn getViewMatrix(self: Camera, max_distance_from_target: ?f32) math.Matrix {
         const direction_to_camera = self.getPosition().subtract(self.target_position).normalize();
-        const right_direction = math.Vector3d.y_axis.crossProduct(direction_to_camera).normalize();
+        const right_direction = math.Vector3dF32.y_axis.crossProduct(direction_to_camera).normalize();
         const up_direction = direction_to_camera.crossProduct(right_direction).normalize();
         const adjusted_camera_position =
             self.getAdjustedCameraPosition(max_distance_from_target).negate();
@@ -184,7 +184,7 @@ pub const Camera = struct {
         } };
     }
 
-    fn getAdjustedCameraPosition(self: Camera, max_distance_from_target: ?f32) math.Vector3d {
+    fn getAdjustedCameraPosition(self: Camera, max_distance_from_target: ?f32) math.Vector3dF32 {
         const offset_from_target = self.getPosition().subtract(self.target_position);
         const max_distance = max_distance_from_target orelse offset_from_target.length();
         const distance = @min(offset_from_target.length(), max_distance);

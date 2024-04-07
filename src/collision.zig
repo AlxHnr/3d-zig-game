@@ -288,12 +288,12 @@ pub fn lineCollidesWithPoint(
 }
 
 pub const Ray3d = struct {
-    start_position: math.Vector3d,
+    start_position: math.Vector3dF32,
     /// Must be normalized.
-    direction: math.Vector3d,
+    direction: math.Vector3dF32,
 
     pub const ImpactPoint = struct {
-        position: math.Vector3d,
+        position: math.Vector3dF32,
         distance_from_start_position: f32,
     };
 
@@ -305,7 +305,7 @@ pub const Ray3d = struct {
         if (@abs(self.direction.y) < math.epsilon) {
             return null;
         }
-        const offset_to_ground = math.Vector3d{
+        const offset_to_ground = math.Vector3dF32{
             .x = -self.start_position.y / (self.direction.y / self.direction.x),
             .y = 0,
             .z = -self.start_position.y / (self.direction.y / self.direction.z),
@@ -317,9 +317,9 @@ pub const Ray3d = struct {
     }
 
     /// If the given triangle is not wired counter-clockwise, it will be ignored.
-    pub fn collidesWithTriangle(self: Ray3d, triangle: [3]math.Vector3d) ?ImpactPoint {
+    pub fn collidesWithTriangle(self: Ray3d, triangle: [3]math.Vector3dF32) ?ImpactPoint {
         // Möller-Trumbore intersection algorithm.
-        const edges = [2]math.Vector3d{
+        const edges = [2]math.Vector3dF32{
             triangle[1].subtract(triangle[0]),
             triangle[2].subtract(triangle[0]),
         };
@@ -350,7 +350,7 @@ pub const Ray3d = struct {
     }
 
     /// If the given quad is not wired counter-clockwise, it will be ignored.
-    pub fn collidesWithQuad(self: Ray3d, quad: [4]math.Vector3d) ?ImpactPoint {
+    pub fn collidesWithQuad(self: Ray3d, quad: [4]math.Vector3dF32) ?ImpactPoint {
         return self.collidesWithTriangle(.{ quad[0], quad[1], quad[2] }) orelse
             self.collidesWithTriangle(.{ quad[0], quad[2], quad[3] });
     }

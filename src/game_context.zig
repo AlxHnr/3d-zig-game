@@ -282,7 +282,7 @@ pub const Context = struct {
         self.main_character.camera.resetAngleFromGround();
     }
 
-    pub fn getCameraDirection(self: Context) math.Vector3d {
+    pub fn getCameraDirection(self: Context) math.Vector3dF32 {
         return self.main_character
             .getCamera(self.render_loop.getInterpolationIntervalUsedInLatestFrame())
             .getDirectionToTarget();

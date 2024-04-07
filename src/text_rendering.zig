@@ -5,7 +5,7 @@ const std = @import("std");
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const Color = @import("util.zig").Color;
-const Vector3d = @import("math.zig").Vector3d;
+const Vector3dF32 = @import("math.zig").Vector3dF32;
 
 pub const TextSegment = struct {
     color: Color,
@@ -44,7 +44,7 @@ pub fn getTextBlockDimensions(
 /// Renders 2d strings in 3d space.
 pub fn populateBillboardData(
     segments: []const TextSegment,
-    center_position: Vector3d,
+    center_position: Vector3dF32,
     /// Size is specified in game-world units.
     character_size: f32,
     spritesheet: SpriteSheetTexture,
@@ -67,7 +67,7 @@ pub fn populateBillboardData(
 /// exact size independent from its distance to the camera.
 pub fn populateBillboardDataExactPixelSize(
     segments: []const TextSegment,
-    center_position: Vector3d,
+    center_position: Vector3dF32,
     character_size_pixels: u16,
     spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all sprites. See getSpriteCount().
@@ -88,7 +88,7 @@ pub fn populateBillboardDataExactPixelSize(
 /// the rendered center of the text block on the screen. This can be used for adjustments.
 pub fn populateBillboardDataExactPixelSizeWithOffset(
     segments: []const TextSegment,
-    center_position: Vector3d,
+    center_position: Vector3dF32,
     pixel_offset_from_center_x: i16,
     pixel_offset_from_center_y: i16,
     character_size_pixels: u16,
@@ -305,7 +305,7 @@ fn getOffsetToTopLeftCorner(
     segments: []const TextSegment,
     character_size: f32,
     spritesheet: SpriteSheetTexture,
-) Vector3d {
+) Vector3dF32 {
     const info = getInfo(segments);
     const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
     const half_sizes = .{
@@ -328,8 +328,8 @@ fn flip(value: f32, y_axis_points_upwards: bool) f32 {
 
 fn populateSpriteDataRaw(
     segments: []const TextSegment,
-    position: Vector3d,
-    offset_to_top_left_corner: Vector3d,
+    position: Vector3dF32,
+    offset_to_top_left_corner: Vector3dF32,
     /// Depending on the renderer, the character size can be either relative to game-world units or
     /// to screen pixels. See `SpriteRenderer` and `BillboardRenderer`.
     character_size: f32,
@@ -344,7 +344,7 @@ fn populateSpriteDataRaw(
     // the text block.
     const y_offset = flip(character_size, y_axis_points_upwards);
     const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
-    const offset_increment = Vector3d{
+    const offset_increment = Vector3dF32{
         .x = character_size + font_letter_spacing.horizontal,
         .y = y_offset + flip(font_letter_spacing.vertical, y_axis_points_upwards),
         .z = undefined,
