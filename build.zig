@@ -6,14 +6,14 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "3d-zig-game",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
     exe.linkSystemLibrary("SDL2");
     exe.linkSystemLibrary("SDL2_image");
-    exe.addAnonymousModule("gl", .{ .source_file = .{ .path = "third_party/gl.zig" } });
+    exe.root_module.addAnonymousImport("gl", .{ .root_source_file = b.path("third_party/gl.zig") });
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/test.zig" },
+        .root_source_file = b.path("src/test.zig"),
         .target = target,
         .optimize = optimize,
     });

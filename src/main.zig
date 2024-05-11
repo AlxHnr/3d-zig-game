@@ -221,7 +221,7 @@ const ProgramContext = struct {
                         .from_behind => {
                             self.edit_mode_view = .top_down;
                             self.game_context.setCameraAngleFromGround(
-                                std.math.degreesToRadians(f32, 90),
+                                std.math.degreesToRadians(90),
                             );
                         },
                         .top_down => {

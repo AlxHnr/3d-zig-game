@@ -17,7 +17,7 @@ pub const Camera = struct {
     target_angle_from_ground: f32,
 
     const target_follow_speed = simulation.kphToGameUnitsPerTick(32.4);
-    const default_angle_from_ground = std.math.degreesToRadians(f32, 10);
+    const default_angle_from_ground = std.math.degreesToRadians(10);
     const default_distance_from_object = 10;
 
     /// Initialize the camera to look down at the given object from behind.
@@ -80,7 +80,7 @@ pub const Camera = struct {
         self.target_angle_from_ground = std.math.clamp(
             angle,
             0,
-            std.math.degreesToRadians(f32, 89),
+            std.math.degreesToRadians(89),
         );
     }
 
@@ -195,14 +195,14 @@ pub const Camera = struct {
     }
 
     fn getProjectionMatrix(screen_dimensions: ScreenDimensions) math.Matrix {
-        const field_of_view = std.math.degreesToRadians(f32, 45);
+        const field_of_view = std.math.degreesToRadians(45);
         const ratio = @as(f32, @floatFromInt(screen_dimensions.width)) / @as(
             f32,
             @floatFromInt(screen_dimensions.height),
         );
         const near = 0.01;
         const far = 3000.0;
-        const f = 1.0 / std.math.tan(field_of_view / 2);
+        const f = 1.0 / std.math.tan(field_of_view / 2.0);
         return .{ .rows = .{
             .{ f / ratio, 0, 0, 0 },
             .{ 0, f, 0, 0 },

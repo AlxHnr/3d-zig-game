@@ -10,7 +10,7 @@ pub const Pool = struct {
         try pool.init(.{ .allocator = allocator });
         errdefer pool.deinit();
 
-        var wait_group = try allocator.create(std.Thread.WaitGroup);
+        const wait_group = try allocator.create(std.Thread.WaitGroup);
         errdefer allocator.destroy(wait_group);
         wait_group.* = .{};
 

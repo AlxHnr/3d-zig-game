@@ -26,7 +26,7 @@ pub fn UnorderedCollection(comptime T: type) type {
         /// address will be valid until it gets swap-removed or the collection dies. The created
         /// item will be be visited by existing iterators.
         pub fn appendUninitialized(self: *Self) !*T {
-            var item = try self.segments.addOne(self.allocator);
+            const item = try self.segments.addOne(self.allocator);
             item.* = undefined;
             return item;
         }

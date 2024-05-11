@@ -19,7 +19,7 @@ pub fn lerpU32(a: u32, b: u32, t: f32) u32 {
 }
 
 pub fn isEqual(a: f32, b: f32) bool {
-    return std.math.fabs(a - b) < epsilon;
+    return @abs(a - b) < epsilon;
 }
 
 pub fn scaleU16(value: u16, factor: f32) u16 {

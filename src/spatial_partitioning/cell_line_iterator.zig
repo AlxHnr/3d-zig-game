@@ -7,14 +7,13 @@ pub fn iterator(
     line_start: math.FlatVector,
     line_end: math.FlatVector,
 ) Iterator(CellIndex) {
-    const abs = std.math.fabs;
     const f32_max = std.math.floatMax(f32);
 
     // Adapted from https://lodev.org/cgtutor/raycasting.html
     const direction = line_end.subtract(line_start).normalize();
     const step_lengths_to_next_axis = .{
-        .x = if (abs(direction.x) < math.epsilon) f32_max else abs(1 / direction.x),
-        .z = if (abs(direction.z) < math.epsilon) f32_max else abs(1 / direction.z),
+        .x = if (@abs(direction.x) < math.epsilon) f32_max else @abs(1 / direction.x),
+        .z = if (@abs(direction.z) < math.epsilon) f32_max else @abs(1 / direction.z),
     };
     const start = line_start.scale(1 / @as(f32, @floatFromInt(CellIndex.side_length)));
     const wrapped = .{ .x = @mod(start.x, 1), .z = @mod(start.z, 1) };

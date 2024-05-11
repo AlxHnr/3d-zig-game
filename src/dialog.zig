@@ -339,7 +339,7 @@ const ChoiceBox = struct {
             ui.Highlight.cancelChoice,
         );
 
-        var widget_list = try allocator.alloc(ui.Widget, text_blocks.len);
+        const widget_list = try allocator.alloc(ui.Widget, text_blocks.len);
         errdefer allocator.free(widget_list);
         putBoxAroundSelection(
             text_blocks,
@@ -348,7 +348,7 @@ const ChoiceBox = struct {
             widget_list,
         );
 
-        var split_widget = try allocator.create(ui.Widget);
+        const split_widget = try allocator.create(ui.Widget);
         errdefer allocator.destroy(split_widget);
         split_widget.* = .{ .split = ui.Split.wrap(.horizontal, widget_list) };
 
@@ -629,7 +629,7 @@ const AnimatedTextBlock = struct {
         segments: []const text_rendering.TextSegment,
         spritesheet: *const SpriteSheetTexture,
     ) !AnimatedTextBlock {
-        var widget = try allocator.create(ui.Widget);
+        const widget = try allocator.create(ui.Widget);
         errdefer allocator.destroy(widget);
         widget.* = .{
             .text = ui.Text.wrap(&.{}, spritesheet, dialog_text_scale),
@@ -791,7 +791,7 @@ fn makePackagedAnimatedTextBlock(
         dialog_text_scale,
     ).getDimensionsInPixels();
 
-    var minimum_size_widget = try allocator.create(ui.Widget);
+    const minimum_size_widget = try allocator.create(ui.Widget);
     errdefer allocator.destroy(minimum_size_widget);
     minimum_size_widget.* = .{ .minimum_size = ui.MinimumSize.wrap(
         animated_text_block.getWidgetPointer(),

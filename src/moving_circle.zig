@@ -118,7 +118,7 @@ pub const MovingCircle = struct {
                 positions[1].lerp(positions[2], 1.0 / 3.0),
                 positions[2],
             },
-            4 => std.mem.copy(math.FlatVector, &self.trace, positions),
+            4 => @memcpy(&self.trace, positions),
             else => unreachable,
         }
     }

@@ -84,7 +84,7 @@ pub const Player = struct {
     input_state: std.EnumArray(InputButton, bool),
     values_from_previous_tick: ValuesForRendering,
 
-    const full_rotation = std.math.degreesToRadians(f32, 360);
+    const full_rotation = std.math.degreesToRadians(360);
     const rotation_per_tick = full_rotation / simulation.millisecondsToTicks(f32, 1700);
     const min_velocity_for_animation = simulation.kphToGameUnitsPerTick(2);
 

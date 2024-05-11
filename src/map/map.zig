@@ -44,7 +44,7 @@ pub const Map = struct {
 
     /// Returned result must be freed with freeSerializableData().
     pub fn toSerializableData(self: Map, allocator: std.mem.Allocator) !SerializableData {
-        var serialized_geometry = try self.geometry.toSerializableData(allocator);
+        const serialized_geometry = try self.geometry.toSerializableData(allocator);
         errdefer Geometry.freeSerializableData(allocator, serialized_geometry);
 
         return .{

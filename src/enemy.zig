@@ -157,7 +157,7 @@ pub const RenderSnapshot = struct {
             out.items.len += cached_text.len;
 
             const up = math.Vector3d{ .x = 0, .y = 1, .z = 0 };
-            std.mem.copy(rendering.SpriteData, out_slice, cached_text);
+            @memcpy(out_slice, cached_text);
             const position = state.values.position.toVector3d()
                 .add(up.scale(state.values.height * offset_to_player_height_factor));
             for (out_slice) |*billboard_data| {
@@ -282,7 +282,7 @@ pub const PrerenderedNames = struct {
                 .{ .color = Color.white, .text = preset_ptr.name },
             };
             const billboard_count = text_rendering.getSpriteCount(text_segment);
-            var billboard_data = try allocator.alloc(rendering.SpriteData, billboard_count);
+            const billboard_data = try allocator.alloc(rendering.SpriteData, billboard_count);
             errdefer allocator.free(billboard_data);
 
             text_rendering.populateBillboardDataExactPixelSizeWithOffset(
@@ -354,7 +354,7 @@ const IdleState = struct {
         }
 
         if (context.rng.boolean()) { // Walk.
-            const direction = std.math.degreesToRadians(f32, 360 * context.rng.float(f32));
+            const direction = std.math.degreesToRadians(360 * context.rng.float(f32));
             const forward = math.FlatVector{ .x = 0, .z = -1 };
             enemy.character.acceleration_direction = forward.rotate(direction);
             enemy.character.movement_speed = enemy.config.movement_speed.idle;

@@ -294,7 +294,7 @@ pub const Context = struct {
         spritesheet: textures.SpriteSheetTexture,
         file_path: []const u8,
     ) !Map {
-        var json_string = try std.fs.cwd().readFileAlloc(allocator, file_path, 20 * 1024 * 1024);
+        const json_string = try std.fs.cwd().readFileAlloc(allocator, file_path, 20 * 1024 * 1024);
         defer allocator.free(json_string);
 
         const serializable_data =

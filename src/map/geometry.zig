@@ -829,7 +829,7 @@ const Floor = struct {
             .object_id = object_id,
             .floor_type = floor_type,
             .model_matrix = math.Matrix.identity
-                .rotate(math.Vector3d.x_axis, std.math.degreesToRadians(f32, -90))
+                .rotate(math.Vector3d.x_axis, std.math.degreesToRadians(-90))
                 .scale(.{ .x = side_b_length, .y = 1, .z = side_a_length })
                 .rotate(math.Vector3d.y_axis, -rotation)
                 .translate(center.toVector3d()),

@@ -214,7 +214,7 @@ pub const Circle = struct {
             rectangle.aabb.max.z - rotated_self_position.z + self.radius,
         );
         const displacement_vector =
-            if (std.math.fabs(displacement_x) < std.math.fabs(displacement_z))
+            if (@abs(displacement_x) < @abs(displacement_z))
             math.FlatVector{ .x = displacement_x, .z = 0 }
         else
             math.FlatVector{ .x = 0, .z = displacement_z };
@@ -230,7 +230,7 @@ pub const Circle = struct {
     }
 
     fn getSmallestValueBasedOnAbsolute(a: f32, b: f32) f32 {
-        return if (std.math.fabs(a) < std.math.fabs(b))
+        return if (@abs(a) < @abs(b))
             a
         else
             b;
@@ -249,7 +249,7 @@ pub fn lineCollidesWithLine(
     const divisor =
         second_line_lengths.z * first_line_lengths.x -
         second_line_lengths.x * first_line_lengths.z;
-    if (std.math.fabs(divisor) < math.epsilon) {
+    if (@abs(divisor) < math.epsilon) {
         return null;
     }
 
@@ -302,7 +302,7 @@ pub const Ray3d = struct {
         if (std.math.signbit(self.start_position.y) == std.math.signbit(self.direction.y)) {
             return null;
         }
-        if (std.math.fabs(self.direction.y) < math.epsilon) {
+        if (@abs(self.direction.y) < math.epsilon) {
             return null;
         }
         const offset_to_ground = math.Vector3d{
@@ -325,7 +325,7 @@ pub const Ray3d = struct {
         };
         const p = self.direction.crossProduct(edges[1]);
         const determinant = edges[0].dotProduct(p);
-        if (std.math.fabs(determinant) < math.epsilon) {
+        if (@abs(determinant) < math.epsilon) {
             return null;
         }
         const inverted_determinant = 1 / determinant;

@@ -21,7 +21,7 @@ const ui = @import("ui.zig");
 const Loop = @This();
 
 allocator: std.mem.Allocator,
-keep_running: std.atomic.Atomic(bool),
+keep_running: std.atomic.Value(bool),
 current: Snapshots,
 /// Will be atomically swapped with `current`.
 secondary: Snapshots,
@@ -39,7 +39,7 @@ extra_data: struct {
 },
 
 /// Value between 0 and 1.
-interpolation_interval_used_in_latest_frame: std.atomic.Atomic(f32),
+interpolation_interval_used_in_latest_frame: std.atomic.Value(f32),
 
 pub fn create(
     allocator: std.mem.Allocator,
@@ -48,7 +48,7 @@ pub fn create(
 ) Loop {
     return .{
         .allocator = allocator,
-        .keep_running = std.atomic.Atomic(bool).init(true),
+        .keep_running = std.atomic.Value(bool).init(true),
         .current = Snapshots.create(allocator),
         .secondary = Snapshots.create(allocator),
         .secondary_is_populated = false,
@@ -61,7 +61,7 @@ pub fn create(
             .edit_mode_state = edit_mode_state,
             .player_is_on_obstacle_tile = false,
         },
-        .interpolation_interval_used_in_latest_frame = std.atomic.Atomic(f32).init(0),
+        .interpolation_interval_used_in_latest_frame = std.atomic.Value(f32).init(0),
     };
 }
 
@@ -103,7 +103,7 @@ pub fn run(
     var prerendered_enemy_names = try PrerenderedEnemyNames.create(self.allocator, spritesheet);
     defer prerendered_enemy_names.destroy(self.allocator);
 
-    while (self.keep_running.load(.Unordered)) {
+    while (self.keep_running.load(.unordered)) {
         performance_measurements.begin(.frame_total);
 
         const lap_result = timer.lap();
@@ -225,17 +225,17 @@ pub fn run(
         }
 
         self.interpolation_interval_used_in_latest_frame
-            .store(lap_result.next_tick_progress, .Unordered);
+            .store(lap_result.next_tick_progress, .unordered);
         sdl.SDL_GL_SwapWindow(window);
     }
 }
 
 pub fn getInterpolationIntervalUsedInLatestFrame(self: Loop) f32 {
-    return self.interpolation_interval_used_in_latest_frame.load(.Unordered);
+    return self.interpolation_interval_used_in_latest_frame.load(.unordered);
 }
 
 pub fn sendStop(self: *Loop) void {
-    self.keep_running.store(false, .Unordered);
+    self.keep_running.store(false, .unordered);
 
     self.mutex.lock();
     self.condition.signal();
@@ -321,7 +321,7 @@ fn swapSnapshots(self: *Loop) void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    while (self.keep_running.load(.Unordered) and !self.secondary_is_populated) {
+    while (self.keep_running.load(.unordered) and !self.secondary_is_populated) {
         self.condition.wait(&self.mutex);
     }
     if (self.secondary_is_populated) {

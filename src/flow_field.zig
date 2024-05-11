@@ -45,12 +45,12 @@ pub const Field = struct {
     pub fn create(allocator: std.mem.Allocator, grid_cells_per_side: usize) !Field {
         std.debug.assert(grid_cells_per_side >= 3);
         const array_length = grid_cells_per_side * grid_cells_per_side;
-        var cell_unit_counter = try allocator.alloc(u8, array_length);
+        const cell_unit_counter = try allocator.alloc(u8, array_length);
         errdefer allocator.free(cell_unit_counter);
         @memset(cell_unit_counter, 0);
-        var integration_field = try allocator.alloc(IntegrationCell, array_length);
+        const integration_field = try allocator.alloc(IntegrationCell, array_length);
         errdefer allocator.free(integration_field);
-        var directional_vectors = try allocator.alloc(Direction, array_length);
+        const directional_vectors = try allocator.alloc(Direction, array_length);
         errdefer allocator.free(directional_vectors);
         @memset(directional_vectors, .none);
         return .{

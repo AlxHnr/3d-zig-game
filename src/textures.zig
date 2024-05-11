@@ -318,7 +318,7 @@ pub const SpriteSheetTexture = struct {
 };
 
 fn loadImageRGBA8(image_path: [*:0]const u8) !*sdl.SDL_Surface {
-    var image = sdl.IMG_Load(image_path);
+    const image = sdl.IMG_Load(image_path);
     if (image == null) {
         std.log.err("failed to load image file: {s}: \"{s}\"", .{
             sdl.SDL_GetError(), image_path,
