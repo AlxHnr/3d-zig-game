@@ -16,6 +16,7 @@ const CellIndexType = @import("spatial_partitioning/cell_index.zig").Index;
 const CellIndex = CellIndexType(grid_cell_side_length);
 const CellRange = @import("spatial_partitioning/cell_range.zig").Range(grid_cell_side_length);
 const CellLineIterator = @import("spatial_partitioning/cell_line_iterator.zig").Iterator;
+const Fixedpoint = @import("fixedpoint.zig").Fixedpoint;
 const cellLineIterator = @import("spatial_partitioning/cell_line_iterator.zig").iterator;
 
 const epsilon = math.epsilon;
@@ -26,6 +27,181 @@ fn expectXZ(vector: ?math.FlatVector, expected_x: f32, expected_z: f32) !void {
     try expect(vector != null);
     try expectApproxEqRel(expected_x, vector.?.x, epsilon);
     try expectApproxEqRel(expected_z, vector.?.z, epsilon);
+}
+
+test "Fixedpoint conversion" {
+    const F8_24 = Fixedpoint(8, 24);
+    const F16_16 = Fixedpoint(16, 16);
+    const F28_4 = Fixedpoint(28, 4);
+    const F32_32 = Fixedpoint(32, 32);
+    const F48_16 = Fixedpoint(48, 16);
+
+    try expect(F16_16.fp(-30000.123).convertTo(i16) == -30000);
+    try expect(F16_16.fp(30000.123).convertTo(u16) == 30000);
+    try expect(F16_16.fp(30000.123).convertTo(u64) == 30000);
+    try expect(F32_32.fp(65000.123).convertTo(u16) == 65000);
+    try expect(F16_16.fp(-120.123).convertTo(i8) == -120);
+
+    try expectApproxEqRel(F16_16.fp(-30000.123).convertTo(f32), -30000.123, epsilon);
+    try expectApproxEqRel(F48_16.fp(3000000.123).convertTo(f32), 3000000.123, epsilon);
+    try expectApproxEqRel(F32_32.fp(1.12341234).convertTo(f32), 1.12341234, epsilon);
+
+    try expect(F16_16.fp(120.99).convertTo(F16_16).eql(F16_16.fp(120.99)));
+    try expect(F16_16.fp(-120.99).convertTo(F16_16).eql(F16_16.fp(-120.99)));
+    try expect(F16_16.fp(120.99).convertTo(F48_16).eql(F48_16.fp(120.99)));
+    try expect(F16_16.fp(-120.99).convertTo(F48_16).eql(F48_16.fp(-120.99)));
+    try expect(F48_16.fp(120.99).convertTo(F16_16).eql(F16_16.fp(120.99)));
+    try expect(F48_16.fp(-120.99).convertTo(F16_16).eql(F16_16.fp(-120.99)));
+
+    try expect(F16_16.fp(30000.55).convertTo(F32_32).eql(F32_32.fp(30000.54998779296875)));
+    try expect(F16_16.fp(-30000.55).convertTo(F32_32).eql(F32_32.fp(-30000.54998779296875)));
+    try expect(F16_16.fp(120.55).convertTo(F8_24).eql(F8_24.fp(120.54998779296875)));
+    try expect(F16_16.fp(-120.55).convertTo(F8_24).eql(F8_24.fp(-120.54998779296875)));
+    try expect(F48_16.fp(120.55).convertTo(F8_24).eql(F8_24.fp(120.54998779296875)));
+    try expect(F48_16.fp(-120.55).convertTo(F8_24).eql(F8_24.fp(-120.54998779296875)));
+
+    try expect(F8_24.fp(120.18272).convertTo(F28_4).eql(F28_4.fp(120.125)));
+    try expect(F8_24.fp(-120.18272).convertTo(F28_4).eql(F28_4.fp(-120.1875)));
+    try expect(F8_24.fp(120.18272).convertTo(F28_4).convertTo(F8_24).eql(F8_24.fp(120.125)));
+    try expect(!F8_24.fp(120.18272).convertTo(F28_4).convertTo(F8_24).eql(F8_24.fp(120.18272)));
+    try expect(F8_24.fp(120.18272).convertTo(F48_16).eql(F48_16.fp(120.18271)));
+    try expect(F8_24.fp(-120.18272).convertTo(F48_16).eql(F48_16.fp(-120.182724)));
+    try expect(F32_32.fp(134217727.18272).convertTo(F28_4).eql(F28_4.fp(134217727.125)));
+    try expect(F32_32.fp(-134217727.18272).convertTo(F28_4).eql(F28_4.fp(-134217727.1875)));
+}
+
+fn testFixedpoint(comptime integer_bits: usize, comptime fractional_bits: usize) !void {
+    const fp = Fixedpoint(integer_bits, fractional_bits).fp;
+
+    try expect(fp(@as(u8, 255)).eql(fp(255)));
+    try expect(fp(12.9).eql(fp(12.9)));
+    try expect(!fp(12.9).eql(fp(12.10)));
+    try expect(fp(std.math.pi).eql(fp(@as(f32, 3.1415863))));
+    try expect(fp(std.math.e).eql(fp(2.718277)));
+
+    try expect(fp(12.9).add(fp(7)).eql(fp(19.9)));
+    try expect(fp(-12.9).add(fp(-7)).eql(fp(-19.9)));
+    try expect(fp(30000).add(fp(-30000)).eql(fp(0)));
+    try expect(fp(12.9).sub(fp(7)).eql(fp(5.9)));
+    try expect(fp(-12.9).sub(fp(-7)).eql(fp(-5.9)));
+    try expect(fp(30000).sub(fp(30000)).eql(fp(0)));
+    try expect(fp(12.5).mul(fp(7)).eql(fp(87.5)));
+    try expect(fp(12.9).div(fp(7)).eql(fp(1.842857)));
+    try expect(fp(30000).div(fp(10)).eql(fp(3000)));
+    try expect(fp(20).mod(fp(7)).eql(fp(6)));
+
+    try expect(fp(12.9).lt(fp(13.1)));
+    try expect(!fp(12.9).lt(fp(12.9)));
+    try expect(!fp(12.9).lt(fp(1.5)));
+
+    try expect(fp(12.9).lte(fp(13.1)));
+    try expect(fp(12.9).lte(fp(12.9)));
+    try expect(!fp(92.9).lte(fp(12.9)));
+
+    try expect(fp(92.9).gt(fp(12.9)));
+    try expect(!fp(12.9).gt(fp(12.9)));
+    try expect(!fp(12.9).gt(fp(92.9)));
+
+    try expect(fp(92.9).gte(fp(12.9)));
+    try expect(fp(12.9).gte(fp(12.9)));
+    try expect(!fp(12.9).gte(fp(92.9)));
+
+    try expect(fp(12.9).neg().eql(fp(-12.9)));
+    try expect(fp(12.9).min(fp(20)).eql(fp(12.9)));
+    try expect(fp(12.9).min(fp(4)).eql(fp(4)));
+    try expect(fp(12.9).max(fp(20)).eql(fp(20)));
+    try expect(fp(12.9).max(fp(4)).eql(fp(12.9)));
+    try expect(fp(60).abs().eql(fp(60)));
+    try expect(fp(-60).abs().eql(fp(60)));
+
+    try expect(fp(20.123).floor().eql(fp(20)));
+    try expect(fp(32767.999).floor().eql(fp(32767)));
+    try expect(fp(-32767.999).floor().eql(fp(-32768)));
+    try expect(fp(-32768).floor().eql(fp(-32768)));
+
+    try expect(fp(20.123).ceil().eql(fp(21)));
+    try expect(fp(-20.123).ceil().eql(fp(-20)));
+    try expect(fp(32766.001).ceil().eql(fp(32767)));
+    try expect(fp(-32767.999).ceil().eql(fp(-32767)));
+    try expect(fp(-32768).ceil().eql(fp(-32767)));
+
+    try expect(fp(200).clamp(fp(170), fp(230)).eql(fp(200)));
+    try expect(fp(200).clamp(fp(200), fp(230)).eql(fp(200)));
+    try expect(fp(200).clamp(fp(100), fp(200)).eql(fp(200)));
+    try expect(fp(20).clamp(fp(170), fp(230)).eql(fp(170)));
+    try expect(fp(2000).clamp(fp(170), fp(230)).eql(fp(230)));
+
+    try expect(fp(0).lerp(fp(20), fp(0.5)).eql(fp(10)));
+    try expect(fp(70).lerp(fp(90), fp(0)).eql(fp(70)));
+    try expect(fp(70).lerp(fp(90), fp(0.5)).eql(fp(80)));
+    try expect(fp(70).lerp(fp(90), fp(1)).eql(fp(90)));
+    try expect(fp(70).lerp(fp(90), fp(500)).eql(fp(90)));
+    try expect(fp(90).lerp(fp(70), fp(0.5)).eql(fp(80)));
+    try expect(fp(70).lerp(fp(90), fp(0.75)).eql(fp(85)));
+    try expect(fp(70).lerp(fp(90), fp(-2)).eql(fp(70)));
+
+    try expect(fp(180).toRadians().eql(fp(3.1393433)));
+    try expect(fp(3.1393433).toDegrees().eql(fp(179.87111)));
+
+    try expect(fp(16).sqrt().eql(fp(4)));
+    try expect(fp(16000).sqrt().eql(fp(@as(f32, 126.491104))));
+    try expect(fp(0.5).sqrt().eql(fp(0.7070923)));
+    try expect(fp(0).sqrt().eql(fp(0)));
+
+    try expect(fp(0).sin().eql(fp(0)));
+    try expect(fp(0.22).sin().eql(fp(0.218231)));
+    try expect(fp(-0.22).sin().eql(fp(-0.2183075)));
+    try expect(fp(12).sin().eql(fp(@as(f32, -0.53678894))));
+    try expect(fp(99).sin().eql(fp(@as(f32, -0.99920654))));
+    try expect(fp(27.1278).sin().eql(fp(0.9116974)));
+    try expect(fp(10).sin().eql(fp(@as(f32, -0.5441284))));
+    try expect(fp(-1000).sin().eql(fp(@as(f32, -0.82844543))));
+    try expect(fp(-3.9222).sin().eql(fp(@as(f32, 0.7040405))));
+
+    try expect(fp(27.1278).cos().eql(fp(-0.4116974)));
+    try expect(fp(-10).cos().eql(fp(@as(f32, -0.8394165))));
+    try expect(fp(-3.9222).cos().eql(fp(-0.71073914)));
+
+    try expect(fp(0.22).acos().eql(fp(@as(f32, 1.3483276))));
+    try expect(fp(1).acos().eql(fp(0)));
+    try expect(fp(-1).acos().eql(fp(@as(f32, 3.1415863))));
+    try expect(fp(-0.1209).acos().eql(fp(@as(f32, 1.6936035))));
+    try expect(fp(0.9209).acos().eql(fp(0.3991089)));
+    try expect(fp(0.99999).acos().eql(fp(@as(f32, 0.005493164))));
+}
+
+test "Fixedpoint arithmetic (16.16)" {
+    try testFixedpoint(16, 16);
+}
+
+test "Fixedpoint arithmetic (48.16)" {
+    try testFixedpoint(48, 16);
+}
+
+test "Fixedpoint arithmetic (32.32)" {
+    const fp = Fixedpoint(32, 32).fp;
+
+    try expect(fp(12.9).add(fp(7)).eql(fp(19.9)));
+    try expect(fp(-12.9).add(fp(-7)).eql(fp(-19.9)));
+    try expect(fp(12.9).sub(fp(7)).eql(fp(5.9)));
+    try expect(fp(-2147483648).floor().eql(fp(-2147483648)));
+    try expect(fp(20.123).ceil().eql(fp(21)));
+    try expect(fp(0).lerp(fp(20), fp(0.5)).eql(fp(10)));
+    try expect(fp(16).sqrt().eql(fp(4)));
+    try expect(fp(0.22).acos().internal == 5791132792);
+}
+
+test "Fixedpoint arithmetic (10.6)" {
+    const fp = Fixedpoint(10, 6).fp;
+
+    try expect(fp(12.9).add(fp(7)).eql(fp(19.9)));
+    try expect(fp(-12.9).add(fp(-7)).eql(fp(-19.9)));
+    try expect(fp(12.9).sub(fp(7)).eql(fp(5.9)));
+    try expect(fp(-512).floor().eql(fp(-512)));
+    try expect(fp(20.123).ceil().eql(fp(21)));
+    try expect(fp(0).lerp(fp(20), fp(0.5)).eql(fp(10)));
+    try expect(fp(16).sqrt().eql(fp(4)));
+    try expect(fp(0.22).acos().eql(fp(1.3125)));
 }
 
 test "Create collision rectangle" {
