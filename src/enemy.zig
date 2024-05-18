@@ -184,7 +184,7 @@ pub const RenderSnapshot = struct {
                 ),
             },
         };
-        const distance = values.position.toVector3d().subtract(camera.getPosition()).lengthSquared();
+        const distance = values.position.toVector3d().subtract(camera.getPosition().toVector3dF32()).lengthSquared();
         const max_text_distance = values.height * 15;
         const max_health_distance = values.height * 35;
         return .{

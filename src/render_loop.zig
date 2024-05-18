@@ -9,6 +9,7 @@ const PerformanceMeasurements = @import("performance_measurements.zig").Measurem
 const Player = @import("game_unit.zig").Player;
 const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const fp64 = @import("math.zig").Fix64.fp;
 const gl = @import("gl");
 const rendering = @import("rendering.zig");
 const sdl = @import("sdl.zig");
@@ -168,7 +169,7 @@ pub fn run(
         const ray_wall_collision = self.current.geometry
             .cast3DRayToSolidWalls(camera.get3DRayFromTargetToSelf());
         const max_camera_distance = if (ray_wall_collision) |impact_point|
-            impact_point.distance_from_start_position
+            fp64(impact_point.distance_from_start_position)
         else
             null;
 
@@ -180,7 +181,7 @@ pub fn run(
         geometry_renderer.render(
             vp_matrix,
             extra_data.screen_dimensions,
-            camera.getDirectionToTarget(),
+            camera.getDirectionToTarget().toVector3dF32(),
             tileable_textures,
             spritesheet,
         );
@@ -190,7 +191,7 @@ pub fn run(
         billboard_renderer.render(
             vp_matrix,
             extra_data.screen_dimensions,
-            camera.getDirectionToTarget(),
+            camera.getDirectionToTarget().toVector3dF32(),
             spritesheet.id,
         );
         performance_measurements.end(.draw_billboards);

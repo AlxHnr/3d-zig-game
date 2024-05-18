@@ -5,6 +5,7 @@ const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const ThirdPersonCamera = @import("third_person_camera.zig");
 const animation = @import("animation.zig");
+const fp = math.Fix32.fp;
 const math = @import("math.zig");
 const simulation = @import("simulation.zig");
 const std = @import("std");
@@ -103,7 +104,10 @@ pub const Player = struct {
         );
         const orientation = 0;
         const camera =
-            ThirdPersonCamera.create(character.moving_circle.getPosition(), orientation);
+            ThirdPersonCamera.create(
+            character.moving_circle.getPosition().toFlatVector(),
+            fp(orientation),
+        );
         const animation_cycle = animation.FourStepCycle.create();
         return .{
             .character = character,
@@ -146,7 +150,7 @@ pub const Player = struct {
             interval_between_previous_and_current_tick,
         );
         const forward_direction = state_rendered_to_screen.camera
-            .getDirectionToTarget().toFlatVector();
+            .getDirectionToTarget().toFlatVector().toFlatVectorF32();
         const right_direction = forward_direction.rotateRightBy90Degrees();
 
         var acceleration_direction = math.FlatVectorF32.zero;
@@ -185,8 +189,8 @@ pub const Player = struct {
 
         self.orientation -= self.turning_direction * rotation_per_tick;
         self.camera.processElapsedTick(
-            self.character.moving_circle.getPosition(),
-            self.orientation,
+            self.character.moving_circle.getPosition().toFlatVector(),
+            fp(self.orientation),
         );
         self.animation_cycle.processElapsedTick(
             self.character.moving_circle.velocity.length() * 0.75,
@@ -261,7 +265,7 @@ pub const Player = struct {
                 .radius = math.lerp(self.radius, other.radius, t),
                 .height = math.lerp(self.height, other.height, t),
                 .velocity = self.velocity.lerp(other.velocity, t),
-                .camera = self.camera.lerp(other.camera, t),
+                .camera = self.camera.lerp(other.camera, fp(t)),
                 .animation_cycle = self.animation_cycle.lerp(other.animation_cycle, t),
             };
         }

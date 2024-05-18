@@ -16,6 +16,8 @@ const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const dialog = @import("dialog.zig");
 const enemy_presets = @import("enemy_presets.zig");
+const fp = math.Fix32.fp;
+const fp64 = math.Fix64.fp;
 const game_unit = @import("game_unit.zig");
 const math = @import("math.zig");
 const std = @import("std");
@@ -264,18 +266,18 @@ pub const Context = struct {
         const ray_wall_collision = self.map.geometry
             .cast3DRayToWalls(camera.get3DRayFromTargetToSelf());
         const max_camera_distance = if (ray_wall_collision) |ray_collision|
-            ray_collision.impact_point.distance_from_start_position
+            fp64(ray_collision.impact_point.distance_from_start_position)
         else
             null;
         return camera.get3DRay(mouse_x, mouse_y, screen_dimensions, max_camera_distance);
     }
 
     pub fn increaseCameraDistance(self: *Context, value: f32) void {
-        self.main_character.camera.increaseDistanceToObject(value);
+        self.main_character.camera.increaseDistanceToObject(fp(value));
     }
 
     pub fn setCameraAngleFromGround(self: *Context, angle: f32) void {
-        self.main_character.camera.setAngleFromGround(angle);
+        self.main_character.camera.setAngleFromGround(fp(angle));
     }
 
     pub fn resetCameraAngleFromGround(self: *Context) void {
@@ -285,7 +287,8 @@ pub const Context = struct {
     pub fn getCameraDirection(self: Context) math.Vector3dF32 {
         return self.main_character
             .getCamera(self.render_loop.getInterpolationIntervalUsedInLatestFrame())
-            .getDirectionToTarget();
+            .getDirectionToTarget()
+            .toVector3dF32();
     }
 
     fn loadMap(

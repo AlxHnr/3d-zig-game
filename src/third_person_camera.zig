@@ -19,15 +19,15 @@ angle_from_ground: math.Fix32,
 /// This value will be approached by processElapsedTick().
 target_angle_from_ground: math.Fix32,
 
-const target_follow_speed = simulation.kphToGameUnitsPerTick(32.4);
+const target_follow_speed = fp(simulation.kphToGameUnitsPerTick(32.4));
 const default_angle_from_ground = fp(10).toRadians();
 const default_distance_from_object = fp(10);
 
 /// Initialize the camera to look down at the given object from behind.
-pub fn create(target_position: math.FlatVectorF32, target_orientation: f32) Camera {
+pub fn create(target_position: math.FlatVector, target_orientation: math.Fix32) Camera {
     return .{
-        .target_position = add3dHeight(target_position.toFlatVector()),
-        .target_orientation = fp(target_orientation),
+        .target_position = add3dHeight(target_position),
+        .target_orientation = target_orientation,
         .distance_from_object = default_distance_from_object,
         .target_distance_from_object = default_distance_from_object,
         .angle_from_ground = default_angle_from_ground,
@@ -36,8 +36,7 @@ pub fn create(target_position: math.FlatVectorF32, target_orientation: f32) Came
 }
 
 /// Interpolate between this cameras state and another cameras state.
-pub fn lerp(self: Camera, other: Camera, t_f32: f32) Camera {
-    const t = fp(t_f32);
+pub fn lerp(self: Camera, other: Camera, t: math.Fix32) Camera {
     return .{
         .target_position = self.target_position.lerp(other.target_position, t),
         .target_orientation = self.target_orientation.lerp(other.target_orientation, t),
@@ -58,26 +57,24 @@ pub fn getViewProjectionMatrix(
     self: Camera,
     screen_dimensions: ScreenDimensions,
     /// Optional distance limit to prevent walls from covering the cameras target object.
-    max_distance_from_target: ?f32,
+    max_distance_from_target: ?math.Fix64,
 ) math.Matrix {
-    return getProjectionMatrix(screen_dimensions).multiply(
-        self.getViewMatrix(convertOptionalFloat(max_distance_from_target)),
-    );
+    return getProjectionMatrix(screen_dimensions)
+        .multiply(self.getViewMatrix(max_distance_from_target));
 }
 
-pub fn getDirectionToTarget(self: Camera) math.Vector3dF32 {
-    return self.target_position.subtract(self.getPosition().toVector3d())
-        .normalize().toVector3dF32();
+pub fn getDirectionToTarget(self: Camera) math.Vector3d {
+    return self.target_position.subtract(self.getPosition()).normalize();
 }
 
-pub fn increaseDistanceToObject(self: *Camera, offset: f32) void {
+pub fn increaseDistanceToObject(self: *Camera, offset: math.Fix32) void {
     self.target_distance_from_object =
-        self.target_distance_from_object.add(fp(offset)).max(fp(5));
+        self.target_distance_from_object.add(offset).max(fp(5));
 }
 
 /// Angle between 0 and 1.55 (89 degrees). Will be clamped into this range.
-pub fn setAngleFromGround(self: *Camera, angle: f32) void {
-    self.target_angle_from_ground = fp(angle).clamp(fp(0), fp(89).toRadians());
+pub fn setAngleFromGround(self: *Camera, angle: math.Fix32) void {
+    self.target_angle_from_ground = angle.clamp(fp(0), fp(89).toRadians());
 }
 
 pub fn resetAngleFromGround(self: *Camera) void {
@@ -90,7 +87,7 @@ pub fn get3DRay(
     mouse_y: u16,
     screen_dimensions: ScreenDimensions,
     /// Optional value to account for walls covering the camera.
-    max_distance_from_target: ?f32,
+    max_distance_from_target: ?math.Fix64,
 ) collision.Ray3d {
     const clip_ray = .{
         .x = fp(mouse_x).div(fp(screen_dimensions.width)).mul(fp(2)).sub(fp(1)),
@@ -103,11 +100,10 @@ pub fn get3DRay(
         -1,
         0,
     });
-    const max_distance = convertOptionalFloat(max_distance_from_target);
-    const unnormalized_direction = self.getViewMatrix(max_distance)
+    const unnormalized_direction = self.getViewMatrix(max_distance_from_target)
         .invert().multiplyVector4d(.{ view_ray[0], view_ray[1], -1, 0 });
     return .{
-        .start_position = self.getAdjustedCameraPosition(max_distance).toVector3dF32(),
+        .start_position = self.getAdjustedCameraPosition(max_distance_from_target).toVector3dF32(),
         .direction = math.Vector3dF32.normalize(.{
             .x = unnormalized_direction[0],
             .y = unnormalized_direction[1],
@@ -119,25 +115,24 @@ pub fn get3DRay(
 pub fn get3DRayFromTargetToSelf(self: Camera) collision.Ray3d {
     return .{
         .start_position = self.target_position.toVector3dF32(),
-        .direction = self.getPosition().subtract(self.target_position.toVector3dF32())
-            .normalize(),
+        .direction = self.getPosition().subtract(self.target_position).normalize().toVector3dF32(),
     };
 }
 
 pub fn processElapsedTick(
     self: *Camera,
-    target_position: math.FlatVectorF32,
-    target_orientation: f32,
+    target_position: math.FlatVector,
+    target_orientation: math.Fix32,
 ) void {
     var targeted_values = self.*;
     targeted_values.angle_from_ground = self.target_angle_from_ground;
     targeted_values.distance_from_object = self.target_distance_from_object;
-    targeted_values.target_position = add3dHeight(target_position.toFlatVector());
-    targeted_values.target_orientation = fp(target_orientation);
+    targeted_values.target_position = add3dHeight(target_position);
+    targeted_values.target_orientation = target_orientation;
     self.* = self.lerp(targeted_values, target_follow_speed);
 }
 
-pub fn getPosition(self: Camera) math.Vector3dF32 {
+pub fn getPosition(self: Camera) math.Vector3d {
     const target_looking_direction = math.FlatVector{
         .x = self.target_orientation.sin(),
         .z = self.target_orientation.cos(),
@@ -148,7 +143,7 @@ pub fn getPosition(self: Camera) math.Vector3dF32 {
         .toVector3d()
         .rotate(camera_right, self.angle_from_ground)
         .scale(self.distance_from_object);
-    return self.target_position.add(offset_from_object).toVector3dF32();
+    return self.target_position.add(offset_from_object);
 }
 
 /// Add a Y offset to the specified target so it is rendered in the bottom part of the screen.
@@ -159,7 +154,7 @@ fn add3dHeight(target_position: math.FlatVector) math.Vector3d {
 /// Takes an optional distance limit to prevent walls from covering the cameras target object.
 fn getViewMatrix(self: Camera, max_distance_from_target: ?math.Fix64) math.Matrix {
     const direction_to_camera =
-        self.getPosition().toVector3d().subtract(self.target_position).normalize();
+        self.getPosition().subtract(self.target_position).normalize();
     const right_direction = math.Vector3d.y_axis.crossProduct(direction_to_camera).normalize();
     const up_direction = direction_to_camera.crossProduct(right_direction).normalize();
     const adjusted_camera_position =
@@ -188,7 +183,7 @@ fn getViewMatrix(self: Camera, max_distance_from_target: ?math.Fix64) math.Matri
 }
 
 fn getAdjustedCameraPosition(self: Camera, max_distance_from_target: ?math.Fix64) math.Vector3d {
-    const offset_from_target = self.getPosition().toVector3d().subtract(self.target_position);
+    const offset_from_target = self.getPosition().subtract(self.target_position);
     const max_distance = max_distance_from_target orelse offset_from_target.length();
     const distance = offset_from_target.length().min(max_distance);
     const prevent_seeing_trough_walls_factor = fp64(0.95);
@@ -212,11 +207,4 @@ fn getProjectionMatrix(screen_dimensions: ScreenDimensions) math.Matrix {
         .{ 0, 0, (far + near) / (near - far), 2 * far * near / (near - far) },
         .{ 0, 0, -1, 0 },
     } };
-}
-
-fn convertOptionalFloat(float: ?f32) ?math.Fix64 {
-    if (float) |value| {
-        return fp64(value);
-    }
-    return null;
 }
