@@ -1,5 +1,5 @@
 const Error = @import("../error.zig").Error;
-const ThirdPersonCamera = @import("../third_person_camera.zig").Camera;
+const ThirdPersonCamera = @import("../third_person_camera.zig");
 const animation = @import("../animation.zig");
 const cell_line_iterator = @import("../spatial_partitioning/cell_line_iterator.zig").iterator;
 const collision = @import("../collision.zig");
