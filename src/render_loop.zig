@@ -285,7 +285,7 @@ pub const Snapshots = struct {
 
     fn create(allocator: std.mem.Allocator) Snapshots {
         return .{
-            .main_character = Player.create(0, 0, 0),
+            .main_character = Player.create(0, 0, 1),
             .geometry = GeometrySnapshot.create(allocator),
             .enemies = std.ArrayList(EnemySnapshot).init(allocator),
             .gems = std.ArrayList(GemSnapshot).init(allocator),

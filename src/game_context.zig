@@ -229,7 +229,7 @@ pub const Context = struct {
 
     pub fn playerIsOnFlowFieldObstacleTile(self: Context) bool {
         return self.map.geometry.getObstacleTile(
-            self.main_character.character.moving_circle.getPosition(),
+            self.main_character.character.moving_circle.getPosition().toFlatVectorF32(),
         ).isObstacle();
     }
 
@@ -339,7 +339,7 @@ pub const Context = struct {
             for (context.enemies.insertion_queue.items) |enemy| {
                 _ = try self.shared_context.enemy_collection.insert(
                     enemy,
-                    enemy.character.moving_circle.getPosition(),
+                    enemy.character.moving_circle.getPosition().toFlatVectorF32(),
                 );
             }
             for (context.enemies.attacking_positions.items) |attacking_enemy| {
@@ -368,7 +368,7 @@ pub const Context = struct {
             }
         }
         try self.main_character_flow_field.recompute(
-            self.main_character.character.moving_circle.getPosition(),
+            self.main_character.character.moving_circle.getPosition().toFlatVectorF32(),
             self.map,
         );
     }
@@ -418,11 +418,11 @@ pub const Context = struct {
         var enemy_iterator = cell_group.cell.iterator();
         while (enemy_iterator.next()) |enemy_ptr| {
             const old_cell_index = self.shared_context.enemy_collection.getCellIndex(
-                enemy_ptr.character.moving_circle.getPosition(),
+                enemy_ptr.character.moving_circle.getPosition().toFlatVectorF32(),
             );
             enemy_ptr.processElapsedTick(tick_context);
             const new_cell_index = self.shared_context.enemy_collection.getCellIndex(
-                enemy_ptr.character.moving_circle.getPosition(),
+                enemy_ptr.character.moving_circle.getPosition().toFlatVectorF32(),
             );
 
             if (enemy_ptr.state == .dead) {

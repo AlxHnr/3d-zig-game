@@ -8,6 +8,8 @@ const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const ThirdPersonCamera = @import("third_person_camera.zig");
 const collision = @import("collision.zig");
 const enemy_presets = @import("enemy_presets.zig");
+const fp = math.Fix32.fp;
+const fp64 = math.Fix64.fp;
 const makeSpriteData = @import("game_unit.zig").makeSpriteData;
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
@@ -103,7 +105,7 @@ pub const Enemy = struct {
 
     pub fn makeAttackingEnemyPosition(self: Enemy) AttackingEnemyPosition {
         return .{
-            .position = self.character.moving_circle.getPosition(),
+            .position = self.character.moving_circle.getPosition().toFlatVectorF32(),
             .acceleration_direction = self.character.acceleration_direction,
         };
     }
@@ -202,8 +204,8 @@ pub const RenderSnapshot = struct {
 
         fn create(character: GameCharacter) State {
             return .{
-                .position = character.moving_circle.getPosition(),
-                .radius = character.moving_circle.radius,
+                .position = character.moving_circle.getPosition().toFlatVectorF32(),
+                .radius = character.moving_circle.radius.convertTo(f32),
                 .height = character.height,
                 .health = character.health,
             };
@@ -382,7 +384,7 @@ const AttackingState = struct {
     fn handleElapsedTick(self: *AttackingState, enemy: *Enemy, context: TickContext) void {
         enemy.character.movement_speed = enemy.config.movement_speed.attacking;
 
-        const position = enemy.character.moving_circle.getPosition();
+        const position = enemy.character.moving_circle.getPosition().toFlatVectorF32();
         const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
             context,
             enemy.*,
@@ -390,7 +392,7 @@ const AttackingState = struct {
         );
         if (is_seeing_main_character) {
             enemy.character.acceleration_direction =
-                context.main_character.moving_circle.getPosition().subtract(position).normalize();
+                context.main_character.moving_circle.getPosition().toFlatVectorF32().subtract(position).normalize();
         } else if (context.main_character_flow_field.getDirection(position, context.map.*)) |direction| {
             enemy.character.acceleration_direction = direction;
         } else {
@@ -406,7 +408,7 @@ const AttackingState = struct {
         var combined_displacement_vector = math.FlatVectorF32.zero;
         var friction_factor: f32 = 1;
         var collides_with_peer = false;
-        var average_velocity = AverageAccumulator.create(enemy.character.moving_circle.velocity);
+        var average_velocity = AverageAccumulator.create(enemy.character.moving_circle.velocity.toFlatVectorF32());
         var average_acceleration_direction =
             AverageAccumulator.create(enemy.character.acceleration_direction);
         while (iterator.next()) |peer| {
@@ -422,36 +424,36 @@ const AttackingState = struct {
                 collides_with_peer = true;
                 combined_displacement_vector = combined_displacement_vector.add(displacement_vector);
                 friction_factor *= 1 + enemy_friction_constant * std.math
-                    .clamp(direction.dotProduct(displacement_vector.normalize()), -1, 0);
+                    .clamp(direction.toFlatVectorF32().dotProduct(displacement_vector.normalize()), -1, 0);
             } else if (!collides_with_peer) {
                 const offset_to_peer = position.subtract(peer.position);
                 const direction_to_peer = offset_to_peer.normalize();
                 const distance_factor = @min(1, offset_to_peer.length() / Enemy.peer_flock_radius);
                 average_velocity.add(
                     direction_to_peer.scale(enemy.character.movement_speed).lerp(
-                        enemy.character.moving_circle.velocity,
+                        enemy.character.moving_circle.velocity.toFlatVectorF32(),
                         distance_factor,
                     ),
                 );
                 const slowdown =
-                    1 + std.math.clamp(direction.dotProduct(direction_to_peer.negate()), -1, 0);
+                    1 + std.math.clamp(direction.toFlatVectorF32().dotProduct(direction_to_peer.negate()), -1, 0);
                 average_acceleration_direction.add(peer.acceleration_direction.scale(slowdown));
             }
         }
 
         if (collides_with_peer) {
             enemy.character.moving_circle.velocity =
-                enemy.character.moving_circle.velocity.add(combined_displacement_vector);
-            if (enemy.character.moving_circle.velocity.lengthSquared() >
-                enemy.character.movement_speed * enemy.character.movement_speed)
-            {
+                enemy.character.moving_circle.velocity.add(combined_displacement_vector.toFlatVector());
+            if (enemy.character.moving_circle.velocity.lengthSquared().gt(
+                fp64(enemy.character.movement_speed).mul(fp64(enemy.character.movement_speed)),
+            )) {
                 enemy.character.moving_circle.velocity = enemy.character.moving_circle.velocity
-                    .normalize().scale(enemy.character.movement_speed);
+                    .normalize().scale(fp(enemy.character.movement_speed));
             }
             enemy.character.moving_circle.velocity =
-                enemy.character.moving_circle.velocity.scale(friction_factor);
+                enemy.character.moving_circle.velocity.scale(fp(friction_factor));
         } else {
-            enemy.character.moving_circle.velocity = average_velocity.compute();
+            enemy.character.moving_circle.velocity = average_velocity.compute().toFlatVector();
             enemy.character.acceleration_direction = average_acceleration_direction.compute();
         }
     }
@@ -507,10 +509,10 @@ fn VisibilityChecker(comptime tick_interval: u32) type {
             self.ticks_remaining = tick_interval;
 
             var enemy_boundaries = enemy.character.moving_circle;
-            enemy_boundaries.radius += aggro_radius;
+            enemy_boundaries.radius = enemy_boundaries.radius.add(fp(aggro_radius));
             if (enemy_boundaries.hasCollidedWith(context.main_character.moving_circle)) |positions| {
                 self.is_seeing =
-                    !context.map.geometry.isSolidWallBetweenPoints(positions.self, positions.other);
+                    !context.map.geometry.isSolidWallBetweenPoints(positions.self.toFlatVectorF32(), positions.other.toFlatVectorF32());
             } else {
                 self.is_seeing = false;
             }

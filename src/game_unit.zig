@@ -6,6 +6,7 @@ const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const ThirdPersonCamera = @import("third_person_camera.zig");
 const animation = @import("animation.zig");
 const fp = math.Fix32.fp;
+const fp64 = math.Fix64.fp;
 const math = @import("math.zig");
 const simulation = @import("simulation.zig");
 const std = @import("std");
@@ -39,9 +40,9 @@ pub const GameCharacter = struct {
     ) GameCharacter {
         return .{
             .moving_circle = MovingCircle.create(
-                position,
-                width / 2,
-                math.FlatVectorF32.zero,
+                position.toFlatVector(),
+                fp(width / 2),
+                math.FlatVector.zero,
                 false,
             ),
             .acceleration_direction = math.FlatVectorF32.zero,
@@ -61,15 +62,15 @@ pub const GameCharacter = struct {
         if (is_accelerating) {
             const acceleration = self.movement_speed / simulation.millisecondsToTicks(f32, 84);
             self.moving_circle.velocity =
-                self.moving_circle.velocity.add(self.acceleration_direction.scale(acceleration));
-            if (self.moving_circle.velocity.lengthSquared() >
-                self.movement_speed * self.movement_speed)
-            {
+                self.moving_circle.velocity.add(self.acceleration_direction.scale(acceleration).toFlatVector());
+            if (self.moving_circle.velocity.lengthSquared().gt(
+                fp64(self.movement_speed).mul(fp64(self.movement_speed)),
+            )) {
                 self.moving_circle.velocity =
-                    self.moving_circle.velocity.normalize().scale(self.movement_speed);
+                    self.moving_circle.velocity.normalize().scale(fp(self.movement_speed));
             }
         } else {
-            self.moving_circle.velocity = self.moving_circle.velocity.scale(stop_factor);
+            self.moving_circle.velocity = self.moving_circle.velocity.scale(fp(stop_factor));
         }
     }
 };
@@ -105,7 +106,7 @@ pub const Player = struct {
         const orientation = 0;
         const camera =
             ThirdPersonCamera.create(
-            character.moving_circle.getPosition().toFlatVector(),
+            character.moving_circle.getPosition(),
             fp(orientation),
         );
         const animation_cycle = animation.FourStepCycle.create();
@@ -118,10 +119,10 @@ pub const Player = struct {
             .gem_count = 0,
             .input_state = std.EnumArray(InputButton, bool).initFill(false),
             .values_from_previous_tick = .{
-                .position = character.moving_circle.getPosition(),
-                .radius = character.moving_circle.radius,
+                .position = character.moving_circle.getPosition().toFlatVectorF32(),
+                .radius = character.moving_circle.radius.convertTo(f32),
                 .height = character.height,
-                .velocity = character.moving_circle.velocity,
+                .velocity = character.moving_circle.velocity.toFlatVectorF32(),
                 .camera = camera,
                 .animation_cycle = animation_cycle,
             },
@@ -189,11 +190,11 @@ pub const Player = struct {
 
         self.orientation -= self.turning_direction * rotation_per_tick;
         self.camera.processElapsedTick(
-            self.character.moving_circle.getPosition().toFlatVector(),
+            self.character.moving_circle.getPosition(),
             fp(self.orientation),
         );
         self.animation_cycle.processElapsedTick(
-            self.character.moving_circle.velocity.length() * 0.75,
+            self.character.moving_circle.velocity.length().mul(fp64(0.75)).convertTo(f32),
         );
     }
 
@@ -238,10 +239,10 @@ pub const Player = struct {
 
     fn getValuesForRendering(self: Player) ValuesForRendering {
         return .{
-            .position = self.character.moving_circle.getPosition(),
-            .radius = self.character.moving_circle.radius,
+            .position = self.character.moving_circle.getPosition().toFlatVectorF32(),
+            .radius = self.character.moving_circle.radius.convertTo(f32),
             .height = self.character.height,
-            .velocity = self.character.moving_circle.velocity,
+            .velocity = self.character.moving_circle.velocity.toFlatVectorF32(),
             .camera = self.camera,
             .animation_cycle = self.animation_cycle,
         };

@@ -33,9 +33,9 @@ pub fn processElapsedTick(self: *Gem, context: TickContext) Result {
             const character_position = context.main_character.moving_circle.hasCollidedWithCircle(
                 boundaries,
             ) orelse break :blk;
-            if (!context.map.geometry.isSolidWallBetweenPoints(self.position, character_position)) {
+            if (!context.map.geometry.isSolidWallBetweenPoints(self.position, character_position.toFlatVectorF32())) {
                 self.state = .{
-                    .pickup = .{ .progress = 0, .target_position = character_position },
+                    .pickup = .{ .progress = 0, .target_position = character_position.toFlatVectorF32() },
                 };
                 return .picked_up_by_player;
             }
