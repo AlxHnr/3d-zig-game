@@ -1,6 +1,12 @@
 //! Contains extra math functions which are not in std.math.
 
+const Fixedpoint = @import("fixedpoint.zig").Fixedpoint;
+const fp = Fix32.fp;
+const fp64 = Fix64.fp;
 const std = @import("std");
+
+pub const Fix32 = Fixedpoint(16, 16);
+pub const Fix64 = Fixedpoint(48, 16);
 
 /// Smallest viable number for game-world calculations.
 pub const epsilon = 0.00001;
@@ -34,6 +40,100 @@ pub fn getOverlap(a_start: i16, a_end: i16, b_start: i16, b_end: i16) i16 {
 }
 
 /// Vector on a flat plane with no height information.
+pub const FlatVector = struct {
+    x: Fix32,
+    z: Fix32,
+
+    pub const zero = FlatVector{ .x = fp(0), .z = fp(0) };
+
+    pub fn toFlatVectorF32(self: FlatVector) FlatVectorF32 {
+        return .{ .x = self.x.convertTo(f32), .z = self.z.convertTo(f32) };
+    }
+
+    pub fn normalize(self: FlatVector) FlatVector {
+        const own_length = self.length();
+        return if (own_length.eql(fp64(0)))
+            self
+        else
+            .{
+                .x = self.x.convertTo(Fix64).div(own_length).convertTo(Fix32),
+                .z = self.z.convertTo(Fix64).div(own_length).convertTo(Fix32),
+            };
+    }
+
+    pub fn lerp(self: FlatVector, other: FlatVector, t: Fix32) FlatVector {
+        return .{ .x = self.x.lerp(other.x, t), .z = self.z.lerp(other.z, t) };
+    }
+
+    pub fn add(self: FlatVector, other: FlatVector) FlatVector {
+        return .{ .x = self.x.add(other.x), .z = self.z.add(other.z) };
+    }
+
+    pub fn subtract(self: FlatVector, other: FlatVector) FlatVector {
+        return .{ .x = self.x.sub(other.x), .z = self.z.sub(other.z) };
+    }
+
+    pub fn scale(self: FlatVector, factor: Fix32) FlatVector {
+        return .{ .x = self.x.mul(factor), .z = self.z.mul(factor) };
+    }
+
+    pub fn length(self: FlatVector) Fix64 {
+        return self.lengthSquared().sqrt();
+    }
+
+    pub fn lengthSquared(self: FlatVector) Fix64 {
+        const x = self.x.convertTo(Fix64);
+        const z = self.z.convertTo(Fix64);
+        return x.mul(x).add(z.mul(z));
+    }
+
+    pub fn dotProduct(self: FlatVector, other: FlatVector) Fix64 {
+        const self64 = .{
+            .x = self.x.convertTo(Fix64),
+            .z = self.z.convertTo(Fix64),
+        };
+        const other64 = .{
+            .x = other.x.convertTo(Fix64),
+            .z = other.z.convertTo(Fix64),
+        };
+        return self64.x.mul(other64.x).add(self64.z.mul(other64.z));
+    }
+
+    /// Get the angle needed to rotate this vector to have the same direction as another vector. The
+    /// given vectors don't need to be normalized.
+    pub fn computeRotationToOtherVector(self: FlatVector, other: FlatVector) Fix32 {
+        const other_normalized = other.normalize();
+        const angle = self.normalize().dotProduct(other_normalized)
+            .clamp(fp64(-1), fp64(1)).convertTo(Fix32).acos();
+        return if (other_normalized.dotProduct(.{ .x = self.z, .z = self.x.neg() }).lt(fp64(0)))
+            -angle
+        else
+            angle;
+    }
+
+    pub fn negate(self: FlatVector) FlatVector {
+        return .{ .x = self.x.neg(), .z = self.z.neg() };
+    }
+
+    pub fn rotate(self: FlatVector, angle: Fix32) FlatVector {
+        const sin = angle.sin();
+        const cos = angle.cos();
+        return .{
+            .x = self.x.mul(cos).add(self.z.mul(sin)),
+            .z = self.x.neg().mul(sin).add(self.z.mul(cos)),
+        };
+    }
+
+    pub fn rotateRightBy90Degrees(self: FlatVector) FlatVector {
+        return .{ .x = self.z.neg(), .z = self.x };
+    }
+
+    pub fn projectOnto(self: FlatVector, other: FlatVector) FlatVector {
+        return other.scale(self.dotProduct(other).div(other.dotProduct(other)).convertTo(Fix32));
+    }
+};
+
+/// Vector on a flat plane with no height information.
 pub const FlatVectorF32 = struct {
     x: f32,
     z: f32,
@@ -42,6 +142,10 @@ pub const FlatVectorF32 = struct {
 
     pub fn toVector3d(self: FlatVectorF32) Vector3dF32 {
         return .{ .x = self.x, .y = 0, .z = self.z };
+    }
+
+    pub fn toFlatVector(self: FlatVectorF32) FlatVector {
+        return .{ .x = fp(self.x), .z = fp(self.z) };
     }
 
     pub fn normalize(self: FlatVectorF32) FlatVectorF32 {

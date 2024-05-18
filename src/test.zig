@@ -204,6 +204,21 @@ test "Fixedpoint arithmetic (10.6)" {
     try expect(fp(0.22).acos().eql(fp(1.3125)));
 }
 
+test "FlatVector" {
+    const fp = math.Fix32.fp;
+
+    {
+        const vector = math.FlatVector.normalize(.{ .x = fp(0), .z = fp(0) });
+        try expect(vector.x.eql(fp(0)));
+        try expect(vector.z.eql(fp(0)));
+    }
+    {
+        const vector = math.FlatVector.normalize(.{ .x = fp(200.99), .z = fp(63.22) });
+        try expect(vector.x.eql(fp(0.95391846)));
+        try expect(vector.z.eql(fp(0.30004883)));
+    }
+}
+
 test "Create collision rectangle" {
     const rectangle = collision.Rectangle.create(
         .{ .x = 12, .z = -3.1 },
