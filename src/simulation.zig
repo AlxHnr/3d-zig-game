@@ -9,6 +9,17 @@ const std = @import("std");
 /// movement by causing substeps to be shorter than `math.epsilon`.
 pub const tickrate = 30;
 
+// The following constants must be manually recomputed every time the tickrate changes. This does
+// not happen at comptime, because Fixedpoint() is lacking certain mathematical functions at the
+// time of writing. Since the tickrate pretty much never changes, these values have been computed
+// once and got hard-coded here. The command to compute these values can be found below. It contains
+// magic values which have been determined by trial and error to accommodate a wide range of
+// tickrates.
+//
+// python3 -c 'TICKS=30; from math import *; p=print; p(max(0, 0.9 - pow(e, -0.03 * (TICKS - 5)))); p(max(5.5, 10 * (1.05 - pow(e, 0.15 - TICKS / 19))));'
+pub const game_unit_stop_factor = 0.4276334472589853;
+pub const enemy_peer_overlap_radius_factor = 8.104390409999155;
+
 /// Lap timer for measuring elapsed ticks.
 pub const TickTimer = struct {
     timer: std.time.Timer,
