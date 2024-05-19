@@ -110,9 +110,9 @@ pub const Context = struct {
         return .{
             .tick_counter = 0,
             .main_character = game_unit.Player.create(
-                0,
-                0,
-                spritesheet.getSpriteAspectRatio(.player_back_frame_1),
+                fp(0),
+                fp(0),
+                fp(spritesheet.getSpriteAspectRatio(.player_back_frame_1)),
             ),
             .main_character_flow_field = flow_field,
 
@@ -171,7 +171,7 @@ pub const Context = struct {
             self.main_character.markAllButtonsAsReleased();
         }
         self.main_character.applyCurrentInput(
-            self.render_loop.getInterpolationIntervalUsedInLatestFrame(),
+            fp(self.render_loop.getInterpolationIntervalUsedInLatestFrame()),
         );
 
         performance_measurements.begin(.logic_total);
@@ -261,7 +261,7 @@ pub const Context = struct {
         screen_dimensions: ScreenDimensions,
     ) collision.Ray3d {
         const camera = self.main_character.getCamera(
-            self.render_loop.getInterpolationIntervalUsedInLatestFrame(),
+            fp(self.render_loop.getInterpolationIntervalUsedInLatestFrame()),
         );
         const ray_wall_collision = self.map.geometry
             .cast3DRayToWalls(camera.get3DRayFromTargetToSelf());
@@ -286,7 +286,7 @@ pub const Context = struct {
 
     pub fn getCameraDirection(self: Context) math.Vector3dF32 {
         return self.main_character
-            .getCamera(self.render_loop.getInterpolationIntervalUsedInLatestFrame())
+            .getCamera(fp(self.render_loop.getInterpolationIntervalUsedInLatestFrame()))
             .getDirectionToTarget()
             .toVector3dF32();
     }

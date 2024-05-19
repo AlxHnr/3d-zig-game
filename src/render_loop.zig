@@ -9,6 +9,7 @@ const PerformanceMeasurements = @import("performance_measurements.zig").Measurem
 const Player = @import("game_unit.zig").Player;
 const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const fp = @import("math.zig").Fix32.fp;
 const fp64 = @import("math.zig").Fix64.fp;
 const gl = @import("gl");
 const rendering = @import("rendering.zig");
@@ -118,7 +119,7 @@ pub fn run(
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
 
         gl.enable(gl.DEPTH_TEST);
-        const camera = self.current.main_character.getCamera(lap_result.next_tick_progress);
+        const camera = self.current.main_character.getCamera(fp(lap_result.next_tick_progress));
 
         billboard_buffer.clearRetainingCapacity();
         performance_measurements.begin(.aggregate_enemy_billboards);
@@ -143,7 +144,7 @@ pub fn run(
 
         try billboard_buffer.append(self.current.main_character.getBillboardData(
             spritesheet,
-            lap_result.next_tick_progress,
+            fp(lap_result.next_tick_progress),
         ));
         billboard_renderer.uploadBillboards(billboard_buffer.items);
 
@@ -285,7 +286,7 @@ pub const Snapshots = struct {
 
     fn create(allocator: std.mem.Allocator) Snapshots {
         return .{
-            .main_character = Player.create(0, 0, 1),
+            .main_character = Player.create(fp(0), fp(0), fp(1)),
             .geometry = GeometrySnapshot.create(allocator),
             .enemies = std.ArrayList(EnemySnapshot).init(allocator),
             .gems = std.ArrayList(GemSnapshot).init(allocator),

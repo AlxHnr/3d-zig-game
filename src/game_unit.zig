@@ -24,106 +24,104 @@ pub const InputButton = enum {
 
 pub const GameCharacter = struct {
     moving_circle: MovingCircle,
-    acceleration_direction: math.FlatVectorF32,
-    height: f32,
-    movement_speed: f32,
+    acceleration_direction: math.FlatVector,
+    height: math.Fix32,
+    movement_speed: math.Fix32,
     health: Health,
 
     pub const Health = struct { current: u32, max: u32 };
 
     pub fn create(
-        position: math.FlatVectorF32,
-        width: f32,
-        height: f32,
-        movement_speed: f32,
+        position: math.FlatVector,
+        width: math.Fix32,
+        height: math.Fix32,
+        movement_speed: math.Fix32,
         max_health: u32,
     ) GameCharacter {
         return .{
             .moving_circle = MovingCircle.create(
-                position.toFlatVector(),
-                fp(width / 2),
+                position,
+                width.div(fp(2)),
                 math.FlatVector.zero,
                 false,
             ),
-            .acceleration_direction = math.FlatVectorF32.zero,
+            .acceleration_direction = math.FlatVector.zero,
             .height = height,
             .movement_speed = movement_speed,
             .health = .{ .current = max_health, .max = max_health },
         };
     }
 
-    const stop_factor =
-        @max(0, 0.9 - std.math.pow(f32, std.math.e, -0.03 * (simulation.tickrate - 5)));
-
     pub fn processElapsedTick(self: *GameCharacter, map: Map) void {
         self.moving_circle.processElapsedTick(map);
 
-        const is_accelerating = self.acceleration_direction.length() > math.epsilon;
+        const is_accelerating = self.acceleration_direction.length().gt(fp64(0));
         if (is_accelerating) {
             const acceleration =
-                self.movement_speed / simulation.secondsToTicks(0.084).convertTo(f32);
+                self.movement_speed.div(simulation.secondsToTicks(0.084).convertTo(math.Fix32));
             self.moving_circle.velocity =
-                self.moving_circle.velocity.add(self.acceleration_direction.scale(acceleration).toFlatVector());
-            if (self.moving_circle.velocity.lengthSquared().gt(
-                fp64(self.movement_speed).mul(fp64(self.movement_speed)),
-            )) {
+                self.moving_circle.velocity.add(self.acceleration_direction.scale(acceleration));
+            const speed64 = self.movement_speed.convertTo(math.Fix64);
+            if (self.moving_circle.velocity.lengthSquared().gt(speed64.mul(speed64))) {
                 self.moving_circle.velocity =
-                    self.moving_circle.velocity.normalize().scale(fp(self.movement_speed));
+                    self.moving_circle.velocity.normalize().scale(self.movement_speed);
             }
         } else {
-            self.moving_circle.velocity = self.moving_circle.velocity.scale(fp(stop_factor));
+            self.moving_circle.velocity =
+                self.moving_circle.velocity.scale(fp(simulation.game_unit_stop_factor));
         }
     }
 };
 
 pub const Player = struct {
     character: GameCharacter,
-    orientation: f32,
+    orientation: math.Fix32,
     /// Values from -1 (turning left) to 1 (turning right).
-    turning_direction: f32,
+    turning_direction: math.Fix32,
     camera: ThirdPersonCamera,
     animation_cycle: animation.FourStepCycle,
     gem_count: u64,
     input_state: std.EnumArray(InputButton, bool),
     values_from_previous_tick: ValuesForRendering,
 
-    const full_rotation = std.math.degreesToRadians(360);
-    const rotation_per_tick = full_rotation / simulation.secondsToTicks(1.7).convertTo(f32);
-    const min_velocity_for_animation = simulation.kphToGameUnitsPerTick(2).convertTo(f32);
+    const full_rotation = fp(360).toRadians();
+    const rotation_per_tick =
+        full_rotation.div(simulation.secondsToTicks(1.7).convertTo(math.Fix32));
+    const min_velocity_for_animation = simulation.kphToGameUnitsPerTick(2).convertTo(math.Fix64);
 
     pub fn create(
-        starting_position_x: f32,
-        starting_position_z: f32,
-        spritesheet_frame_ratio: f32,
+        starting_position_x: math.Fix32,
+        starting_position_z: math.Fix32,
+        spritesheet_frame_ratio: math.Fix32,
     ) Player {
-        const in_game_height = 1.8;
+        const in_game_height = fp(1.8);
         const character = GameCharacter.create(
             .{ .x = starting_position_x, .z = starting_position_z },
-            in_game_height / spritesheet_frame_ratio,
+            in_game_height.div(spritesheet_frame_ratio),
             in_game_height,
-            simulation.kphToGameUnitsPerTick(30).convertTo(f32),
+            simulation.kphToGameUnitsPerTick(30),
             100,
         );
-        const orientation = 0;
+        const orientation = fp(0);
         const camera =
             ThirdPersonCamera.create(
             character.moving_circle.getPosition(),
-            fp(orientation),
+            orientation,
         );
         const animation_cycle = animation.FourStepCycle.create();
         return .{
             .character = character,
             .orientation = orientation,
-            .turning_direction = 0,
+            .turning_direction = fp(0),
             .camera = camera,
             .animation_cycle = animation_cycle,
             .gem_count = 0,
             .input_state = std.EnumArray(InputButton, bool).initFill(false),
             .values_from_previous_tick = .{
-                .position = character.moving_circle.getPosition().toFlatVectorF32(),
-                .radius = character.moving_circle.radius.convertTo(f32),
+                .position = character.moving_circle.getPosition(),
+                .radius = character.moving_circle.radius,
                 .height = character.height,
-                .velocity = character.moving_circle.velocity.toFlatVectorF32(),
+                .velocity = character.moving_circle.velocity,
                 .camera = camera,
                 .animation_cycle = animation_cycle,
             },
@@ -144,35 +142,35 @@ pub const Player = struct {
 
     pub fn applyCurrentInput(
         self: *Player,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
     ) void {
         // Input is relative to the state currently on screen.
         const state_rendered_to_screen = self.values_from_previous_tick.lerp(
             self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         );
-        const forward_direction = state_rendered_to_screen.camera
-            .getDirectionToTarget().toFlatVector().toFlatVectorF32();
+        const forward_direction =
+            state_rendered_to_screen.camera.getDirectionToTarget().toFlatVector();
         const right_direction = forward_direction.rotateRightBy90Degrees();
 
-        var acceleration_direction = math.FlatVectorF32.zero;
-        var turning_direction: f32 = 0;
+        var acceleration_direction = math.FlatVector.zero;
+        var turning_direction = fp(0);
         if (self.input_state.get(.left)) {
             if (self.input_state.get(.strafe)) {
                 acceleration_direction = acceleration_direction.subtract(right_direction);
             } else if (self.input_state.get(.slow_turning)) {
-                turning_direction -= 0.05;
+                turning_direction = turning_direction.sub(fp(0.05));
             } else {
-                turning_direction -= 1;
+                turning_direction = turning_direction.sub(fp(1));
             }
         }
         if (self.input_state.get(.right)) {
             if (self.input_state.get(.strafe)) {
                 acceleration_direction = acceleration_direction.add(right_direction);
             } else if (self.input_state.get(.slow_turning)) {
-                turning_direction += 0.05;
+                turning_direction = turning_direction.add(fp(0.05));
             } else {
-                turning_direction += 1;
+                turning_direction = turning_direction.add(fp(1));
             }
         }
         if (self.input_state.get(.forwards)) {
@@ -189,10 +187,10 @@ pub const Player = struct {
         self.values_from_previous_tick = self.getValuesForRendering();
         self.character.processElapsedTick(map);
 
-        self.orientation -= self.turning_direction * rotation_per_tick;
+        self.orientation = self.orientation.sub(self.turning_direction.mul(rotation_per_tick));
         self.camera.processElapsedTick(
             self.character.moving_circle.getPosition(),
-            fp(self.orientation),
+            self.orientation,
         );
         self.animation_cycle.processElapsedTick(
             self.character.moving_circle.velocity.length().mul(fp64(0.75)).convertTo(f32),
@@ -202,13 +200,14 @@ pub const Player = struct {
     pub fn getBillboardData(
         self: Player,
         spritesheet: SpriteSheetTexture,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
     ) SpriteData {
         const state_to_render = self.values_from_previous_tick.lerp(
             self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         );
-        const animation_frame = if (state_to_render.velocity.length() < min_velocity_for_animation)
+        const animation_frame =
+            if (state_to_render.velocity.length().lt(min_velocity_for_animation))
             1
         else
             state_to_render.animation_cycle.getFrame();
@@ -227,64 +226,74 @@ pub const Player = struct {
         );
     }
 
-    pub fn getCamera(self: Player, interval_between_previous_and_current_tick: f32) ThirdPersonCamera {
+    pub fn getCamera(
+        self: Player,
+        interval_between_previous_and_current_tick: math.Fix32,
+    ) ThirdPersonCamera {
         return self.values_from_previous_tick.lerp(
             self.getValuesForRendering(),
             interval_between_previous_and_current_tick,
         ).camera;
     }
 
-    fn setTurningDirection(self: *Player, turning_direction: f32) void {
-        self.turning_direction = std.math.clamp(turning_direction, -1, 1);
+    fn setTurningDirection(self: *Player, turning_direction: math.Fix32) void {
+        self.turning_direction = turning_direction.clamp(fp(-1), fp(1));
     }
 
     fn getValuesForRendering(self: Player) ValuesForRendering {
         return .{
-            .position = self.character.moving_circle.getPosition().toFlatVectorF32(),
-            .radius = self.character.moving_circle.radius.convertTo(f32),
+            .position = self.character.moving_circle.getPosition(),
+            .radius = self.character.moving_circle.radius,
             .height = self.character.height,
-            .velocity = self.character.moving_circle.velocity.toFlatVectorF32(),
+            .velocity = self.character.moving_circle.velocity,
             .camera = self.camera,
             .animation_cycle = self.animation_cycle,
         };
     }
 
     const ValuesForRendering = struct {
-        position: math.FlatVectorF32,
-        radius: f32,
-        height: f32,
-        velocity: math.FlatVectorF32,
+        position: math.FlatVector,
+        radius: math.Fix32,
+        height: math.Fix32,
+        velocity: math.FlatVector,
         camera: ThirdPersonCamera,
         animation_cycle: animation.FourStepCycle,
 
         pub fn lerp(
             self: ValuesForRendering,
             other: ValuesForRendering,
-            t: f32,
+            t: math.Fix32,
         ) ValuesForRendering {
             return .{
                 .position = self.position.lerp(other.position, t),
-                .radius = math.lerp(self.radius, other.radius, t),
-                .height = math.lerp(self.height, other.height, t),
+                .radius = self.radius.lerp(other.radius, t),
+                .height = self.height.lerp(other.height, t),
                 .velocity = self.velocity.lerp(other.velocity, t),
-                .camera = self.camera.lerp(other.camera, fp(t)),
-                .animation_cycle = self.animation_cycle.lerp(other.animation_cycle, t),
+                .camera = self.camera.lerp(other.camera, t),
+                .animation_cycle = self.animation_cycle.lerp(
+                    other.animation_cycle,
+                    t.convertTo(f32),
+                ),
             };
         }
     };
 };
 
 pub fn makeSpriteData(
-    position: math.FlatVectorF32,
-    radius: f32,
-    height: f32,
+    position: math.FlatVector,
+    radius: math.Fix32,
+    height: math.Fix32,
     sprite: SpriteSheetTexture.SpriteId,
     spritesheet: SpriteSheetTexture,
 ) SpriteData {
     const source = spritesheet.getSpriteTexcoords(sprite);
     return .{
-        .position = .{ .x = position.x, .y = height / 2, .z = position.z },
-        .size = .{ .w = radius * 2, .h = height },
+        .position = .{
+            .x = position.x.convertTo(f32),
+            .y = height.convertTo(f32) / 2,
+            .z = position.z.convertTo(f32),
+        },
+        .size = .{ .w = radius.convertTo(f32) * 2, .h = height.convertTo(f32) },
         .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
     };
 }

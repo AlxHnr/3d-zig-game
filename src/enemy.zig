@@ -66,10 +66,10 @@ pub const Enemy = struct {
         spritesheet: SpriteSheetTexture,
     ) Enemy {
         const character = GameCharacter.create(
-            position,
-            config.height / spritesheet.getSpriteAspectRatio(config.sprite),
-            config.height,
-            0,
+            position.toFlatVector(),
+            fp(config.height / spritesheet.getSpriteAspectRatio(config.sprite)),
+            fp(config.height),
+            fp(0),
             config.max_health,
         );
         return .{
@@ -106,7 +106,7 @@ pub const Enemy = struct {
     pub fn makeAttackingEnemyPosition(self: Enemy) AttackingEnemyPosition {
         return .{
             .position = self.character.moving_circle.getPosition().toFlatVectorF32(),
-            .acceleration_direction = self.character.acceleration_direction,
+            .acceleration_direction = self.character.acceleration_direction.toFlatVectorF32(),
         };
     }
 
@@ -139,9 +139,9 @@ pub const RenderSnapshot = struct {
         const state = self.interpolate(camera, interval_between_previous_and_current_tick);
 
         try out.append(makeSpriteData(
-            state.values.position,
-            state.values.radius,
-            state.values.height,
+            state.values.position.toFlatVector(),
+            fp(state.values.radius),
+            fp(state.values.height),
             self.config.sprite,
             spritesheet,
         ));
@@ -206,7 +206,7 @@ pub const RenderSnapshot = struct {
             return .{
                 .position = character.moving_circle.getPosition().toFlatVectorF32(),
                 .radius = character.moving_circle.radius.convertTo(f32),
-                .height = character.height,
+                .height = character.height.convertTo(f32),
                 .health = character.health,
             };
         }
@@ -357,13 +357,13 @@ const IdleState = struct {
 
         if (context.rng.boolean()) { // Walk.
             const direction = std.math.degreesToRadians(360 * context.rng.float(f32));
-            const forward = math.FlatVectorF32{ .x = 0, .z = -1 };
-            enemy.character.acceleration_direction = forward.rotate(direction);
-            enemy.character.movement_speed = enemy.config.movement_speed.idle;
+            const forward = math.FlatVector{ .x = fp(0), .z = fp(-1) };
+            enemy.character.acceleration_direction = forward.rotate(fp(direction));
+            enemy.character.movement_speed = fp(enemy.config.movement_speed.idle);
             self.ticks_until_movement =
                 context.rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(4).convertTo(u32));
         } else {
-            enemy.character.acceleration_direction = math.FlatVectorF32.zero;
+            enemy.character.acceleration_direction = math.FlatVector.zero;
             self.ticks_until_movement = context.rng.intRangeAtMost(u32, 0, standing_interval);
         }
     }
@@ -382,7 +382,7 @@ const AttackingState = struct {
     }
 
     fn handleElapsedTick(self: *AttackingState, enemy: *Enemy, context: TickContext) void {
-        enemy.character.movement_speed = enemy.config.movement_speed.attacking;
+        enemy.character.movement_speed = fp(enemy.config.movement_speed.attacking);
 
         const position = enemy.character.moving_circle.getPosition().toFlatVectorF32();
         const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
@@ -392,9 +392,9 @@ const AttackingState = struct {
         );
         if (is_seeing_main_character) {
             enemy.character.acceleration_direction =
-                context.main_character.moving_circle.getPosition().toFlatVectorF32().subtract(position).normalize();
+                context.main_character.moving_circle.getPosition().toFlatVectorF32().subtract(position).normalize().toFlatVector();
         } else if (context.main_character_flow_field.getDirection(position, context.map.*)) |direction| {
-            enemy.character.acceleration_direction = direction;
+            enemy.character.acceleration_direction = direction.toFlatVector();
         } else {
             enemy.state = .{ .idle = IdleState.create(context) };
             return;
@@ -410,7 +410,7 @@ const AttackingState = struct {
         var collides_with_peer = false;
         var average_velocity = AverageAccumulator.create(enemy.character.moving_circle.velocity.toFlatVectorF32());
         var average_acceleration_direction =
-            AverageAccumulator.create(enemy.character.acceleration_direction);
+            AverageAccumulator.create(enemy.character.acceleration_direction.toFlatVectorF32());
         while (iterator.next()) |peer| {
             // Ignore self.
             if (math.isEqual(enemy.state_at_previous_tick.position.x, peer.position.x) and
@@ -430,7 +430,7 @@ const AttackingState = struct {
                 const direction_to_peer = offset_to_peer.normalize();
                 const distance_factor = @min(1, offset_to_peer.length() / Enemy.peer_flock_radius);
                 average_velocity.add(
-                    direction_to_peer.scale(enemy.character.movement_speed).lerp(
+                    direction_to_peer.scale(enemy.character.movement_speed.convertTo(f32)).lerp(
                         enemy.character.moving_circle.velocity.toFlatVectorF32(),
                         distance_factor,
                     ),
@@ -444,17 +444,16 @@ const AttackingState = struct {
         if (collides_with_peer) {
             enemy.character.moving_circle.velocity =
                 enemy.character.moving_circle.velocity.add(combined_displacement_vector.toFlatVector());
-            if (enemy.character.moving_circle.velocity.lengthSquared().gt(
-                fp64(enemy.character.movement_speed).mul(fp64(enemy.character.movement_speed)),
-            )) {
+            const speed64 = enemy.character.movement_speed.convertTo(math.Fix64);
+            if (enemy.character.moving_circle.velocity.lengthSquared().gt(speed64.mul(speed64))) {
                 enemy.character.moving_circle.velocity = enemy.character.moving_circle.velocity
-                    .normalize().scale(fp(enemy.character.movement_speed));
+                    .normalize().scale(enemy.character.movement_speed);
             }
             enemy.character.moving_circle.velocity =
                 enemy.character.moving_circle.velocity.scale(fp(friction_factor));
         } else {
             enemy.character.moving_circle.velocity = average_velocity.compute().toFlatVector();
-            enemy.character.acceleration_direction = average_acceleration_direction.compute();
+            enemy.character.acceleration_direction = average_acceleration_direction.compute().toFlatVector();
         }
     }
 
