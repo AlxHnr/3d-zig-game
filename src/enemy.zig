@@ -24,10 +24,10 @@ pub const Config = struct {
     sprite: SpriteSheetTexture.SpriteId,
     movement_speed: IdleAndAttackingValues,
     aggro_radius: IdleAndAttackingValues,
-    height: f32,
+    height: math.Fix32,
     max_health: u32,
 
-    const IdleAndAttackingValues = struct { idle: f32, attacking: f32 };
+    const IdleAndAttackingValues = struct { idle: math.Fix32, attacking: math.Fix32 };
 };
 
 pub const TickContext = struct {
@@ -40,8 +40,8 @@ pub const TickContext = struct {
 
 pub const EnemyPositionGrid = SpatialGrid(AttackingEnemyPosition, position_grid_cell_size, .insert_only);
 pub const AttackingEnemyPosition = struct {
-    position: math.FlatVectorF32,
-    acceleration_direction: math.FlatVectorF32,
+    position: math.FlatVector,
+    acceleration_direction: math.FlatVector,
 };
 const position_grid_cell_size = 3;
 
@@ -51,24 +51,20 @@ pub const Enemy = struct {
     state: State,
     state_at_previous_tick: RenderSnapshot.State,
 
-    const peer_overlap_radius = @as(f32, @floatFromInt(position_grid_cell_size)) / @max(
-        // Values determined by trial and error across a range of tickrates.
-        5.5,
-        (10.0 * (1.05 - std.math.pow(f32, std.math.e, 0.15 -
-            @as(f32, @floatFromInt(simulation.tickrate)) / 19.0))),
-    );
-    const peer_flock_radius = @as(f32, @floatFromInt(position_grid_cell_size)) / 10.0 * 4.0;
+    const peer_overlap_radius =
+        fp(position_grid_cell_size).div(fp(simulation.enemy_peer_overlap_radius_factor));
+    const peer_flock_radius = fp(position_grid_cell_size).div(fp(10)).mul(fp(4));
 
     pub fn create(
-        position: math.FlatVectorF32,
+        position: math.FlatVector,
         /// Returned object will keep a reference to this config.
         config: *const Config,
         spritesheet: SpriteSheetTexture,
     ) Enemy {
         const character = GameCharacter.create(
-            position.toFlatVector(),
-            fp(config.height / spritesheet.getSpriteAspectRatio(config.sprite)),
-            fp(config.height),
+            position,
+            config.height.div(fp(spritesheet.getSpriteAspectRatio(config.sprite))),
+            config.height,
             fp(0),
             config.max_health,
         );
@@ -99,14 +95,14 @@ pub const Enemy = struct {
         };
     }
 
-    pub fn makeSpacingBoundaries(position: math.FlatVectorF32) collision.Circle {
-        return .{ .position = position, .radius = Enemy.peer_flock_radius };
+    pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
+        return .{ .position = position.toFlatVectorF32(), .radius = peer_flock_radius.convertTo(f32) };
     }
 
     pub fn makeAttackingEnemyPosition(self: Enemy) AttackingEnemyPosition {
         return .{
-            .position = self.character.moving_circle.getPosition().toFlatVectorF32(),
-            .acceleration_direction = self.character.acceleration_direction.toFlatVectorF32(),
+            .position = self.character.moving_circle.getPosition(),
+            .acceleration_direction = self.character.acceleration_direction,
         };
     }
 
@@ -133,15 +129,15 @@ pub const RenderSnapshot = struct {
         spritesheet: SpriteSheetTexture,
         cache: PrerenderedNames,
         camera: ThirdPersonCamera,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
         out: *std.ArrayList(rendering.SpriteData),
     ) !void {
         const state = self.interpolate(camera, interval_between_previous_and_current_tick);
 
         try out.append(makeSpriteData(
-            state.values.position.toFlatVector(),
-            fp(state.values.radius),
-            fp(state.values.height),
+            state.values.position,
+            state.values.radius,
+            state.values.height,
             self.config.sprite,
             spritesheet,
         ));
@@ -158,55 +154,65 @@ pub const RenderSnapshot = struct {
             const out_slice = out.unusedCapacitySlice()[0..cached_text.len];
             out.items.len += cached_text.len;
 
-            const up = math.Vector3dF32{ .x = 0, .y = 1, .z = 0 };
             @memcpy(out_slice, cached_text);
-            const position = state.values.position.toVector3d()
-                .add(up.scale(state.values.height * offset_to_player_height_factor));
+            const position = state.values.position.toVector3d().add(
+                math.Vector3d.y_axis.scale(
+                    state.values.height.mul(fp(offset_to_player_height_factor)),
+                ),
+            );
+            const x = position.x.convertTo(f32);
+            const y = position.y.convertTo(f32);
+            const z = position.z.convertTo(f32);
             for (out_slice) |*billboard_data| {
-                billboard_data.position = .{ .x = position.x, .y = position.y, .z = position.z };
+                billboard_data.position = .{ .x = x, .y = y, .z = z };
             }
         }
     }
 
-    fn interpolate(self: RenderSnapshot, camera: ThirdPersonCamera, t: f32) InterpolatedState {
+    fn interpolate(
+        self: RenderSnapshot,
+        camera: ThirdPersonCamera,
+        t: math.Fix32,
+    ) InterpolatedState {
         const values = .{
             .position = self.state_at_previous_tick.position.lerp(self.current_state.position, t),
-            .radius = math.lerp(self.state_at_previous_tick.radius, self.current_state.radius, t),
-            .height = math.lerp(self.state_at_previous_tick.height, self.current_state.height, t),
+            .radius = self.state_at_previous_tick.radius.lerp(self.current_state.radius, t),
+            .height = self.state_at_previous_tick.height.lerp(self.current_state.height, t),
             .health = .{
                 .current = math.lerpU32(
                     self.state_at_previous_tick.health.current,
                     self.current_state.health.current,
-                    t,
+                    t.convertTo(f32),
                 ),
                 .max = math.lerpU32(
                     self.state_at_previous_tick.health.max,
                     self.current_state.health.max,
-                    t,
+                    t.convertTo(f32),
                 ),
             },
         };
-        const distance = values.position.toVector3d().subtract(camera.getPosition().toVector3dF32()).lengthSquared();
-        const max_text_distance = values.height * 15;
-        const max_health_distance = values.height * 35;
+        const distance =
+            values.position.toVector3d().subtract(camera.getPosition()).lengthSquared();
+        const max_text_distance = values.height.convertTo(math.Fix64).mul(fp64(15));
+        const max_health_distance = values.height.convertTo(math.Fix64).mul(fp64(35));
         return .{
             .values = values,
-            .should_render_name = distance < max_text_distance * max_text_distance,
-            .should_render_health_bar = distance < max_health_distance * max_health_distance,
+            .should_render_name = distance.lt(max_text_distance.mul(max_text_distance)),
+            .should_render_health_bar = distance.lt(max_health_distance.mul(max_health_distance)),
         };
     }
 
     const State = struct {
-        position: math.FlatVectorF32,
-        radius: f32,
-        height: f32,
+        position: math.FlatVector,
+        radius: math.Fix32,
+        height: math.Fix32,
         health: GameCharacter.Health,
 
         fn create(character: GameCharacter) State {
             return .{
-                .position = character.moving_circle.getPosition().toFlatVectorF32(),
-                .radius = character.moving_circle.radius.convertTo(f32),
-                .height = character.height.convertTo(f32),
+                .position = character.moving_circle.getPosition(),
+                .radius = character.moving_circle.radius,
+                .height = character.height,
                 .health = character.health,
             };
         }
@@ -229,9 +235,9 @@ pub const RenderSnapshot = struct {
         const source = spritesheet.getSpriteTexcoords(.white_block);
         const billboard_data = .{
             .position = .{
-                .x = state.values.position.x,
-                .y = state.values.height * offset_to_player_height_factor,
-                .z = state.values.position.z,
+                .x = state.values.position.x.convertTo(f32),
+                .y = state.values.height.convertTo(f32) * offset_to_player_height_factor,
+                .z = state.values.position.z.convertTo(f32),
             },
             .size = .{
                 .w = health_bar_scale *
@@ -356,10 +362,10 @@ const IdleState = struct {
         }
 
         if (context.rng.boolean()) { // Walk.
-            const direction = std.math.degreesToRadians(360 * context.rng.float(f32));
+            const direction = fp(context.rng.intRangeLessThan(u16, 0, 360)).toRadians();
             const forward = math.FlatVector{ .x = fp(0), .z = fp(-1) };
-            enemy.character.acceleration_direction = forward.rotate(fp(direction));
-            enemy.character.movement_speed = fp(enemy.config.movement_speed.idle);
+            enemy.character.acceleration_direction = forward.rotate(direction);
+            enemy.character.movement_speed = enemy.config.movement_speed.idle;
             self.ticks_until_movement =
                 context.rng.intRangeAtMost(u32, 0, simulation.secondsToTicks(4).convertTo(u32));
         } else {
@@ -373,7 +379,7 @@ const AttackingState = struct {
     visibility_checker: VisibilityChecker(visibility_check_interval),
 
     const visibility_check_interval = simulation.secondsToTicks(2).convertTo(u32);
-    const enemy_friction_constant = 1 - 1 / simulation.kphToGameUnitsPerTick(432).convertTo(f32);
+    const enemy_friction_constant = fp(1).sub(fp(1).div(simulation.kphToGameUnitsPerTick(432)));
 
     fn create() AttackingState {
         return .{
@@ -382,9 +388,9 @@ const AttackingState = struct {
     }
 
     fn handleElapsedTick(self: *AttackingState, enemy: *Enemy, context: TickContext) void {
-        enemy.character.movement_speed = fp(enemy.config.movement_speed.attacking);
+        enemy.character.movement_speed = enemy.config.movement_speed.attacking;
 
-        const position = enemy.character.moving_circle.getPosition().toFlatVectorF32();
+        const position = enemy.character.moving_circle.getPosition();
         const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
             context,
             enemy.*,
@@ -392,86 +398,98 @@ const AttackingState = struct {
         );
         if (is_seeing_main_character) {
             enemy.character.acceleration_direction =
-                context.main_character.moving_circle.getPosition().toFlatVectorF32().subtract(position).normalize().toFlatVector();
-        } else if (context.main_character_flow_field.getDirection(position, context.map.*)) |direction| {
+                context.main_character.moving_circle.getPosition().subtract(position).normalize();
+        } else if (context.main_character_flow_field.getDirection(position.toFlatVectorF32(), context.map.*)) |direction| {
             enemy.character.acceleration_direction = direction.toFlatVector();
         } else {
             enemy.state = .{ .idle = IdleState.create(context) };
             return;
         }
 
-        const circle = collision.Circle{ .position = position, .radius = Enemy.peer_overlap_radius };
+        const circle = collision.Circle{
+            .position = position.toFlatVectorF32(),
+            .radius = Enemy.peer_overlap_radius.convertTo(f32),
+        };
         const direction = enemy.character.moving_circle.velocity.normalize();
         var iterator = context.attacking_enemy_positions_at_previous_tick.areaIterator(
             circle.getOuterBoundingBoxInGameCoordinates(),
         );
-        var combined_displacement_vector = math.FlatVectorF32.zero;
-        var friction_factor: f32 = 1;
+        var combined_displacement_vector = math.FlatVector.zero;
+        var friction_factor = fp(1);
         var collides_with_peer = false;
-        var average_velocity = AverageAccumulator.create(enemy.character.moving_circle.velocity.toFlatVectorF32());
+        var average_velocity = AverageAccumulator.create(enemy.character.moving_circle.velocity);
         var average_acceleration_direction =
-            AverageAccumulator.create(enemy.character.acceleration_direction.toFlatVectorF32());
+            AverageAccumulator.create(enemy.character.acceleration_direction);
         while (iterator.next()) |peer| {
             // Ignore self.
-            if (math.isEqual(enemy.state_at_previous_tick.position.x, peer.position.x) and
-                math.isEqual(enemy.state_at_previous_tick.position.z, peer.position.z))
+            if (enemy.state_at_previous_tick.position.x.eql(peer.position.x) and
+                enemy.state_at_previous_tick.position.z.eql(peer.position.z))
             {
                 continue;
             }
 
-            const peer_circle = .{ .position = peer.position, .radius = Enemy.peer_overlap_radius };
+            const peer_circle = .{
+                .position = peer.position.toFlatVectorF32(),
+                .radius = Enemy.peer_overlap_radius.convertTo(f32),
+            };
             if (circle.collidesWithCircleDisplacementVector(peer_circle)) |displacement_vector| {
                 collides_with_peer = true;
-                combined_displacement_vector = combined_displacement_vector.add(displacement_vector);
-                friction_factor *= 1 + enemy_friction_constant * std.math
-                    .clamp(direction.toFlatVectorF32().dotProduct(displacement_vector.normalize()), -1, 0);
+                combined_displacement_vector = combined_displacement_vector.add(displacement_vector.toFlatVector());
+                friction_factor = friction_factor.mul(fp(1).add(
+                    enemy_friction_constant.mul(
+                        direction.dotProduct(displacement_vector.toFlatVector().normalize())
+                            .convertTo(math.Fix32).clamp(fp(-1), fp(0)),
+                    ),
+                ));
             } else if (!collides_with_peer) {
                 const offset_to_peer = position.subtract(peer.position);
                 const direction_to_peer = offset_to_peer.normalize();
-                const distance_factor = @min(1, offset_to_peer.length() / Enemy.peer_flock_radius);
+                const distance_factor = fp(1).min(
+                    offset_to_peer.length().convertTo(math.Fix32).div(Enemy.peer_flock_radius),
+                );
                 average_velocity.add(
-                    direction_to_peer.scale(enemy.character.movement_speed.convertTo(f32)).lerp(
-                        enemy.character.moving_circle.velocity.toFlatVectorF32(),
+                    direction_to_peer.scale(enemy.character.movement_speed).lerp(
+                        enemy.character.moving_circle.velocity,
                         distance_factor,
                     ),
                 );
-                const slowdown =
-                    1 + std.math.clamp(direction.toFlatVectorF32().dotProduct(direction_to_peer.negate()), -1, 0);
+                const slowdown = fp(1).add(direction.dotProduct(direction_to_peer.negate())
+                    .convertTo(math.Fix32).clamp(fp(-1), fp(0)));
                 average_acceleration_direction.add(peer.acceleration_direction.scale(slowdown));
             }
         }
 
         if (collides_with_peer) {
             enemy.character.moving_circle.velocity =
-                enemy.character.moving_circle.velocity.add(combined_displacement_vector.toFlatVector());
+                enemy.character.moving_circle.velocity.add(combined_displacement_vector);
             const speed64 = enemy.character.movement_speed.convertTo(math.Fix64);
             if (enemy.character.moving_circle.velocity.lengthSquared().gt(speed64.mul(speed64))) {
                 enemy.character.moving_circle.velocity = enemy.character.moving_circle.velocity
                     .normalize().scale(enemy.character.movement_speed);
             }
             enemy.character.moving_circle.velocity =
-                enemy.character.moving_circle.velocity.scale(fp(friction_factor));
+                enemy.character.moving_circle.velocity.scale(friction_factor);
         } else {
-            enemy.character.moving_circle.velocity = average_velocity.compute().toFlatVector();
-            enemy.character.acceleration_direction = average_acceleration_direction.compute().toFlatVector();
+            enemy.character.moving_circle.velocity = average_velocity.compute();
+            enemy.character.acceleration_direction = average_acceleration_direction.compute();
         }
     }
 
     const AverageAccumulator = struct {
-        total: math.FlatVectorF32,
-        count: f32,
+        total: math.FlatVector,
+        count: math.Fix32,
 
-        fn create(initial_value: math.FlatVectorF32) AverageAccumulator {
-            return .{ .total = initial_value, .count = 1 };
+        fn create(initial_value: math.FlatVector) AverageAccumulator {
+            return .{ .total = initial_value, .count = fp(1) };
         }
 
-        fn add(self: *AverageAccumulator, value: math.FlatVectorF32) void {
+        fn add(self: *AverageAccumulator, value: math.FlatVector) void {
             self.total = self.total.add(value);
-            self.count += 1;
+            self.count = self.count.add(fp(1));
         }
 
-        fn compute(self: AverageAccumulator) math.FlatVectorF32 {
-            return self.total.scale(1.0 / self.count);
+        fn compute(self: AverageAccumulator) math.FlatVector {
+            return self.total.scale(fp(1).div(self.count));
         }
     };
 };
@@ -500,7 +518,7 @@ fn VisibilityChecker(comptime tick_interval: u32) type {
             self: *Self,
             context: TickContext,
             enemy: Enemy,
-            aggro_radius: f32,
+            aggro_radius: math.Fix32,
         ) bool {
             if (consumeTick(&self.ticks_remaining)) {
                 return self.is_seeing;
@@ -508,7 +526,7 @@ fn VisibilityChecker(comptime tick_interval: u32) type {
             self.ticks_remaining = tick_interval;
 
             var enemy_boundaries = enemy.character.moving_circle;
-            enemy_boundaries.radius = enemy_boundaries.radius.add(fp(aggro_radius));
+            enemy_boundaries.radius = enemy_boundaries.radius.add(aggro_radius);
             if (enemy_boundaries.hasCollidedWith(context.main_character.moving_circle)) |positions| {
                 self.is_seeing =
                     !context.map.geometry.isSolidWallBetweenPoints(positions.self.toFlatVectorF32(), positions.other.toFlatVectorF32());

@@ -74,15 +74,14 @@ pub const Context = struct {
         );
         errdefer map.destroy();
 
-        var counter: usize = 0;
-        while (counter < 10000) : (counter += 1) {
-            const position = .{
-                .x = -shared_context.rng.random().float(f32) * 100 - 50,
-                .z = shared_context.rng.random().float(f32) * 500,
+        for (0..10000) |_| {
+            const position = math.FlatVector{
+                .x = fp(shared_context.rng.random().float(f32)).mul(fp(100)).neg().sub(fp(50)),
+                .z = fp(shared_context.rng.random().float(f32)).mul(fp(500)),
             };
             _ = try shared_context.enemy_collection.insert(
                 Enemy.create(position, &enemy_presets.floating_eye, spritesheet),
-                position,
+                position.toFlatVectorF32(),
             );
         }
 
@@ -364,7 +363,7 @@ pub const Context = struct {
 
         for (self.thread_contexts) |context| {
             for (context.enemies.attacking_positions.items) |attacking_enemy| {
-                self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
+                self.main_character_flow_field.sampleCrowd(attacking_enemy.position.toFlatVectorF32());
             }
         }
         try self.main_character_flow_field.recompute(

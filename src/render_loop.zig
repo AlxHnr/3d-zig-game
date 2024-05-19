@@ -128,7 +128,7 @@ pub fn run(
                 spritesheet,
                 prerendered_enemy_names,
                 camera,
-                lap_result.next_tick_progress,
+                fp(lap_result.next_tick_progress),
                 &billboard_buffer,
             );
         }
