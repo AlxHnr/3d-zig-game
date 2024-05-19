@@ -110,7 +110,7 @@ pub const FlatVector = struct {
         const angle = self.normalize().dotProduct(other_normalized)
             .clamp(fp64(-1), fp64(1)).convertTo(Fix32).acos();
         return if (other_normalized.dotProduct(.{ .x = self.z, .z = self.x.neg() }).lt(fp64(0)))
-            -angle
+            angle.neg()
         else
             angle;
     }
