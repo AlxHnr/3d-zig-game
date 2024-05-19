@@ -559,7 +559,7 @@ const SlideInAnimationBox = struct {
     }
 
     pub fn processElapsedTick(self: *SlideInAnimationBox) void {
-        self.movement_animation.processElapsedTick(simulation.kphToGameUnitsPerTick(43.2));
+        self.movement_animation.processElapsedTick(simulation.kphToGameUnitsPerTick(43.2).convertTo(f32));
 
         switch (self.state) {
             .opening, .closing => {
@@ -658,7 +658,7 @@ const AnimatedTextBlock = struct {
     }
 
     pub fn processElapsedTick(self: *AnimatedTextBlock) void {
-        const reveal_codepoints_per_tick = simulation.kphToGameUnitsPerTick(648);
+        const reveal_codepoints_per_tick = simulation.kphToGameUnitsPerTick(648).convertTo(f32);
         self.codepoint_progress.processElapsedTick(reveal_codepoints_per_tick);
     }
 

@@ -127,7 +127,9 @@ pub fn createFromSerializableData(
 }
 
 pub fn processElapsedTick(self: *Geometry) void {
-    self.floor_animation_state.processElapsedTick(1 / simulation.millisecondsToTicks(f32, 800));
+    self.floor_animation_state.processElapsedTick(
+        math.Fix64.fp(1).div(simulation.secondsToTicks(0.8)).convertTo(f32),
+    );
 }
 
 /// Returned result must be freed with freeSerializableData().

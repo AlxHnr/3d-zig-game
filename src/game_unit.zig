@@ -60,7 +60,8 @@ pub const GameCharacter = struct {
 
         const is_accelerating = self.acceleration_direction.length() > math.epsilon;
         if (is_accelerating) {
-            const acceleration = self.movement_speed / simulation.millisecondsToTicks(f32, 84);
+            const acceleration =
+                self.movement_speed / simulation.secondsToTicks(0.084).convertTo(f32);
             self.moving_circle.velocity =
                 self.moving_circle.velocity.add(self.acceleration_direction.scale(acceleration).toFlatVector());
             if (self.moving_circle.velocity.lengthSquared().gt(
@@ -87,8 +88,8 @@ pub const Player = struct {
     values_from_previous_tick: ValuesForRendering,
 
     const full_rotation = std.math.degreesToRadians(360);
-    const rotation_per_tick = full_rotation / simulation.millisecondsToTicks(f32, 1700);
-    const min_velocity_for_animation = simulation.kphToGameUnitsPerTick(2);
+    const rotation_per_tick = full_rotation / simulation.secondsToTicks(1.7).convertTo(f32);
+    const min_velocity_for_animation = simulation.kphToGameUnitsPerTick(2).convertTo(f32);
 
     pub fn create(
         starting_position_x: f32,
@@ -100,7 +101,7 @@ pub const Player = struct {
             .{ .x = starting_position_x, .z = starting_position_z },
             in_game_height / spritesheet_frame_ratio,
             in_game_height,
-            simulation.kphToGameUnitsPerTick(30),
+            simulation.kphToGameUnitsPerTick(30).convertTo(f32),
             100,
         );
         const orientation = 0;

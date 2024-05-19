@@ -19,7 +19,7 @@ angle_from_ground: math.Fix32,
 /// This value will be approached by processElapsedTick().
 target_angle_from_ground: math.Fix32,
 
-const target_follow_speed = fp(simulation.kphToGameUnitsPerTick(32.4));
+const target_follow_speed = simulation.kphToGameUnitsPerTick(32.4);
 const default_angle_from_ground = fp(10).toRadians();
 const default_distance_from_object = fp(10);
 

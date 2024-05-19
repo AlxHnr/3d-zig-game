@@ -1,4 +1,6 @@
 //! Contains the fundamentals of tick-based time and simulation handling.
+const fp64 = math.Fix64.fp;
+const math = @import("math.zig");
 const std = @import("std");
 
 /// This constant specifies a base value to which everything in the game relates to. To slow down or
@@ -49,16 +51,12 @@ pub const TickTimer = struct {
     };
 };
 
-pub fn millisecondsToTicks(comptime T: type, milliseconds: T) T {
-    return milliseconds / @as(T, std.time.ms_per_s) * @as(T, tickrate);
+pub fn secondsToTicks(seconds: anytype) math.Fix64 {
+    return fp64(seconds).mul(fp64(tickrate));
 }
 
-pub fn secondsToTicks(comptime T: type, seconds: T) T {
-    return millisecondsToTicks(T, seconds * @as(T, std.time.ms_per_s));
-}
-
-pub fn kphToGameUnitsPerTick(kilometers_per_hour: f32) f32 {
-    const meters_per_kilometer = 1000;
-    return kilometers_per_hour * meters_per_kilometer /
-        std.time.s_per_hour / tickrate;
+pub fn kphToGameUnitsPerTick(kilometers_per_hour: anytype) math.Fix32 {
+    const meters_per_kilometer = fp64(1000);
+    return fp64(kilometers_per_hour).mul(meters_per_kilometer)
+        .div(fp64(std.time.s_per_hour)).div(fp64(tickrate)).convertTo(math.Fix32);
 }

@@ -12,7 +12,7 @@ state_at_previous_tick: State,
 const Gem = @This();
 const height = 1.5;
 const jump_height = 1.5;
-const animation_speed = simulation.kphToGameUnitsPerTick(10);
+const animation_speed = simulation.kphToGameUnitsPerTick(10).convertTo(f32);
 
 pub fn create(position: math.FlatVectorF32, originates_from: math.FlatVectorF32) Gem {
     const state = .{ .spawning = .{ .progress = 0, .source_position = originates_from } };
