@@ -164,10 +164,10 @@ pub const Field = struct {
     }
 
     fn pushPositionOutOfObstacleCells(position: FlatVectorF32, map: Map) FlatVectorF32 {
-        if (map.geometry.getObstacleTile(position).isObstacle()) {
+        if (map.geometry.getObstacleTile(position.toFlatVector()).isObstacle()) {
             var iterator = GrowingRadiusIterator.create(position, &map);
             while (iterator.next()) |corrected_position| {
-                if (!map.geometry.getObstacleTile(corrected_position).isObstacle()) {
+                if (!map.geometry.getObstacleTile(corrected_position.toFlatVector()).isObstacle()) {
                     return corrected_position;
                 }
             }
@@ -214,7 +214,7 @@ pub const Field = struct {
             return;
         }
 
-        const tile_type = map.geometry.getObstacleTile(self.getWorldPosition(x, z));
+        const tile_type = map.geometry.getObstacleTile(self.getWorldPosition(x, z).toFlatVector());
         const tile_base_cost: CostInt = switch (tile_type) {
             .none => 0,
             .neighbor_of_obstacle => 2,
@@ -374,7 +374,7 @@ pub const Field = struct {
                 };
                 self.radius_factor *= 2.0;
                 if (self.map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
-                    return self.position.add(displacement_vector);
+                    return self.position.add(displacement_vector.toFlatVectorF32());
                 }
             }
             return null;

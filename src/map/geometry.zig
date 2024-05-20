@@ -3,6 +3,7 @@ const ThirdPersonCamera = @import("../third_person_camera.zig");
 const animation = @import("../animation.zig");
 const cell_line_iterator = @import("../spatial_partitioning/cell_line_iterator.zig").iterator;
 const collision = @import("../collision.zig");
+const fp = math.Fix32.fp;
 const gl = @import("gl");
 const math = @import("../math.zig");
 const meshes = @import("../meshes.zig");
@@ -170,7 +171,7 @@ pub fn toSerializableData(self: Geometry, allocator: std.mem.Allocator) !Seriali
     for (self.billboard_objects.items, 0..) |billboard, index| {
         billboards[index] = .{
             .t = @tagName(billboard.object_type),
-            .pos = billboard.boundaries.position,
+            .pos = billboard.boundaries.position.toFlatVector(),
         };
     }
 
@@ -199,7 +200,7 @@ pub fn populateRenderSnapshot(self: Geometry, snapshot: *RenderSnapshot) !void {
     for (0..self.floors.items.len) |index| {
         const inverted_index = self.floors.items.len - index - 1;
         const floor = self.floors.items[inverted_index];
-        const side_a_length = floor.side_a_end.subtract(floor.side_a_start).length();
+        const side_a_length = floor.side_a_end.subtract(floor.side_a_start).length().convertTo(f32);
         try snapshot.floor_data.append(.{
             .properties = makeRenderingAttributes(
                 floor.model_matrix,
@@ -208,8 +209,8 @@ pub fn populateRenderSnapshot(self: Geometry, snapshot: *RenderSnapshot) !void {
             ),
             .affected_by_animation_cycle = if (floor.isAffectedByAnimationCycle()) 1 else 0,
             .texture_repeat_dimensions = .{
-                .x = floor.side_b_length / floor.getTextureScale(),
-                .y = side_a_length / floor.getTextureScale(),
+                .x = floor.side_b_length.div(floor.getTextureScale()).convertTo(f32),
+                .y = side_a_length / floor.getTextureScale().convertTo(f32),
             },
         });
     }
@@ -313,7 +314,7 @@ pub const Renderer = struct {
         self: Renderer,
         vp_matrix: math.Matrix,
         screen_dimensions: util.ScreenDimensions,
-        camera_direction_to_target: math.Vector3dF32,
+        camera_direction_to_target: math.Vector3d,
         tileable_textures: textures.TileableArrayTexture,
         spritesheet: textures.SpriteSheetTexture,
     ) void {
@@ -327,7 +328,7 @@ pub const Renderer = struct {
         self.billboard_renderer.render(
             vp_matrix,
             screen_dimensions,
-            camera_direction_to_target,
+            camera_direction_to_target.toVector3dF32(),
             spritesheet.id,
         );
     }
@@ -342,22 +343,22 @@ pub const SerializableData = struct {
     pub const Wall = struct {
         /// Type enum as string.
         t: []const u8,
-        start: math.FlatVectorF32,
-        end: math.FlatVectorF32,
+        start: math.FlatVector,
+        end: math.FlatVector,
     };
 
     pub const Floor = struct {
         /// Type enum as string.
         t: []const u8,
-        side_a_start: math.FlatVectorF32,
-        side_a_end: math.FlatVectorF32,
-        side_b_length: f32,
+        side_a_start: math.FlatVector,
+        side_a_end: math.FlatVector,
+        side_b_length: math.Fix32,
     };
 
     pub const BillboardObject = struct {
         /// Type enum as string.
         t: []const u8,
-        pos: math.FlatVectorF32,
+        pos: math.FlatVector,
     };
 };
 
@@ -382,8 +383,8 @@ pub const WallType = enum {
 pub fn addWall(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
-    start_position: math.FlatVectorF32,
-    end_position: math.FlatVectorF32,
+    start_position: math.FlatVector,
+    end_position: math.FlatVector,
     wall_type: WallType,
 ) !u64 {
     const wall_id = try self.addWallUncached(
@@ -406,8 +407,8 @@ pub fn removeObject(self: *Geometry, object_id: u64) !void {
 pub fn updateWall(
     self: *Geometry,
     object_id: u64,
-    start_position: math.FlatVectorF32,
-    end_position: math.FlatVectorF32,
+    start_position: math.FlatVector,
+    end_position: math.FlatVector,
 ) !void {
     var wall = self.findWall(object_id) orelse return;
     var old_wall = wall.*;
@@ -440,9 +441,9 @@ pub const FloorType = enum {
 pub fn addFloor(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
-    side_a_start: math.FlatVectorF32,
-    side_a_end: math.FlatVectorF32,
-    side_b_length: f32,
+    side_a_start: math.FlatVector,
+    side_a_end: math.FlatVector,
+    side_b_length: math.Fix32,
     floor_type: FloorType,
 ) !u64 {
     const floor_id = try self.addFloorUncached(
@@ -461,9 +462,9 @@ pub fn addFloor(
 pub fn updateFloor(
     self: *Geometry,
     object_id: u64,
-    side_a_start: math.FlatVectorF32,
-    side_a_end: math.FlatVectorF32,
-    side_b_length: f32,
+    side_a_start: math.FlatVector,
+    side_a_end: math.FlatVector,
+    side_b_length: math.Fix32,
 ) !void {
     var floor = self.findFloor(object_id) orelse return;
     const tint = floor.tint;
@@ -487,7 +488,7 @@ pub fn addBillboardObject(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
     object_type: BillboardObjectType,
-    position: math.FlatVectorF32,
+    position: math.FlatVector,
     spritesheet: textures.SpriteSheetTexture,
 ) !u64 {
     const billboard_id = try self.addBillboardObjectUncached(
@@ -581,7 +582,7 @@ pub fn collidesWithCircle(
     self: Geometry,
     circle: collision.Circle,
     ignore_fences: bool,
-) ?math.FlatVectorF32 {
+) ?math.FlatVector {
     var found_collision = false;
     var displaced_circle = circle;
 
@@ -600,16 +601,19 @@ pub fn collidesWithCircle(
     }
 
     return if (found_collision)
-        displaced_circle.position.subtract(circle.position)
+        displaced_circle.position.subtract(circle.position).toFlatVector()
     else
         null;
 }
 
 /// Check if two points are separated by a solid wall. Fences are not solid.
-pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVectorF32, b: math.FlatVectorF32) bool {
-    var iterator = self.spatial_wall_index.solid.straightLineIterator(a, b);
+pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVector, b: math.FlatVector) bool {
+    var iterator = self.spatial_wall_index.solid.straightLineIterator(
+        a.toFlatVectorF32(),
+        b.toFlatVectorF32(),
+    );
     while (iterator.next()) |boundaries| {
-        if (boundaries.collidesWithLine(a, b)) {
+        if (boundaries.collidesWithLine(a.toFlatVectorF32(), b.toFlatVectorF32())) {
             return true;
         }
     }
@@ -618,7 +622,7 @@ pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVectorF32, b: math.F
 
 /// Return the type of obstacles bordering on the tile specified by the given position. This
 /// check has the granularity of `obstacle_grid_cell_size` and is imprecise.
-pub fn getObstacleTile(self: Geometry, position: math.FlatVectorF32) TileType {
+pub fn getObstacleTile(self: Geometry, position: math.FlatVector) TileType {
     return self.obstacle_grid.getObstacleTile(position);
 }
 
@@ -637,8 +641,8 @@ pub const TileType = enum {
 fn addWallUncached(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
-    start_position: math.FlatVectorF32,
-    end_position: math.FlatVectorF32,
+    start_position: math.FlatVector,
+    end_position: math.FlatVector,
     wall_type: WallType,
 ) !u64 {
     const wall = try if (Wall.isFence(wall_type))
@@ -670,9 +674,9 @@ fn addWallUncached(
 fn addFloorUncached(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
-    side_a_start: math.FlatVectorF32,
-    side_a_end: math.FlatVectorF32,
-    side_b_length: f32,
+    side_a_start: math.FlatVector,
+    side_a_end: math.FlatVector,
+    side_b_length: math.Fix32,
     floor_type: FloorType,
 ) !u64 {
     const floor = try self.floors.addOne();
@@ -690,7 +694,7 @@ fn addBillboardObjectUncached(
     self: *Geometry,
     object_id_generator: *util.ObjectIdGenerator,
     object_type: BillboardObjectType,
-    position: math.FlatVectorF32,
+    position: math.FlatVector,
     spritesheet: textures.SpriteSheetTexture,
 ) !u64 {
     const billboard = try self.billboard_objects.addOne();
@@ -810,32 +814,40 @@ const Floor = struct {
     tint: util.Color,
 
     /// Values used to generate this floor.
-    side_a_start: math.FlatVectorF32,
-    side_a_end: math.FlatVectorF32,
-    side_b_length: f32,
+    side_a_start: math.FlatVector,
+    side_a_end: math.FlatVector,
+    side_b_length: math.Fix32,
 
     /// Side a and b can be chosen arbitrarily, but must be adjacent.
     fn create(
         object_id: u64,
         floor_type: FloorType,
-        side_a_start: math.FlatVectorF32,
-        side_a_end: math.FlatVectorF32,
-        side_b_length: f32,
+        side_a_start: math.FlatVector,
+        side_a_end: math.FlatVector,
+        side_b_length: math.Fix32,
     ) Floor {
         const offset_a = side_a_end.subtract(side_a_start);
         const side_a_length = offset_a.length();
-        const rotation = offset_a.computeRotationToOtherVector(.{ .x = 0, .z = 1 });
+        const rotation = offset_a.computeRotationToOtherVector(.{ .x = fp(0), .z = fp(1) });
         const offset_b = offset_a.rotateRightBy90Degrees().negate().normalize().scale(side_b_length);
-        const center = side_a_start.add(offset_a.scale(0.5)).add(offset_b.scale(0.5));
+        const center = side_a_start.add(offset_a.scale(fp(0.5))).add(offset_b.scale(fp(0.5)));
         return Floor{
             .object_id = object_id,
             .floor_type = floor_type,
             .model_matrix = math.Matrix.identity
                 .rotate(math.Vector3dF32.x_axis, std.math.degreesToRadians(-90))
-                .scale(.{ .x = side_b_length, .y = 1, .z = side_a_length })
-                .rotate(math.Vector3dF32.y_axis, -rotation)
-                .translate(center.toVector3d()),
-            .boundaries = collision.Rectangle.create(side_a_start, side_a_end, side_b_length),
+                .scale(.{
+                .x = side_b_length.convertTo(f32),
+                .y = 1,
+                .z = side_a_length.convertTo(f32),
+            })
+                .rotate(math.Vector3dF32.y_axis, rotation.neg().convertTo(f32))
+                .translate(center.toVector3d().toVector3dF32()),
+            .boundaries = collision.Rectangle.create(
+                side_a_start.toFlatVectorF32(),
+                side_a_end.toFlatVectorF32(),
+                side_b_length.convertTo(f32),
+            ),
             .tint = getDefaultTint(floor_type),
             .side_a_start = side_a_start,
             .side_a_end = side_a_end,
@@ -843,11 +855,11 @@ const Floor = struct {
         };
     }
 
-    fn getTextureScale(self: Floor) f32 {
+    fn getTextureScale(self: Floor) math.Fix32 {
         return switch (self.floor_type) {
-            else => 5.0,
-            .grass => 2.0,
-            .water => 3.0,
+            else => fp(5),
+            .grass => fp(2),
+            .water => fp(3),
         };
     }
 
@@ -883,42 +895,47 @@ const Wall = struct {
     },
 
     /// Values used to generate this wall.
-    start_position: math.FlatVectorF32,
-    end_position: math.FlatVectorF32,
+    start_position: math.FlatVector,
+    end_position: math.FlatVector,
 
     fn create(
         object_id: u64,
         wall_type: WallType,
-        start_position: math.FlatVectorF32,
-        end_position: math.FlatVectorF32,
+        start_position: math.FlatVector,
+        end_position: math.FlatVector,
     ) Wall {
         const wall_type_properties = getWallTypeProperties(start_position, end_position, wall_type);
         const offset = wall_type_properties.corrected_end_position.subtract(
             wall_type_properties.corrected_start_position,
         );
         const length = offset.length();
-        const x_axis = math.FlatVectorF32{ .x = 1, .z = 0 };
+        const x_axis = math.FlatVector{ .x = fp(1), .z = fp(0) };
         const rotation_angle = x_axis.computeRotationToOtherVector(offset);
         const height = wall_type_properties.height;
         const thickness = wall_type_properties.thickness;
 
         // Fences are flat, thickness is only for collision.
-        const render_thickness = if (isFence(wall_type)) 0 else thickness;
+        const render_thickness = if (isFence(wall_type)) fp(0) else thickness;
 
-        const side_a_up_offset =
-            math.FlatVectorF32.normalize(.{ .x = offset.z, .z = -offset.x }).scale(thickness / 2);
-        const center = wall_type_properties.corrected_start_position.add(offset.scale(0.5));
+        const side_a_up_offset = math.FlatVector.normalize(.{ .x = offset.z, .z = offset.x.neg() })
+            .scale(thickness.div(fp(2)));
+        const center = wall_type_properties.corrected_start_position.add(offset.scale(fp(0.5)));
         return Wall{
             .object_id = object_id,
             .model_matrix = math.Matrix.identity
-                .scale(.{ .x = length, .y = height, .z = render_thickness })
-                .rotate(math.Vector3dF32.y_axis, rotation_angle)
-                .translate(center.toVector3d().add(math.Vector3dF32.y_axis.scale(height / 2))),
+                .scale(.{
+                .x = length.convertTo(f32),
+                .y = height.convertTo(f32),
+                .z = render_thickness.convertTo(f32),
+            })
+                .rotate(math.Vector3d.y_axis.toVector3dF32(), rotation_angle.convertTo(f32))
+                .translate(center.toVector3d().add(math.Vector3d.y_axis.scale(height.div(fp(2))))
+                .toVector3dF32()),
             .tint = Wall.getDefaultTint(wall_type),
             .boundaries = collision.Rectangle.create(
-                wall_type_properties.corrected_start_position.add(side_a_up_offset),
-                wall_type_properties.corrected_start_position.subtract(side_a_up_offset),
-                length,
+                wall_type_properties.corrected_start_position.add(side_a_up_offset).toFlatVectorF32(),
+                wall_type_properties.corrected_start_position.subtract(side_a_up_offset).toFlatVectorF32(),
+                length.convertTo(f32),
             ),
             .wall_type = wall_type,
             .grid_handles = .{ .all = null, .solid = null },
@@ -933,13 +950,13 @@ const Wall = struct {
         ray: collision.Ray3d,
     ) ?collision.Ray3d.ImpactPoint {
         const bottom_corners_2d = boundaries.getCornersInGameCoordinates();
-        const bottom_corners = [_]math.Vector3dF32{
-            bottom_corners_2d[0].toVector3d(),
-            bottom_corners_2d[1].toVector3d(),
-            bottom_corners_2d[2].toVector3d(),
-            bottom_corners_2d[3].toVector3d(),
+        const bottom_corners = [_]math.Vector3d{
+            bottom_corners_2d[0].toVector3d().toVector3d(),
+            bottom_corners_2d[1].toVector3d().toVector3d(),
+            bottom_corners_2d[2].toVector3d().toVector3d(),
+            bottom_corners_2d[3].toVector3d().toVector3d(),
         };
-        const vertical_offset = math.Vector3dF32.y_axis.scale(getWallTypeHeight(wall_type));
+        const vertical_offset = math.Vector3d.y_axis.scale(getWallTypeHeight(wall_type));
         var closest_impact_point: ?collision.Ray3d.ImpactPoint = null;
 
         var side: usize = 0;
@@ -966,10 +983,16 @@ const Wall = struct {
 
     fn updateClosestImpactPoint(
         ray: collision.Ray3d,
-        quad: [4]math.Vector3dF32,
+        quad: [4]math.Vector3d,
         closest_impact_point: *?collision.Ray3d.ImpactPoint,
     ) void {
-        const current_impact_point = ray.collidesWithQuad(quad) orelse return;
+        const quad32 = [4]math.Vector3dF32{
+            quad[0].toVector3dF32(),
+            quad[1].toVector3dF32(),
+            quad[2].toVector3dF32(),
+            quad[3].toVector3dF32(),
+        };
+        const current_impact_point = ray.collidesWithQuad(quad32) orelse return;
         if (closest_impact_point.*) |previous_impact_point| {
             if (current_impact_point.distance_from_start_position <
                 previous_impact_point.distance_from_start_position)
@@ -982,76 +1005,76 @@ const Wall = struct {
     }
 
     const WallTypeProperties = struct {
-        corrected_start_position: math.FlatVectorF32,
-        corrected_end_position: math.FlatVectorF32,
-        height: f32,
-        thickness: f32,
-        texture_scale: f32,
+        corrected_start_position: math.FlatVector,
+        corrected_end_position: math.FlatVector,
+        height: math.Fix32,
+        thickness: math.Fix32,
+        texture_scale: math.Fix32,
     };
 
     fn getWallTypeProperties(
-        start_position: math.FlatVectorF32,
-        end_position: math.FlatVectorF32,
+        start_position: math.FlatVector,
+        end_position: math.FlatVector,
         wall_type: WallType,
     ) WallTypeProperties {
-        const fence_thickness = 0.25; // Only needed for collision boundaries, fences are flat.
+        const fence_thickness = fp(0.25); // Only needed for collision boundaries, fences are flat.
         var properties = WallTypeProperties{
             .corrected_start_position = start_position,
             .corrected_end_position = end_position,
             .height = getWallTypeHeight(wall_type),
             .thickness = fence_thickness,
-            .texture_scale = 1.0,
+            .texture_scale = fp(1),
         };
         switch (wall_type) {
             .small_wall => {
-                properties.texture_scale = 5.0;
+                properties.texture_scale = fp(5);
             },
             .medium_wall => {
-                properties.thickness = 1;
-                properties.texture_scale = 5.0;
+                properties.thickness = fp(1);
+                properties.texture_scale = fp(5);
             },
             .castle_wall => {
-                properties.thickness = 2;
-                properties.texture_scale = 7.5;
+                properties.thickness = fp(2);
+                properties.texture_scale = fp(7.5);
             },
             .castle_tower => {
                 // Towers are centered around their start position.
-                const half_side_length = 3;
+                const half_side_length = fp(3);
                 const rescaled_offset =
                     end_position.subtract(start_position).normalize().scale(half_side_length);
                 properties.corrected_start_position = start_position.subtract(rescaled_offset);
                 properties.corrected_end_position = start_position.add(rescaled_offset);
-                properties.thickness = half_side_length * 2;
-                properties.texture_scale = 9;
+                properties.thickness = half_side_length.mul(fp(2));
+                properties.texture_scale = fp(9);
             },
             .metal_fence => {
-                properties.texture_scale = 3.5;
+                properties.texture_scale = fp(3.5);
             },
             .short_metal_fence => {
-                properties.texture_scale = 1.5;
+                properties.texture_scale = fp(1.5);
             },
             .tall_hedge => {
-                properties.thickness = 3;
-                properties.texture_scale = 3.5;
+                properties.thickness = fp(3);
+                properties.texture_scale = fp(3.5);
             },
             .giga_wall => {
-                properties.thickness = 6;
-                properties.texture_scale = 16.0;
+                properties.thickness = fp(6);
+                properties.texture_scale = fp(16);
             },
         }
         return properties;
     }
 
-    fn getWallTypeHeight(wall_type: WallType) f32 {
+    fn getWallTypeHeight(wall_type: WallType) math.Fix32 {
         return switch (wall_type) {
-            .small_wall => 5.0,
-            .medium_wall => 10.0,
-            .castle_wall => 15.0,
-            .castle_tower => 18.0,
-            .metal_fence => 3.5,
-            .short_metal_fence => 1.0,
-            .tall_hedge => 8.0,
-            .giga_wall => 1000.0,
+            .small_wall => fp(5),
+            .medium_wall => fp(10),
+            .castle_wall => fp(15),
+            .castle_tower => fp(18),
+            .metal_fence => fp(3.5),
+            .short_metal_fence => fp(1),
+            .tall_hedge => fp(8),
+            .giga_wall => fp(1000),
         };
     }
 
@@ -1082,7 +1105,8 @@ const Wall = struct {
         const wall_properties =
             Wall.getWallTypeProperties(self.start_position, self.end_position, self.wall_type);
         const length = wall_properties.corrected_end_position
-            .subtract(wall_properties.corrected_start_position).length();
+            .subtract(wall_properties.corrected_start_position).length().convertTo(f32);
+        const texture_scale = wall_properties.texture_scale.convertTo(f32);
         return .{
             .properties = makeRenderingAttributes(
                 self.model_matrix,
@@ -1090,9 +1114,9 @@ const Wall = struct {
                 self.tint,
             ),
             .texture_repeat_dimensions = .{
-                .x = length / wall_properties.texture_scale,
-                .y = wall_properties.height / wall_properties.texture_scale,
-                .z = wall_properties.thickness / wall_properties.texture_scale,
+                .x = length / texture_scale,
+                .y = wall_properties.height.convertTo(f32) / texture_scale,
+                .z = wall_properties.thickness.convertTo(f32) / texture_scale,
             },
         };
     }
@@ -1107,17 +1131,20 @@ const BillboardObject = struct {
     fn create(
         object_id: u64,
         object_type: BillboardObjectType,
-        position: math.FlatVectorF32,
+        position: math.FlatVector,
         spritesheet: textures.SpriteSheetTexture,
     ) BillboardObject {
-        const width: f32 = switch (object_type) {
-            else => 1.0,
-        };
+        const width = fp(switch (object_type) {
+            else => 1,
+        });
         const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (object_type) {
             .small_bush => .small_bush,
         };
         const source = spritesheet.getSpriteTexcoords(sprite_id);
-        const boundaries = .{ .position = position, .radius = width / 2 };
+        const boundaries = .{
+            .position = position.toFlatVectorF32(),
+            .radius = width.convertTo(f32) / 2,
+        };
         const half_height = boundaries.radius * spritesheet.getSpriteAspectRatio(sprite_id);
         const tint = getDefaultTint(object_type);
         return .{
@@ -1155,14 +1182,14 @@ const BillboardObject = struct {
     }
 
     fn cast3DRay(self: BillboardObject, ray: collision.Ray3d) ?collision.Ray3d.ImpactPoint {
-        const offset_to_top = math.Vector3dF32.y_axis.scale(self.boundaries.radius * 2);
+        const offset_to_top = math.Vector3d.y_axis.scale(fp(self.boundaries.radius * 2));
         const offset_to_right = ray.direction.toFlatVector().normalize().rotateRightBy90Degrees()
             .scale(self.boundaries.radius).toVector3d();
         return ray.collidesWithQuad(.{
             self.boundaries.position.toVector3d().subtract(offset_to_right),
             self.boundaries.position.toVector3d().add(offset_to_right),
-            self.boundaries.position.toVector3d().add(offset_to_right).add(offset_to_top),
-            self.boundaries.position.toVector3d().subtract(offset_to_right).add(offset_to_top),
+            self.boundaries.position.toVector3d().add(offset_to_right).add(offset_to_top.toVector3dF32()),
+            self.boundaries.position.toVector3d().subtract(offset_to_right).add(offset_to_top.toVector3dF32()),
         });
     }
 
@@ -1237,7 +1264,10 @@ const ObstacleGrid = struct {
     fn create() ObstacleGrid {
         return .{
             .grid = &.{},
-            .map_boundaries = .{ .min = math.FlatVectorF32.zero, .max = math.FlatVectorF32.zero },
+            .map_boundaries = .{
+                .min = math.FlatVector.zero.toFlatVectorF32(),
+                .max = math.FlatVector.zero.toFlatVectorF32(),
+            },
             .map_cell_count_horizontal = 1,
         };
     }
@@ -1252,7 +1282,10 @@ const ObstacleGrid = struct {
         {
             self.* = .{
                 .grid = self.grid,
-                .map_boundaries = .{ .min = math.FlatVectorF32.zero, .max = math.FlatVectorF32.zero },
+                .map_boundaries = .{
+                    .min = math.FlatVector.zero.toFlatVectorF32(),
+                    .max = math.FlatVector.zero.toFlatVectorF32(),
+                },
                 .map_cell_count_horizontal = 1,
             };
             return;
@@ -1271,8 +1304,8 @@ const ObstacleGrid = struct {
             updateBoundaries(&map_boundaries, wall);
         }
 
-        const cell_size = @as(f32, @floatFromInt(obstacle_grid_cell_size));
-        const padding_for_storing_extra_neighbors = .{ .x = cell_size, .z = cell_size };
+        const cell_size = fp(obstacle_grid_cell_size);
+        const padding_for_storing_extra_neighbors = .{ .x = cell_size.convertTo(f32), .z = cell_size.convertTo(f32) };
         map_boundaries.min = map_boundaries.min.subtract(padding_for_storing_extra_neighbors);
         map_boundaries.max = map_boundaries.max.add(padding_for_storing_extra_neighbors);
 
@@ -1281,8 +1314,8 @@ const ObstacleGrid = struct {
             .h = map_boundaries.max.z - map_boundaries.min.z,
         };
         const map_cell_count = .{
-            .w = @as(usize, @intFromFloat(map_dimensions.w / cell_size)) + 1,
-            .h = @as(usize, @intFromFloat(map_dimensions.h / cell_size)) + 1,
+            .w = @as(usize, @intFromFloat(map_dimensions.w / cell_size.convertTo(f32))) + 1,
+            .h = @as(usize, @intFromFloat(map_dimensions.h / cell_size.convertTo(f32))) + 1,
         };
         const total_cell_count = map_cell_count.w * map_cell_count.h;
         self.* = .{
@@ -1303,12 +1336,12 @@ const ObstacleGrid = struct {
         }
     }
 
-    fn getObstacleTile(self: ObstacleGrid, position: math.FlatVectorF32) TileType {
-        if (!self.map_boundaries.collidesWithPoint(position)) {
+    fn getObstacleTile(self: ObstacleGrid, position: math.FlatVector) TileType {
+        if (!self.map_boundaries.collidesWithPoint(position.toFlatVectorF32())) {
             return .none;
         }
         const index = self.getIndex(
-            CellIndex.fromPosition(position.subtract(self.map_boundaries.min)),
+            CellIndex.fromPosition(position.toFlatVectorF32().subtract(self.map_boundaries.min)),
         );
         return self.grid[index];
     }
@@ -1321,19 +1354,19 @@ const ObstacleGrid = struct {
         }
         const tile_type: TileType =
             if (Wall.isFence(wall.wall_type)) .obstacle_tranclucent else .obstacle_solid;
-        self.insertLine(tile_type, corners[0], corners[1]);
-        self.insertLine(tile_type, corners[1], corners[2]);
-        self.insertLine(tile_type, corners[2], corners[3]);
-        self.insertLine(tile_type, corners[3], corners[0]);
+        self.insertLine(tile_type, corners[0].toFlatVector(), corners[1].toFlatVector());
+        self.insertLine(tile_type, corners[1].toFlatVector(), corners[2].toFlatVector());
+        self.insertLine(tile_type, corners[2].toFlatVector(), corners[3].toFlatVector());
+        self.insertLine(tile_type, corners[3].toFlatVector(), corners[0].toFlatVector());
     }
 
     fn insertLine(
         self: *ObstacleGrid,
         tile_type: TileType,
-        start: math.FlatVectorF32,
-        end: math.FlatVectorF32,
+        start: math.FlatVector,
+        end: math.FlatVector,
     ) void {
-        var iterator = cell_line_iterator(CellIndex, start, end);
+        var iterator = cell_line_iterator(CellIndex, start.toFlatVectorF32(), end.toFlatVectorF32());
         while (iterator.next()) |cell_index| {
             const index = self.getIndex(cell_index);
             if (self.grid[index] != .obstacle_solid) {

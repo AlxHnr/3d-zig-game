@@ -182,7 +182,7 @@ pub fn run(
         geometry_renderer.render(
             vp_matrix,
             extra_data.screen_dimensions,
-            camera.getDirectionToTarget().toVector3dF32(),
+            camera.getDirectionToTarget(),
             tileable_textures,
             spritesheet,
         );

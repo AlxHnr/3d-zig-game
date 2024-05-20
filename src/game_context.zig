@@ -228,7 +228,7 @@ pub const Context = struct {
 
     pub fn playerIsOnFlowFieldObstacleTile(self: Context) bool {
         return self.map.geometry.getObstacleTile(
-            self.main_character.character.moving_circle.getPosition().toFlatVectorF32(),
+            self.main_character.character.moving_circle.getPosition(),
         ).isObstacle();
     }
 

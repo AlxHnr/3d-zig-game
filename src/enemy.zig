@@ -529,7 +529,7 @@ fn VisibilityChecker(comptime tick_interval: u32) type {
             enemy_boundaries.radius = enemy_boundaries.radius.add(aggro_radius);
             if (enemy_boundaries.hasCollidedWith(context.main_character.moving_circle)) |positions| {
                 self.is_seeing =
-                    !context.map.geometry.isSolidWallBetweenPoints(positions.self.toFlatVectorF32(), positions.other.toFlatVectorF32());
+                    !context.map.geometry.isSolidWallBetweenPoints(positions.self, positions.other);
             } else {
                 self.is_seeing = false;
             }

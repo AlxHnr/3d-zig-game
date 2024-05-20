@@ -60,9 +60,9 @@ pub const MovingCircle = struct {
 
             var substep = direction.scale(substep_length);
             if (map.geometry.collidesWithCircle(boundaries, self.pass_trough_fences)) |displacement_vector| {
-                boundaries.position = boundaries.position.add(displacement_vector);
+                boundaries.position = boundaries.position.add(displacement_vector.toFlatVectorF32());
                 const friction = fp(1).add(
-                    direction.dotProduct(displacement_vector.toFlatVector().normalize())
+                    direction.dotProduct(displacement_vector.normalize())
                         .clamp(fp64(-1), fp64(0)).convertTo(math.Fix32),
                 );
                 self.velocity = self.velocity.scale(friction);

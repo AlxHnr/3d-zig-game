@@ -2,6 +2,7 @@ const Map = @import("map/map.zig").Map;
 const MapGeometry = @import("map/geometry.zig");
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const collision = @import("collision.zig");
+const fp = math.Fix32.fp;
 const math = @import("math.zig");
 const std = @import("std");
 const util = @import("util.zig");
@@ -171,21 +172,21 @@ pub const State = struct {
         const object_id = try switch (object_type.used_field) {
             .wall => map.geometry.addWall(
                 object_id_generator,
-                position,
-                position,
+                position.toFlatVector(),
+                position.toFlatVector(),
                 object_type.wall,
             ),
             .floor => map.geometry.addFloor(
                 object_id_generator,
-                position,
-                position,
-                0,
+                position.toFlatVector(),
+                position.toFlatVector(),
+                fp(0),
                 object_type.floor,
             ),
             .billboard => map.geometry.addBillboardObject(
                 object_id_generator,
                 object_type.billboard,
-                position,
+                position.toFlatVector(),
                 spritesheet,
             ),
         };
@@ -206,7 +207,11 @@ pub const State = struct {
         switch (self.object_type_to_insert.used_field) {
             .wall => {
                 try map.geometry
-                    .updateWall(object.object_id, object.start_position, object_end_position);
+                    .updateWall(
+                    object.object_id,
+                    object.start_position.toFlatVector(),
+                    object_end_position.toFlatVector(),
+                );
             },
             .floor => {
                 const offset = object_end_position.subtract(object.start_position);
@@ -227,9 +232,9 @@ pub const State = struct {
 
                 try map.geometry.updateFloor(
                     object.object_id,
-                    side_a_start,
-                    side_a_end,
-                    side_b_length,
+                    side_a_start.toFlatVector(),
+                    side_a_end.toFlatVector(),
+                    fp(side_b_length),
                 );
             },
             .billboard => {},
