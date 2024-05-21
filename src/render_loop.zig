@@ -119,7 +119,7 @@ pub fn run(
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
 
         gl.enable(gl.DEPTH_TEST);
-        const camera = self.current.main_character.getCamera(fp(lap_result.next_tick_progress));
+        const camera = self.current.main_character.getCamera(lap_result.next_tick_progress);
 
         billboard_buffer.clearRetainingCapacity();
         performance_measurements.begin(.aggregate_enemy_billboards);
@@ -128,7 +128,7 @@ pub fn run(
                 spritesheet,
                 prerendered_enemy_names,
                 camera,
-                fp(lap_result.next_tick_progress),
+                lap_result.next_tick_progress,
                 &billboard_buffer,
             );
         }
@@ -137,14 +137,17 @@ pub fn run(
         performance_measurements.begin(.aggregate_gem_billboards);
         for (self.current.gems.items) |snapshot| {
             try billboard_buffer.append(
-                snapshot.makeBillboardData(spritesheet, lap_result.next_tick_progress),
+                snapshot.makeBillboardData(
+                    spritesheet,
+                    lap_result.next_tick_progress.convertTo(f32),
+                ),
             );
         }
         performance_measurements.end(.aggregate_gem_billboards);
 
         try billboard_buffer.append(self.current.main_character.getBillboardData(
             spritesheet,
-            fp(lap_result.next_tick_progress),
+            lap_result.next_tick_progress,
         ));
         billboard_renderer.uploadBillboards(billboard_buffer.items);
 
@@ -208,7 +211,10 @@ pub fn run(
             self.current.main_character.gem_count,
             self.current.main_character.character.health.current,
         );
-        try dialog_controller.render(extra_data.screen_dimensions, lap_result.next_tick_progress);
+        try dialog_controller.render(
+            extra_data.screen_dimensions,
+            lap_result.next_tick_progress.convertTo(f32),
+        );
         try renderEditMode(
             extra_data.edit_mode_state,
             &sprite_renderer,
@@ -227,7 +233,7 @@ pub fn run(
         }
 
         self.interpolation_interval_used_in_latest_frame
-            .store(lap_result.next_tick_progress, .unordered);
+            .store(lap_result.next_tick_progress.convertTo(f32), .unordered);
         sdl.SDL_GL_SwapWindow(window);
     }
 }

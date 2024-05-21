@@ -44,12 +44,8 @@ pub const TickTimer = struct {
         return .{
             .elapsed_ticks = elapsed_time / self.tick_duration,
             .time_until_next_tick = self.tick_duration - self.leftover_time_from_last_tick,
-            .next_tick_progress = @floatCast(
-                @as(
-                    f64,
-                    @floatFromInt(self.leftover_time_from_last_tick),
-                ) / @as(f64, @floatFromInt(self.tick_duration)),
-            ),
+            .next_tick_progress = fp64(self.leftover_time_from_last_tick)
+                .div(fp64(self.tick_duration)).convertTo(math.Fix32),
         };
     }
 
@@ -58,7 +54,7 @@ pub const TickTimer = struct {
         time_until_next_tick: u64,
         /// Value between 0 and 1 denoting how much percent of the next tick has already passed.
         /// This can be used for interpolating between two ticks.
-        next_tick_progress: f32,
+        next_tick_progress: math.Fix32,
     };
 };
 
