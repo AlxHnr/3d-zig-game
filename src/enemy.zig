@@ -422,9 +422,7 @@ const AttackingState = struct {
             AverageAccumulator.create(enemy.character.acceleration_direction);
         while (iterator.next()) |peer| {
             // Ignore self.
-            if (enemy.state_at_previous_tick.position.x.eql(peer.position.x) and
-                enemy.state_at_previous_tick.position.z.eql(peer.position.z))
-            {
+            if (peer.position.equal(enemy.state_at_previous_tick.position)) {
                 continue;
             }
 

@@ -69,6 +69,10 @@ pub const FlatVector = struct {
         return .{ .x = self.x.lerp(other.x, t), .z = self.z.lerp(other.z, t) };
     }
 
+    pub fn equal(self: FlatVector, other: FlatVector) bool {
+        return self.x.eql(other.x) and self.z.eql(other.z);
+    }
+
     pub fn add(self: FlatVector, other: FlatVector) FlatVector {
         return .{ .x = self.x.add(other.x), .z = self.z.add(other.z) };
     }
