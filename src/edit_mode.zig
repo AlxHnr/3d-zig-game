@@ -3,6 +3,7 @@ const MapGeometry = @import("map/geometry.zig");
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const collision = @import("collision.zig");
 const fp = math.Fix32.fp;
+const fp64 = math.Fix64.fp;
 const math = @import("math.zig");
 const std = @import("std");
 const util = @import("util.zig");
@@ -243,12 +244,12 @@ pub const State = struct {
 };
 
 /// Reasonable distance to prevent placing/modifying objects too far away from the camera.
-const max_raycast_distance = 500;
+const max_raycast_distance = fp64(500);
 
 fn cast3DRayToGround(ray: collision.Ray3d) ?math.FlatVectorF32 {
     if (ray.collidesWithGround()) |impact_point| {
-        if (impact_point.distance_from_start_position < max_raycast_distance) {
-            return impact_point.position.toFlatVector();
+        if (impact_point.distance_from_start_position.lte(max_raycast_distance)) {
+            return impact_point.position.toFlatVector().toFlatVectorF32();
         }
     }
     return null;
@@ -256,7 +257,7 @@ fn cast3DRayToGround(ray: collision.Ray3d) ?math.FlatVectorF32 {
 
 fn cast3DRayToObjects(ray: collision.Ray3d, map: Map) ?MapGeometry.RayCollision {
     if (map.geometry.cast3DRayToObjects(ray)) |ray_collision| {
-        if (ray_collision.impact_point.distance_from_start_position < max_raycast_distance) {
+        if (ray_collision.impact_point.distance_from_start_position.lte(max_raycast_distance)) {
             return ray_collision;
         }
     }

@@ -96,7 +96,7 @@ pub const Enemy = struct {
     }
 
     pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
-        return .{ .position = position.toFlatVectorF32(), .radius = peer_flock_radius.convertTo(f32) };
+        return .{ .position = position, .radius = peer_flock_radius };
     }
 
     pub fn makeAttackingEnemyPosition(self: Enemy) AttackingEnemyPosition {
@@ -407,12 +407,17 @@ const AttackingState = struct {
         }
 
         const circle = collision.Circle{
-            .position = position.toFlatVectorF32(),
-            .radius = Enemy.peer_overlap_radius.convertTo(f32),
+            .position = position,
+            .radius = Enemy.peer_overlap_radius,
         };
         const direction = enemy.character.moving_circle.velocity.normalize();
+        const bounding_box = circle.getOuterBoundingBoxInGameCoordinates();
+        const bounding_boxF32 = .{
+            .min = bounding_box.min.toFlatVectorF32(),
+            .max = bounding_box.max.toFlatVectorF32(),
+        };
         var iterator = context.attacking_enemy_positions_at_previous_tick.areaIterator(
-            circle.getOuterBoundingBoxInGameCoordinates(),
+            bounding_boxF32,
         );
         var combined_displacement_vector = math.FlatVector.zero;
         var friction_factor = fp(1);
@@ -426,16 +431,13 @@ const AttackingState = struct {
                 continue;
             }
 
-            const peer_circle = .{
-                .position = peer.position.toFlatVectorF32(),
-                .radius = Enemy.peer_overlap_radius.convertTo(f32),
-            };
+            const peer_circle = .{ .position = peer.position, .radius = Enemy.peer_overlap_radius };
             if (circle.collidesWithCircleDisplacementVector(peer_circle)) |displacement_vector| {
                 collides_with_peer = true;
-                combined_displacement_vector = combined_displacement_vector.add(displacement_vector.toFlatVector());
+                combined_displacement_vector = combined_displacement_vector.add(displacement_vector);
                 friction_factor = friction_factor.mul(fp(1).add(
                     enemy_friction_constant.mul(
-                        direction.dotProduct(displacement_vector.toFlatVector().normalize())
+                        direction.dotProduct(displacement_vector.normalize())
                             .convertTo(math.Fix32).clamp(fp(-1), fp(0)),
                     ),
                 ));

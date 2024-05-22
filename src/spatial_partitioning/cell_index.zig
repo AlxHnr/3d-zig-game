@@ -2,6 +2,12 @@ const FlatVectorF32 = @import("../math.zig").FlatVectorF32;
 const Order = @import("std").math.Order;
 const assert = @import("std").debug.assert;
 
+const math = @import("../math.zig");
+pub const AxisAlignedBoundingBox = struct {
+    min: math.FlatVectorF32,
+    max: math.FlatVectorF32,
+};
+
 /// Takes the side length of a square cell specified in game units.
 pub fn Index(comptime cell_side_length: u32) type {
     comptime {

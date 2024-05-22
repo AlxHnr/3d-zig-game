@@ -2,6 +2,7 @@ const GameCharacter = @import("game_unit.zig").GameCharacter;
 const Map = @import("map/map.zig").Map;
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
+const fp = math.Fix32.fp;
 const math = @import("math.zig");
 const simulation = @import("simulation.zig");
 
@@ -29,7 +30,7 @@ pub fn processElapsedTick(self: *Gem, context: TickContext) Result {
             }
         },
         .waiting => blk: {
-            const boundaries = .{ .position = self.position, .radius = 10 };
+            const boundaries = .{ .position = self.position.toFlatVector(), .radius = fp(10) };
             const character_position = context.main_character.moving_circle.hasCollidedWithCircle(
                 boundaries,
             ) orelse break :blk;

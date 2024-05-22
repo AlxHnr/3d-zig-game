@@ -1,4 +1,4 @@
-const AxisAlignedBoundingBox = @import("../collision.zig").AxisAlignedBoundingBox;
+const AxisAlignedBoundingBox = @import("cell_index.zig").AxisAlignedBoundingBox;
 const FlatVectorF32 = @import("../math.zig").FlatVectorF32;
 const UnorderedCollection = @import("../unordered_collection.zig").UnorderedCollection;
 const cell_line_iterator = @import("cell_line_iterator.zig");

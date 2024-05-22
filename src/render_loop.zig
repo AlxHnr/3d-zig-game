@@ -10,7 +10,6 @@ const Player = @import("game_unit.zig").Player;
 const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const fp = @import("math.zig").Fix32.fp;
-const fp64 = @import("math.zig").Fix64.fp;
 const gl = @import("gl");
 const rendering = @import("rendering.zig");
 const sdl = @import("sdl.zig");
@@ -173,7 +172,7 @@ pub fn run(
         const ray_wall_collision = self.current.geometry
             .cast3DRayToSolidWalls(camera.get3DRayFromTargetToSelf());
         const max_camera_distance = if (ray_wall_collision) |impact_point|
-            fp64(impact_point.distance_from_start_position)
+            impact_point.distance_from_start_position
         else
             null;
 

@@ -23,10 +23,10 @@ const epsilon = math.epsilon;
 const expect = std.testing.expect;
 const expectApproxEqRel = std.testing.expectApproxEqRel;
 
-fn expectXZ(vector: ?math.FlatVectorF32, expected_x: f32, expected_z: f32) !void {
+fn expectXZ(vector: ?math.FlatVector, expected_x: math.Fix32, expected_z: math.Fix32) !void {
     try expect(vector != null);
-    try expectApproxEqRel(expected_x, vector.?.x, epsilon);
-    try expectApproxEqRel(expected_z, vector.?.z, epsilon);
+    try expect(expected_x.eql(vector.?.x));
+    try expect(expected_z.eql(vector.?.z));
 }
 
 test "Fixedpoint conversion" {
@@ -220,126 +220,139 @@ test "FlatVector" {
 }
 
 test "Create collision rectangle" {
+    const fp = math.Fix32.fp;
+
     const rectangle = collision.Rectangle.create(
-        .{ .x = 12, .z = -3.1 },
-        .{ .x = 6.16, .z = 27.945 },
-        19.18,
+        .{ .x = fp(12), .z = fp(-3.1) },
+        .{ .x = fp(6.16), .z = fp(27.945) },
+        fp(19.18),
     );
-    const expected_angle = std.math.degreesToRadians(10.653624);
-    try expectApproxEqRel(@as(f32, 11.220045), rectangle.aabb.min.x, epsilon);
-    try expectApproxEqRel(@as(f32, -5.265016), rectangle.aabb.min.z, epsilon);
-    try expectApproxEqRel(@as(f32, 30.400045), rectangle.aabb.max.x, epsilon);
-    try expectApproxEqRel(@as(f32, 26.3245), rectangle.aabb.max.z, epsilon);
-    try expectApproxEqRel(std.math.sin(expected_angle), rectangle.rotation.sine, epsilon);
-    try expectApproxEqRel(std.math.cos(expected_angle), rectangle.rotation.cosine, epsilon);
-    try expectApproxEqRel(std.math.sin(-expected_angle), rectangle.inverse_rotation.sine, epsilon);
-    try expectApproxEqRel(std.math.cos(-expected_angle), rectangle.inverse_rotation.cosine, epsilon);
+    try expect(fp(11.1989593506).eql(rectangle.aabb.min.x));
+    try expect(fp(-5.2515563965).eql(rectangle.aabb.min.z));
+    try expect(fp(30.3789520264).eql(rectangle.aabb.max.x));
+    try expect(fp(26.3379364014).eql(rectangle.aabb.max.z));
+    try expect(fp(0.1840515137).eql(rectangle.rotation.sine));
+    try expect(fp(0.983062744140625).eql(rectangle.rotation.cosine));
+    try expect(fp(-0.184173583984375).eql(rectangle.inverse_rotation.sine));
+    try expect(fp(0.9830474853515625).eql(rectangle.inverse_rotation.cosine));
 }
 
 test "Collision between circle and point" {
-    const circle = collision.Circle{ .position = .{ .x = 20, .z = -15 }, .radius = 5 };
-    try expect(circle.collidesWithPoint(.{ .x = 5, .z = -5 }) == null);
-    try expect(circle.collidesWithPoint(.{ .x = 20, .z = -5 }) == null);
-    try expect(circle.collidesWithPoint(.{ .x = 5, .z = -15 }) == null);
-    try expectXZ(circle.collidesWithPoint(.{ .x = 22, .z = -16 }), -2.472135, 1.236067);
+    const fp = math.Fix32.fp;
+
+    const circle = collision.Circle{ .position = .{ .x = fp(20), .z = fp(-15) }, .radius = fp(5) };
+    try expect(circle.collidesWithPoint(.{ .x = fp(5), .z = fp(-5) }) == null);
+    try expect(circle.collidesWithPoint(.{ .x = fp(20), .z = fp(-5) }) == null);
+    try expect(circle.collidesWithPoint(.{ .x = fp(5), .z = fp(-15) }) == null);
+    try expectXZ(
+        circle.collidesWithPoint(.{ .x = fp(22), .z = fp(-16) }),
+        fp(-2.472137451171875),
+        fp(1.2360382080078125),
+    );
 }
 
 test "Collision between circle and line" {
-    const circle = collision.Circle{ .position = .{ .x = 2, .z = 1.5 }, .radius = 0.5 };
-    try expect(circle.collidesWithLine(.{ .x = 2, .z = 3 }, .{ .x = 3, .z = 2 }) == null);
-    try expect(circle.collidesWithLine(.{ .x = 2.5, .z = 2.5 }, .{ .x = 3.5, .z = 3.5 }) == null);
-    try expect(circle.collidesWithLine(.{ .x = 0, .z = 0 }, .{ .x = 0, .z = 0 }) == null);
+    const fp = math.Fix32.fp;
+
+    const circle = collision.Circle{ .position = .{ .x = fp(2), .z = fp(1.5) }, .radius = fp(0.5) };
+    try expect(circle.collidesWithLine(.{ .x = fp(2), .z = fp(3) }, .{ .x = fp(3), .z = fp(2) }) == null);
+    try expect(circle.collidesWithLine(.{ .x = fp(2.5), .z = fp(2.5) }, .{ .x = fp(3.5), .z = fp(3.5) }) == null);
+    try expect(circle.collidesWithLine(.{ .x = fp(0), .z = fp(0) }, .{ .x = fp(0), .z = fp(0) }) == null);
 
     // Line is partially inside circle.
     try expectXZ(circle.collidesWithLine(
-        .{ .x = 2.2, .z = 1.7 },
-        .{ .x = 3, .z = 2 },
-    ), -0.153553, -0.153553);
+        .{ .x = fp(2.2), .z = fp(1.7) },
+        .{ .x = fp(3), .z = fp(2) },
+    ), fp(-0.153594970703125), fp(-0.153594970703125));
     try expectXZ(circle.collidesWithLine(
-        .{ .x = 3, .z = 2 },
-        .{ .x = 2.2, .z = 1.7 },
-    ), -0.153553, -0.153553);
+        .{ .x = fp(3), .z = fp(2) },
+        .{ .x = fp(2.2), .z = fp(1.7) },
+    ), fp(-0.153594970703125), fp(-0.153594970703125));
 
     // Line is inside circle.
     try expectXZ(circle.collidesWithLine(
-        .{ .x = 1.6, .z = 1.3 },
-        .{ .x = 2.1, .z = 1.6 },
-    ), 0.239600360, -0.399334996);
+        .{ .x = fp(1.6), .z = fp(1.3) },
+        .{ .x = fp(2.1), .z = fp(1.6) },
+    ), fp(0.241851806640625), fp(-0.402252197265625));
     try expectXZ(circle.collidesWithLine(
-        .{ .x = 2.1, .z = 1.6 },
-        .{ .x = 1.6, .z = 1.3 },
-    ), 0.239600360, -0.399334996);
+        .{ .x = fp(2.1), .z = fp(1.6) },
+        .{ .x = fp(1.6), .z = fp(1.3) },
+    ), fp(0.2410125732421875), fp(-0.4028778076171875));
 
     // Line is inside circle, but circles center doesn't project onto line.
     try expectXZ(circle.collidesWithLine(
-        .{ .x = 2.1, .z = 1.4 },
-        .{ .x = 2.3, .z = 1.4 },
-    ), -0.2535532, 0.2535535);
+        .{ .x = fp(2.1), .z = fp(1.4) },
+        .{ .x = fp(2.3), .z = fp(1.4) },
+    ), fp(-0.2536468505859375), fp(0.2536773681640625));
 
     // Line is inside circle and has zero length.
     try expectXZ(circle.collidesWithLine(
-        .{ .x = 1.6, .z = 1.3 },
-        .{ .x = 1.6, .z = 1.3 },
-    ), 0.0472135, 0.0236068);
+        .{ .x = fp(1.6), .z = fp(1.3) },
+        .{ .x = fp(1.6), .z = fp(1.3) },
+    ), fp(0.0472135), fp(0.0236068));
 
     // Line goes trough circle.
     try expectXZ(circle.collidesWithLine(
-        .{ .x = 1.7, .z = 0.3 },
-        .{ .x = 1.7, .z = 2.7 },
-    ), 0.2, 0);
+        .{ .x = fp(1.7), .z = fp(0.3) },
+        .{ .x = fp(1.7), .z = fp(2.7) },
+    ), fp(0.20001220703125), fp(0));
     try expectXZ(circle.collidesWithLine(
-        .{ .x = 1, .z = 0 },
-        .{ .x = 3, .z = 2 },
-    ), -0.1035533, 0.1035533);
+        .{ .x = fp(1), .z = fp(0) },
+        .{ .x = fp(3), .z = fp(2) },
+    ), fp(-0.1035533), fp(0.1035533));
 }
 
 test "Collisions between lines" {
+    const fp = math.Fix32.fp;
+
     try expect(collision.lineCollidesWithLine(
-        .{ .x = -1, .z = -3 },
-        .{ .x = 2.5, .z = -0.5 },
-        .{ .x = 2, .z = -1.5 },
-        .{ .x = 0.5, .z = 2 },
+        .{ .x = fp(-1), .z = fp(-3) },
+        .{ .x = fp(2.5), .z = fp(-0.5) },
+        .{ .x = fp(2), .z = fp(-1.5) },
+        .{ .x = fp(0.5), .z = fp(2) },
     ) != null);
     try expect(collision.lineCollidesWithLine(
-        .{ .x = 2.5, .z = -0.5 },
-        .{ .x = -1, .z = -3 },
-        .{ .x = 2, .z = -1.5 },
-        .{ .x = 0.5, .z = 2 },
+        .{ .x = fp(2.5), .z = fp(-0.5) },
+        .{ .x = fp(-1), .z = fp(-3) },
+        .{ .x = fp(2), .z = fp(-1.5) },
+        .{ .x = fp(0.5), .z = fp(2) },
     ) != null);
     try expect(collision.lineCollidesWithLine(
-        .{ .x = 2.5, .z = -0.5 },
-        .{ .x = -1, .z = -3 },
-        .{ .x = 0.5, .z = 2 },
-        .{ .x = 2, .z = -1.5 },
+        .{ .x = fp(2.5), .z = fp(-0.5) },
+        .{ .x = fp(-1), .z = fp(-3) },
+        .{ .x = fp(0.5), .z = fp(2) },
+        .{ .x = fp(2), .z = fp(-1.5) },
     ) != null);
     try expect(collision.lineCollidesWithLine(
-        .{ .x = -1, .z = -3 },
-        .{ .x = 2.5, .z = -0.5 },
-        .{ .x = 0.5, .z = 2 },
-        .{ .x = 2, .z = -1.5 },
+        .{ .x = fp(-1), .z = fp(-3) },
+        .{ .x = fp(2.5), .z = fp(-0.5) },
+        .{ .x = fp(0.5), .z = fp(2) },
+        .{ .x = fp(2), .z = fp(-1.5) },
     ) != null);
 
     try expect(collision.lineCollidesWithLine(
-        .{ .x = -1, .z = -3 },
-        .{ .x = 2.5, .z = -0.5 },
-        .{ .x = 0.5, .z = 2 },
-        .{ .x = -2, .z = -1.5 },
+        .{ .x = fp(-1), .z = fp(-3) },
+        .{ .x = fp(2.5), .z = fp(-0.5) },
+        .{ .x = fp(0.5), .z = fp(2) },
+        .{ .x = fp(-2), .z = fp(-1.5) },
     ) == null);
     try expect(collision.lineCollidesWithLine(
-        .{ .x = -1.5, .z = 7 },
-        .{ .x = 1.5, .z = 7 },
-        .{ .x = -2.5, .z = 8 },
-        .{ .x = 2.5, .z = 8 },
+        .{ .x = fp(-1.5), .z = fp(7) },
+        .{ .x = fp(1.5), .z = fp(7) },
+        .{ .x = fp(-2.5), .z = fp(8) },
+        .{ .x = fp(2.5), .z = fp(8) },
     ) == null);
 }
 
 test "Collision between line and point" {
-    const line_start = .{ .x = 0, .z = 0 };
-    const line_end = .{ .x = 10, .z = 10 };
-    try expect(!collision.lineCollidesWithPoint(line_start, line_end, .{ .x = 2, .z = 3 }));
-    try expect(!collision.lineCollidesWithPoint(line_start, line_end, .{ .x = 11, .z = 11 }));
-    try expect(!collision.lineCollidesWithPoint(line_start, line_start, .{ .x = 11, .z = 11 }));
-    try expect(collision.lineCollidesWithPoint(line_start, line_end, .{ .x = 5, .z = 5 }));
+    const fp = math.Fix32.fp;
+
+    const line_start = .{ .x = fp(0), .z = fp(0) };
+    const line_end = .{ .x = fp(10), .z = fp(10) };
+    try expect(!collision.lineCollidesWithPoint(line_start, line_end, .{ .x = fp(2), .z = fp(3) }));
+    try expect(!collision.lineCollidesWithPoint(line_start, line_end, .{ .x = fp(11), .z = fp(11) }));
+    try expect(!collision.lineCollidesWithPoint(line_start, line_start, .{ .x = fp(11), .z = fp(11) }));
+    try expect(collision.lineCollidesWithPoint(line_start, line_end, .{ .x = fp(5), .z = fp(5) }));
     try expect(collision.lineCollidesWithPoint(line_start, line_start, line_start));
 }
 

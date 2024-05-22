@@ -265,7 +265,7 @@ pub const Context = struct {
         const ray_wall_collision = self.map.geometry
             .cast3DRayToWalls(camera.get3DRayFromTargetToSelf());
         const max_camera_distance = if (ray_wall_collision) |ray_collision|
-            fp64(ray_collision.impact_point.distance_from_start_position)
+            ray_collision.impact_point.distance_from_start_position
         else
             null;
         return camera.get3DRay(mouse_x, mouse_y, screen_dimensions, max_camera_distance);
@@ -342,10 +342,15 @@ pub const Context = struct {
                 );
             }
             for (context.enemies.attacking_positions.items) |attacking_enemy| {
+                const bounding_box = Enemy.makeSpacingBoundaries(attacking_enemy.position)
+                    .getOuterBoundingBoxInGameCoordinates();
+                const bounding_boxF32 = .{
+                    .min = bounding_box.min.toFlatVectorF32(),
+                    .max = bounding_box.max.toFlatVectorF32(),
+                };
                 try attacking_enemy_positions_at_previous_tick.insertIntoArea(
                     attacking_enemy,
-                    Enemy.makeSpacingBoundaries(attacking_enemy.position)
-                        .getOuterBoundingBoxInGameCoordinates(),
+                    bounding_boxF32,
                 );
             }
             for (context.gems.removal_queue.items) |object_handle| {

@@ -1,8 +1,9 @@
-const AxisAlignedBoundingBox = @import("collision.zig").AxisAlignedBoundingBox;
+const AxisAlignedBoundingBox = @import("spatial_partitioning/cell_index.zig").AxisAlignedBoundingBox;
 const Circle = @import("collision.zig").Circle;
 const FlatVectorF32 = @import("math.zig").FlatVectorF32;
 const Map = @import("map/map.zig").Map;
 const cell_side_length = @import("map/geometry.zig").obstacle_grid_cell_size;
+const fp = @import("math.zig").Fix32.fp;
 const std = @import("std");
 
 /// Grid of direction vectors leading towards its center, avoiding obstacles.
@@ -369,8 +370,8 @@ pub const Field = struct {
         fn next(self: *GrowingRadiusIterator) ?FlatVectorF32 {
             while (self.radius_factor < 9) {
                 const circle = .{
-                    .position = self.position,
-                    .radius = @as(f32, @floatFromInt(cell_side_length)) * self.radius_factor,
+                    .position = self.position.toFlatVector(),
+                    .radius = fp(@as(f32, @floatFromInt(cell_side_length)) * self.radius_factor),
                 };
                 self.radius_factor *= 2.0;
                 if (self.map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {

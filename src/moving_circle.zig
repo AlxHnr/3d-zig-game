@@ -49,10 +49,7 @@ pub const MovingCircle = struct {
         // Max applicable velocity (limit) per tick is `radius * self.traces.len`.
         var index: usize = 0;
         var remaining_velocity = velocity_length_squared.sqrt().convertTo(math.Fix32);
-        var boundaries = .{
-            .position = self.getPosition().toFlatVectorF32(),
-            .radius = self.radius.convertTo(f32),
-        };
+        var boundaries = .{ .position = self.getPosition(), .radius = self.radius };
         var trace: @TypeOf(self.trace) = undefined;
         while (remaining_velocity.gt(fp(0)) and index < self.trace.len) : (index += 1) {
             const substep_length = remaining_velocity.min(self.radius);
@@ -60,7 +57,7 @@ pub const MovingCircle = struct {
 
             var substep = direction.scale(substep_length);
             if (map.geometry.collidesWithCircle(boundaries, self.pass_trough_fences)) |displacement_vector| {
-                boundaries.position = boundaries.position.add(displacement_vector.toFlatVectorF32());
+                boundaries.position = boundaries.position.add(displacement_vector);
                 const friction = fp(1).add(
                     direction.dotProduct(displacement_vector.normalize())
                         .clamp(fp64(-1), fp64(0)).convertTo(math.Fix32),
@@ -68,8 +65,8 @@ pub const MovingCircle = struct {
                 self.velocity = self.velocity.scale(friction);
                 substep = substep.scale(friction);
             }
-            boundaries.position = boundaries.position.add(substep.toFlatVectorF32());
-            trace[index] = boundaries.position.toFlatVector();
+            boundaries.position = boundaries.position.add(substep);
+            trace[index] = boundaries.position;
         }
         self.setTrace(trace[0..index]);
     }
@@ -79,8 +76,8 @@ pub const MovingCircle = struct {
     pub fn hasCollidedWith(self: MovingCircle, other: MovingCircle) ?PositionsDuringContact {
         for (self.trace, other.trace) |self_position, other_position| {
             const self_boundaries =
-                collision.Circle{ .position = self_position.toFlatVectorF32(), .radius = self.radius.convertTo(f32) };
-            const other_boundaries = .{ .position = other_position.toFlatVectorF32(), .radius = other.radius.convertTo(f32) };
+                collision.Circle{ .position = self_position, .radius = self.radius };
+            const other_boundaries = .{ .position = other_position, .radius = other.radius };
             if (self_boundaries.collidesWithCircle(other_boundaries)) {
                 return .{ .self = self_position, .other = other_position };
             }
@@ -92,9 +89,9 @@ pub const MovingCircle = struct {
     /// Returns the position of `self` during the substep at which the collision occurred.
     pub fn hasCollidedWithCircle(self: MovingCircle, other: collision.Circle) ?math.FlatVector {
         for (self.trace) |position| {
-            const boundaries = collision.Circle{ .position = position.toFlatVectorF32(), .radius = self.radius.convertTo(f32) };
+            const boundaries = collision.Circle{ .position = position, .radius = self.radius };
             if (boundaries.collidesWithCircle(other)) {
-                return boundaries.position.toFlatVector();
+                return boundaries.position;
             }
         }
         return null;

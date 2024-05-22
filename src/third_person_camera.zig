@@ -103,19 +103,19 @@ pub fn get3DRay(
     const unnormalized_direction = self.getViewMatrix(max_distance_from_target)
         .invert().multiplyVector4d(.{ view_ray[0], view_ray[1], -1, 0 });
     return .{
-        .start_position = self.getAdjustedCameraPosition(max_distance_from_target).toVector3dF32(),
-        .direction = math.Vector3dF32.normalize(.{
-            .x = unnormalized_direction[0],
-            .y = unnormalized_direction[1],
-            .z = unnormalized_direction[2],
+        .start_position = self.getAdjustedCameraPosition(max_distance_from_target),
+        .direction = math.Vector3d.normalize(.{
+            .x = fp(unnormalized_direction[0]),
+            .y = fp(unnormalized_direction[1]),
+            .z = fp(unnormalized_direction[2]),
         }),
     };
 }
 
 pub fn get3DRayFromTargetToSelf(self: Camera) collision.Ray3d {
     return .{
-        .start_position = self.target_position.toVector3dF32(),
-        .direction = self.getPosition().subtract(self.target_position).normalize().toVector3dF32(),
+        .start_position = self.target_position,
+        .direction = self.getPosition().subtract(self.target_position).normalize(),
     };
 }
 
