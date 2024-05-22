@@ -363,11 +363,11 @@ pub const Context = struct {
 
         for (self.thread_contexts) |context| {
             for (context.enemies.attacking_positions.items) |attacking_enemy| {
-                self.main_character_flow_field.sampleCrowd(attacking_enemy.position.toFlatVectorF32());
+                self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
             }
         }
         try self.main_character_flow_field.recompute(
-            self.main_character.character.moving_circle.getPosition().toFlatVectorF32(),
+            self.main_character.character.moving_circle.getPosition(),
             self.map,
         );
     }
