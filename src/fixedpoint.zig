@@ -10,6 +10,11 @@ pub fn Fixedpoint(comptime integer_bit_count: u6, comptime fraction_bit_count: u
     return struct {
         internal: UnderlyingType,
 
+        pub const Limits = struct {
+            pub const max = Self{ .internal = std.math.maxInt(UnderlyingType) };
+            pub const min = Self{ .internal = std.math.minInt(UnderlyingType) };
+        };
+
         pub fn fp(value: anytype) Self {
             return switch (@typeInfo(@TypeOf(value))) {
                 .Float, .ComptimeFloat => .{ .internal = @intFromFloat(value * scaling_factor) },
@@ -48,6 +53,10 @@ pub fn Fixedpoint(comptime integer_bit_count: u6, comptime fraction_bit_count: u
 
         pub fn add(self: Self, other: Self) Self {
             return .{ .internal = self.internal + other.internal };
+        }
+
+        pub fn saturatingAdd(self: Self, other: Self) Self {
+            return .{ .internal = self.internal +| other.internal };
         }
 
         pub fn sub(self: Self, other: Self) Self {

@@ -71,7 +71,8 @@ test "Fixedpoint conversion" {
 }
 
 fn testFixedpoint(comptime integer_bits: usize, comptime fractional_bits: usize) !void {
-    const fp = Fixedpoint(integer_bits, fractional_bits).fp;
+    const Type = Fixedpoint(integer_bits, fractional_bits);
+    const fp = Type.fp;
 
     try expect(fp(@as(u8, 255)).eql(fp(255)));
     try expect(fp(12.9).eql(fp(12.9)));
@@ -82,6 +83,10 @@ fn testFixedpoint(comptime integer_bits: usize, comptime fractional_bits: usize)
     try expect(fp(12.9).add(fp(7)).eql(fp(19.9)));
     try expect(fp(-12.9).add(fp(-7)).eql(fp(-19.9)));
     try expect(fp(30000).add(fp(-30000)).eql(fp(0)));
+    try expect(fp(12.9).saturatingAdd(fp(7)).eql(fp(19.9)));
+    try expect(fp(-12.9).saturatingAdd(fp(-7)).eql(fp(-19.9)));
+    try expect(Type.Limits.max.saturatingAdd(Type.Limits.max).eql(Type.Limits.max));
+    try expect(Type.Limits.min.saturatingAdd(Type.Limits.min).eql(Type.Limits.min));
     try expect(fp(12.9).sub(fp(7)).eql(fp(5.9)));
     try expect(fp(-12.9).sub(fp(-7)).eql(fp(-5.9)));
     try expect(fp(30000).sub(fp(30000)).eql(fp(0)));
@@ -172,6 +177,10 @@ fn testFixedpoint(comptime integer_bits: usize, comptime fractional_bits: usize)
 
 test "Fixedpoint arithmetic (16.16)" {
     try testFixedpoint(16, 16);
+
+    const fp = Fixedpoint(16, 16).fp;
+    try expect(fp(30000).saturatingAdd(fp(30000)).eql(fp(32767.9999999999)));
+    try expect(fp(-30000).saturatingAdd(fp(-30000)).eql(fp(-32768)));
 }
 
 test "Fixedpoint arithmetic (48.16)" {
