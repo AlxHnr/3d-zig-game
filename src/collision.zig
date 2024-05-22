@@ -380,7 +380,7 @@ pub const Ray3d = struct {
         }
         const distance_from_start_position =
             inverted_determinant.mul(edges[1].dotProduct(q_vector));
-        if (distance_from_start_position.eql(fp64(0))) {
+        if (distance_from_start_position.lte(fp64(0))) {
             return null;
         }
         const impact_position = start_position.add(direction.scale(distance_from_start_position));
