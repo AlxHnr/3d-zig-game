@@ -224,119 +224,149 @@ pub const FlatVectorF32 = struct {
     }
 };
 
-pub const Vector3d = struct {
-    x: Fix32,
-    y: Fix32,
-    z: Fix32,
+pub const Vector3d = Vector3dCustom(Fix32, Fix64);
+pub const Vector3dLarge = Vector3dCustom(Fix64, Fix64);
 
-    pub const y_axis = Vector3d{ .x = fp(0), .y = fp(1), .z = fp(0) };
-    pub const x_axis = Vector3d{ .x = fp(1), .y = fp(0), .z = fp(0) };
+pub fn toVector3dLarge(vector: Vector3d) Vector3dLarge {
+    return .{
+        .x = vector.x.convertTo(Fix64),
+        .y = vector.y.convertTo(Fix64),
+        .z = vector.z.convertTo(Fix64),
+    };
+}
 
-    /// Will cut off the height component.
-    pub fn toFlatVector(self: Vector3d) FlatVector {
-        return .{ .x = self.x, .z = self.z };
-    }
+pub fn Vector3dCustom(
+    comptime FixType: type,
+    /// Will be used in places where overflows are likely.
+    comptime LargeFixType: type,
+) type {
+    return struct {
+        x: FixType,
+        y: FixType,
+        z: FixType,
 
-    pub fn toVector3dF32(self: Vector3d) Vector3dF32 {
-        return .{
-            .x = self.x.convertTo(f32),
-            .y = self.y.convertTo(f32),
-            .z = self.z.convertTo(f32),
-        };
-    }
+        pub const y_axis = Self{ .x = fp(0), .y = fp(1), .z = fp(0) };
+        pub const x_axis = Self{ .x = fp(1), .y = fp(0), .z = fp(0) };
 
-    pub fn normalize(self: Vector3d) Vector3d {
-        const own_length = self.length();
-        return if (own_length.eql(fp64(0)))
-            self
-        else
-            .{
-                .x = self.x.convertTo(Fix64).div(own_length).convertTo(Fix32),
-                .y = self.y.convertTo(Fix64).div(own_length).convertTo(Fix32),
-                .z = self.z.convertTo(Fix64).div(own_length).convertTo(Fix32),
+        /// Will cut off the height component.
+        pub fn toFlatVector(self: Self) FlatVector {
+            return .{ .x = self.x, .z = self.z };
+        }
+
+        pub fn toVector3dF32(self: Self) Vector3dF32 {
+            return .{
+                .x = self.x.convertTo(f32),
+                .y = self.y.convertTo(f32),
+                .z = self.z.convertTo(f32),
             };
-    }
+        }
 
-    pub fn lerp(self: Vector3d, other: Vector3d, t: Fix32) Vector3d {
-        return .{
-            .x = self.x.lerp(other.x, t),
-            .y = self.y.lerp(other.y, t),
-            .z = self.z.lerp(other.z, t),
+        pub fn normalize(self: Self) Self {
+            const own_length = self.length();
+            return if (own_length.eql(LargeFixType.fp(0)))
+                self
+            else
+                .{
+                    .x = Convert.down(Convert.up(self.x).div(own_length)),
+                    .y = Convert.down(Convert.up(self.y).div(own_length)),
+                    .z = Convert.down(Convert.up(self.z).div(own_length)),
+                };
+        }
+
+        pub fn lerp(self: Self, other: Self, t: FixType) Self {
+            return .{
+                .x = self.x.lerp(other.x, t),
+                .y = self.y.lerp(other.y, t),
+                .z = self.z.lerp(other.z, t),
+            };
+        }
+
+        pub fn scale(self: Self, factor: FixType) Self {
+            return .{ .x = self.x.mul(factor), .y = self.y.mul(factor), .z = self.z.mul(factor) };
+        }
+
+        pub fn add(self: Self, other: Self) Self {
+            return .{ .x = self.x.add(other.x), .y = self.y.add(other.y), .z = self.z.add(other.z) };
+        }
+
+        pub fn subtract(self: Self, other: Self) Self {
+            return .{ .x = self.x.sub(other.x), .y = self.y.sub(other.y), .z = self.z.sub(other.z) };
+        }
+
+        pub fn length(self: Self) LargeFixType {
+            return self.lengthSquared().sqrt();
+        }
+
+        pub fn lengthSquared(self: Self) LargeFixType {
+            const self_large = self.toLargeSelf();
+            return self_large.x.mul(self_large.x)
+                .add(self_large.y.mul(self_large.y))
+                .add(self_large.z.mul(self_large.z));
+        }
+
+        pub fn dotProduct(self: Self, other: Self) LargeFixType {
+            const self_large = self.toLargeSelf();
+            const other_large = other.toLargeSelf();
+            return self_large.x.mul(other_large.x)
+                .add(self_large.y.mul(other_large.y))
+                .add(self_large.z.mul(other_large.z));
+        }
+
+        pub fn crossProduct(self: Self, other: Self) Self {
+            const self_large = self.toLargeSelf();
+            const other_large = other.toLargeSelf();
+            return .{
+                .x = Convert.down(self_large.y.mul(other_large.z).sub(self_large.z.mul(other_large.y))),
+                .y = Convert.down(self_large.z.mul(other_large.x).sub(self_large.x.mul(other_large.z))),
+                .z = Convert.down(self_large.x.mul(other_large.y).sub(self_large.y.mul(other_large.x))),
+            };
+        }
+
+        pub fn negate(self: Self) Self {
+            return .{ .x = self.x.neg(), .y = self.y.neg(), .z = self.z.neg() };
+        }
+
+        pub fn rotate(self: Self, axis: Self, angle: FixType) Self {
+            const half_angle = angle.div(fp(2));
+            const half_angle_cos2 = half_angle.cos().mul(fp(2)).convertTo(Fix64);
+            const rescaled = axis.normalize().scale(half_angle.sin()).toLargeSelf();
+            const large_self = self.toLargeSelf();
+            const rescaled_x = rescaled.crossProduct(large_self);
+            const rescaled_x_scaled = rescaled_x.scale(half_angle_cos2);
+            const rescaled_x_x = rescaled.crossProduct(rescaled_x);
+            const two = LargeFixType.fp(2);
+            return .{
+                .x = Convert.down(large_self.x.add(rescaled_x_scaled.x).add(rescaled_x_x.x.mul(two))),
+                .y = Convert.down(large_self.y.add(rescaled_x_scaled.y).add(rescaled_x_x.y.mul(two))),
+                .z = Convert.down(large_self.z.add(rescaled_x_scaled.z).add(rescaled_x_x.z.mul(two))),
+            };
+        }
+
+        const Self = @This();
+        const LargeSelf = Vector3dCustom(LargeFixType, LargeFixType);
+
+        // Pick conversion functions to avoid unnecessary conversion errors at comptime.
+        const Convert = if (FixType == LargeFixType) struct {
+            pub fn up(value: FixType) LargeFixType {
+                return value;
+            }
+            pub fn down(value: LargeFixType) FixType {
+                return value;
+            }
+        } else struct {
+            pub fn up(value: FixType) LargeFixType {
+                return value.convertTo(LargeFixType);
+            }
+            pub fn down(value: LargeFixType) FixType {
+                return value.convertTo(FixType);
+            }
         };
-    }
 
-    pub fn scale(self: Vector3d, factor: Fix32) Vector3d {
-        return .{ .x = self.x.mul(factor), .y = self.y.mul(factor), .z = self.z.mul(factor) };
-    }
-
-    pub fn add(self: Vector3d, other: Vector3d) Vector3d {
-        return .{ .x = self.x.add(other.x), .y = self.y.add(other.y), .z = self.z.add(other.z) };
-    }
-
-    pub fn subtract(self: Vector3d, other: Vector3d) Vector3d {
-        return .{ .x = self.x.sub(other.x), .y = self.y.sub(other.y), .z = self.z.sub(other.z) };
-    }
-
-    pub fn length(self: Vector3d) Fix64 {
-        return self.lengthSquared().sqrt();
-    }
-
-    pub fn lengthSquared(self: Vector3d) Fix64 {
-        const self64 = self.toFix64Vector();
-        return self64.x.mul(self64.x).add(self64.y.mul(self64.y)).add(self64.z.mul(self64.z));
-    }
-
-    pub fn dotProduct(self: Vector3d, other: Vector3d) Fix64 {
-        const self64 = self.toFix64Vector();
-        const other64 = other.toFix64Vector();
-        return self64.x.mul(other64.x).add(self64.y.mul(other64.y)).add(self64.z.mul(other64.z));
-    }
-
-    pub fn crossProduct(self: Vector3d, other: Vector3d) Vector3d {
-        const self64 = self.toFix64Vector();
-        const other64 = other.toFix64Vector();
-        return .{
-            .x = self64.y.mul(other64.z).sub(self64.z.mul(other64.y)).convertTo(Fix32),
-            .y = self64.z.mul(other64.x).sub(self64.x.mul(other64.z)).convertTo(Fix32),
-            .z = self64.x.mul(other64.y).sub(self64.y.mul(other64.x)).convertTo(Fix32),
-        };
-    }
-
-    pub fn negate(self: Vector3d) Vector3d {
-        return .{ .x = self.x.neg(), .y = self.y.neg(), .z = self.z.neg() };
-    }
-
-    pub fn rotate(self: Vector3d, axis: Vector3d, angle: Fix32) Vector3d {
-        const half_angle = angle.div(fp(2));
-        const half_angle_cos2 = half_angle.cos().mul(fp(2)).convertTo(Fix64);
-        const rescaled = axis.normalize().scale(half_angle.sin());
-        const rescaled_x = rescaled.crossProduct(self);
-        const rescaled_x64 = rescaled_x.toFix64Vector();
-        const rescaled_x64_scaled = .{
-            .x = rescaled_x64.x.mul(half_angle_cos2),
-            .y = rescaled_x64.y.mul(half_angle_cos2),
-            .z = rescaled_x64.z.mul(half_angle_cos2),
-        };
-        const self64 = self.toFix64Vector();
-        const rescaled_x_x = rescaled.crossProduct(rescaled_x).toFix64Vector();
-        const two = fp64(2);
-        return .{
-            .x = self64.x.add(rescaled_x64_scaled.x).add(rescaled_x_x.x.mul(two)).convertTo(Fix32),
-            .y = self64.y.add(rescaled_x64_scaled.y).add(rescaled_x_x.y.mul(two)).convertTo(Fix32),
-            .z = self64.z.add(rescaled_x64_scaled.z).add(rescaled_x_x.z.mul(two)).convertTo(Fix32),
-        };
-    }
-
-    const Fix64Vector = struct { x: Fix64, y: Fix64, z: Fix64 };
-
-    fn toFix64Vector(self: Vector3d) Fix64Vector {
-        return .{
-            .x = self.x.convertTo(Fix64),
-            .y = self.y.convertTo(Fix64),
-            .z = self.z.convertTo(Fix64),
-        };
-    }
-};
+        fn toLargeSelf(self: Self) LargeSelf {
+            return .{ .x = Convert.up(self.x), .y = Convert.up(self.y), .z = Convert.up(self.z) };
+        }
+    };
+}
 
 pub const Vector3dF32 = struct {
     x: f32,
