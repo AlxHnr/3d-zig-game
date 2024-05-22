@@ -58,7 +58,7 @@ pub const State = struct {
         self: *State,
         map: *Map,
         mouse_ray: collision.Ray3d,
-        camera_direction: math.FlatVectorF32,
+        camera_direction: math.FlatVector,
     ) !void {
         switch (self.mode) {
             .insert_objects => {
@@ -152,7 +152,7 @@ pub const State = struct {
 
     const CurrentlyEditedObject = struct {
         object_id: u64,
-        start_position: math.FlatVectorF32,
+        start_position: math.FlatVector,
     };
 
     fn resetCurrentlyEditedObject(self: *State, map: *Map) !void {
@@ -166,28 +166,28 @@ pub const State = struct {
         self: *State,
         object_id_generator: *util.ObjectIdGenerator,
         map: *Map,
-        position: math.FlatVectorF32,
+        position: math.FlatVector,
         spritesheet: SpriteSheetTexture,
     ) !void {
         const object_type = &self.object_type_to_insert;
         const object_id = try switch (object_type.used_field) {
             .wall => map.geometry.addWall(
                 object_id_generator,
-                position.toFlatVector(),
-                position.toFlatVector(),
+                position,
+                position,
                 object_type.wall,
             ),
             .floor => map.geometry.addFloor(
                 object_id_generator,
-                position.toFlatVector(),
-                position.toFlatVector(),
+                position,
+                position,
                 fp(0),
                 object_type.floor,
             ),
             .billboard => map.geometry.addBillboardObject(
                 object_id_generator,
                 object_type.billboard,
-                position.toFlatVector(),
+                position,
                 spritesheet,
             ),
         };
@@ -201,8 +201,8 @@ pub const State = struct {
     fn updateCurrentlyInsertedObject(
         self: *State,
         map: *Map,
-        object_end_position: math.FlatVectorF32,
-        camera_direction: math.FlatVectorF32,
+        object_end_position: math.FlatVector,
+        camera_direction: math.FlatVector,
     ) !void {
         const object = self.currently_edited_object orelse return;
         switch (self.object_type_to_insert.used_field) {
@@ -210,32 +210,34 @@ pub const State = struct {
                 try map.geometry
                     .updateWall(
                     object.object_id,
-                    object.start_position.toFlatVector(),
-                    object_end_position.toFlatVector(),
+                    object.start_position,
+                    object_end_position,
                 );
             },
             .floor => {
                 const offset = object_end_position.subtract(object.start_position);
                 const camera_right_axis = camera_direction.rotateRightBy90Degrees();
-                const side_a_length = offset.projectOnto(camera_direction).length();
+                const side_a_length =
+                    offset.projectOnto(camera_direction).length().convertTo(math.Fix32);
                 const side_a_offset = camera_direction.normalize().scale(side_a_length);
-                const side_b_length = offset.projectOnto(camera_right_axis).length();
+                const side_b_length =
+                    offset.projectOnto(camera_right_axis).length().convertTo(math.Fix32);
 
                 var side_a_start = object.start_position;
                 var side_a_end = side_a_start.add(side_a_offset);
-                if (camera_direction.dotProduct(offset) < 0) {
+                if (camera_direction.dotProduct(offset).lt(fp64(0))) {
                     side_a_start = object.start_position.subtract(side_a_offset);
                     side_a_end = object.start_position;
                 }
-                if (camera_right_axis.dotProduct(offset) > 0) {
-                    std.mem.swap(math.FlatVectorF32, &side_a_start, &side_a_end);
+                if (camera_right_axis.dotProduct(offset).gt(fp64(0))) {
+                    std.mem.swap(math.FlatVector, &side_a_start, &side_a_end);
                 }
 
                 try map.geometry.updateFloor(
                     object.object_id,
-                    side_a_start.toFlatVector(),
-                    side_a_end.toFlatVector(),
-                    fp(side_b_length),
+                    side_a_start,
+                    side_a_end,
+                    side_b_length,
                 );
             },
             .billboard => {},
@@ -246,10 +248,10 @@ pub const State = struct {
 /// Reasonable distance to prevent placing/modifying objects too far away from the camera.
 const max_raycast_distance = fp64(500);
 
-fn cast3DRayToGround(ray: collision.Ray3d) ?math.FlatVectorF32 {
+fn cast3DRayToGround(ray: collision.Ray3d) ?math.FlatVector {
     if (ray.collidesWithGround()) |impact_point| {
         if (impact_point.distance_from_start_position.lte(max_raycast_distance)) {
-            return impact_point.position.toFlatVector().toFlatVectorF32();
+            return impact_point.position.toFlatVector();
         }
     }
     return null;

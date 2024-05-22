@@ -178,7 +178,7 @@ const ProgramContext = struct {
         try self.edit_mode_state.updateCurrentActionTarget(
             self.game_context.getMutableMap(),
             ray,
-            self.game_context.getCameraDirection().toFlatVector(),
+            self.game_context.getCameraDirection().toFlatVector().toFlatVector(),
         );
 
         var event: sdl.SDL_Event = undefined;
