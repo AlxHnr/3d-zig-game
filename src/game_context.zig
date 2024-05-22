@@ -81,7 +81,7 @@ pub const Context = struct {
             };
             _ = try shared_context.enemy_collection.insert(
                 Enemy.create(position, &enemy_presets.floating_eye, spritesheet),
-                position.toFlatVectorF32(),
+                position,
             );
         }
 
@@ -338,19 +338,14 @@ pub const Context = struct {
             for (context.enemies.insertion_queue.items) |enemy| {
                 _ = try self.shared_context.enemy_collection.insert(
                     enemy,
-                    enemy.character.moving_circle.getPosition().toFlatVectorF32(),
+                    enemy.character.moving_circle.getPosition(),
                 );
             }
             for (context.enemies.attacking_positions.items) |attacking_enemy| {
-                const bounding_box = Enemy.makeSpacingBoundaries(attacking_enemy.position)
-                    .getOuterBoundingBoxInGameCoordinates();
-                const bounding_boxF32 = .{
-                    .min = bounding_box.min.toFlatVectorF32(),
-                    .max = bounding_box.max.toFlatVectorF32(),
-                };
                 try attacking_enemy_positions_at_previous_tick.insertIntoArea(
                     attacking_enemy,
-                    bounding_boxF32,
+                    Enemy.makeSpacingBoundaries(attacking_enemy.position)
+                        .getOuterBoundingBoxInGameCoordinates(),
                 );
             }
             for (context.gems.removal_queue.items) |object_handle| {
@@ -422,11 +417,11 @@ pub const Context = struct {
         var enemy_iterator = cell_group.cell.iterator();
         while (enemy_iterator.next()) |enemy_ptr| {
             const old_cell_index = self.shared_context.enemy_collection.getCellIndex(
-                enemy_ptr.character.moving_circle.getPosition().toFlatVectorF32(),
+                enemy_ptr.character.moving_circle.getPosition(),
             );
             enemy_ptr.processElapsedTick(tick_context);
             const new_cell_index = self.shared_context.enemy_collection.getCellIndex(
-                enemy_ptr.character.moving_circle.getPosition().toFlatVectorF32(),
+                enemy_ptr.character.moving_circle.getPosition(),
             );
 
             if (enemy_ptr.state == .dead) {

@@ -1,12 +1,7 @@
-const FlatVectorF32 = @import("../math.zig").FlatVectorF32;
+const FlatVector = @import("../math.zig").FlatVector;
 const Order = @import("std").math.Order;
 const assert = @import("std").debug.assert;
-
-const math = @import("../math.zig");
-pub const AxisAlignedBoundingBox = struct {
-    min: math.FlatVectorF32,
-    max: math.FlatVectorF32,
-};
+const fp = @import("../math.zig").Fix32.fp;
 
 /// Takes the side length of a square cell specified in game units.
 pub fn Index(comptime cell_side_length: u32) type {
@@ -20,10 +15,10 @@ pub fn Index(comptime cell_side_length: u32) type {
 
         const Self = @This();
 
-        pub fn fromPosition(position: FlatVectorF32) Self {
+        pub fn fromPosition(position: FlatVector) Self {
             return Self{
-                .x = @intFromFloat(position.x / @as(f32, @floatFromInt(cell_side_length))),
-                .z = @intFromFloat(position.z / @as(f32, @floatFromInt(cell_side_length))),
+                .x = position.x.div(fp(cell_side_length)).convertTo(i16),
+                .z = position.z.div(fp(cell_side_length)).convertTo(i16),
             };
         }
 

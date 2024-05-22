@@ -1,4 +1,4 @@
-const AxisAlignedBoundingBox = @import("cell_index.zig").AxisAlignedBoundingBox;
+const AxisAlignedBoundingBox = @import("../collision.zig").AxisAlignedBoundingBox;
 const assert = @import("std").debug.assert;
 const cell_index = @import("cell_index.zig");
 const getOverlap = @import("../math.zig").getOverlap;

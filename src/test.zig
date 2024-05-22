@@ -728,7 +728,9 @@ test "UnorderedCollection: extra functions" {
 }
 
 test "CellIndex" {
-    const index = CellIndex.fromPosition(.{ .x = 23.89, .z = -34.54 });
+    const fp = math.Fix32.fp;
+
+    const index = CellIndex.fromPosition(.{ .x = fp(23.89), .z = fp(-34.54) });
     try expect(index.x == 3);
     try expect(index.z == -4);
 }
@@ -908,41 +910,68 @@ test "CellRange.iterator(): overlaps" {
 }
 
 test "SpatialGrid: insert and destroy" {
+    const fp = math.Fix32.fp;
+
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    _ = try grid.insertIntoArea(19, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
-    _ = try grid.insertIntoArea(20, .{ .min = .{ .x = 1, .z = 1 }, .max = .{ .x = 20, .z = 20 } });
+    _ = try grid.insertIntoArea(19, .{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(14), .z = fp(84) },
+    });
+    _ = try grid.insertIntoArea(20, .{
+        .min = .{ .x = fp(1), .z = fp(1) },
+        .max = .{ .x = fp(20), .z = fp(20) },
+    });
 }
 
 test "SpatialGrid: insert and remove" {
+    const fp = math.Fix32.fp;
+
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    var handle_12 =
-        try grid.insertIntoArea(99, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 14 } });
+    var handle_12 = try grid.insertIntoArea(99, .{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(14), .z = fp(14) },
+    });
     grid.remove(handle_12);
 
-    const handle_11 =
-        try grid.insertIntoArea(19, .{ .min = .{ .x = -40, .z = 20 }, .max = .{ .x = 14, .z = 84 } });
-    handle_12 =
-        try grid.insertIntoArea(20, .{ .min = .{ .x = -10, .z = 0 }, .max = .{ .x = -1, .z = 3 } });
-    const handle_34 =
-        try grid.insertIntoArea(21, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 23, .z = 32 } });
+    const handle_11 = try grid.insertIntoArea(19, .{
+        .min = .{ .x = fp(-40), .z = fp(20) },
+        .max = .{ .x = fp(14), .z = fp(84) },
+    });
+    handle_12 = try grid.insertIntoArea(20, .{
+        .min = .{ .x = fp(-10), .z = fp(0) },
+        .max = .{ .x = fp(-1), .z = fp(3) },
+    });
+    const handle_34 = try grid.insertIntoArea(21, .{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(23), .z = fp(32) },
+    });
     grid.remove(handle_12);
     grid.remove(handle_34);
     grid.remove(handle_11);
 }
 
 test "SpatialGrid: insert and remove: update displaced object ids" {
+    const fp = math.Fix32.fp;
+
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    const handle_11 =
-        try grid.insertIntoArea(19, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
-    const handle_12 =
-        try grid.insertIntoArea(20, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
-    _ = try grid.insertIntoArea(21, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } });
+    const handle_11 = try grid.insertIntoArea(19, .{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(100), .z = fp(100) },
+    });
+    const handle_12 = try grid.insertIntoArea(20, .{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(100), .z = fp(100) },
+    });
+    _ = try grid.insertIntoArea(21, .{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(100), .z = fp(100) },
+    });
     grid.remove(handle_12);
     grid.remove(handle_11);
 }
@@ -959,16 +988,20 @@ fn testAreaIterator(
 }
 
 test "SpatialGrid: const iterator: basic usage" {
+    const fp = math.Fix32.fp;
+
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    const range = .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 100, .z = 100 } };
+    const range = .{ .min = .{ .x = fp(0), .z = fp(0) }, .max = .{ .x = fp(100), .z = fp(100) } };
 
     var iterator = grid.areaIterator(range);
     try expect(iterator.next() == null);
 
-    const handle_11 =
-        try grid.insertIntoArea(19, .{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 14, .z = 84 } });
+    const handle_11 = try grid.insertIntoArea(19, .{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(14), .z = fp(84) },
+    });
     iterator = grid.areaIterator(range);
     try testAreaIterator(&iterator, &[_]usize{
         19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19,
@@ -981,19 +1014,21 @@ test "SpatialGrid: const iterator: basic usage" {
 }
 
 test "SpatialGrid: const iterator: region queries" {
+    const fp = math.Fix32.fp;
+
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
     const handles = .{
-        try grid.insertIntoArea(1, .{ .min = .{ .x = -160, .z = -190 }, .max = .{ .x = -70, .z = -30 } }),
-        try grid.insertIntoArea(2, .{ .min = .{ .x = -120, .z = 70 }, .max = .{ .x = -10, .z = 130 } }),
-        try grid.insertIntoArea(3, .{ .min = .{ .x = 20, .z = 70 }, .max = .{ .x = 80, .z = 130 } }),
-        try grid.insertIntoArea(4, .{ .min = .{ .x = 70, .z = 20 }, .max = .{ .x = 130, .z = 70 } }),
-        try grid.insertIntoArea(5, .{ .min = .{ .x = 80, .z = -130 }, .max = .{ .x = 130, .z = -10 } }),
-        try grid.insertIntoArea(6, .{ .min = .{ .x = 30, .z = -130 }, .max = .{ .x = 130, .z = -10 } }),
+        try grid.insertIntoArea(1, .{ .min = .{ .x = fp(-160), .z = fp(-190) }, .max = .{ .x = fp(-70), .z = fp(-30) } }),
+        try grid.insertIntoArea(2, .{ .min = .{ .x = fp(-120), .z = fp(70) }, .max = .{ .x = fp(-10), .z = fp(130) } }),
+        try grid.insertIntoArea(3, .{ .min = .{ .x = fp(20), .z = fp(70) }, .max = .{ .x = fp(80), .z = fp(130) } }),
+        try grid.insertIntoArea(4, .{ .min = .{ .x = fp(70), .z = fp(20) }, .max = .{ .x = fp(130), .z = fp(70) } }),
+        try grid.insertIntoArea(5, .{ .min = .{ .x = fp(80), .z = fp(-130) }, .max = .{ .x = fp(130), .z = fp(-10) } }),
+        try grid.insertIntoArea(6, .{ .min = .{ .x = fp(30), .z = fp(-130) }, .max = .{ .x = fp(130), .z = fp(-10) } }),
     };
 
-    const range = .{ .min = .{ .x = -70, .z = -30 }, .max = .{ .x = 90, .z = 90 } };
+    const range = .{ .min = .{ .x = fp(-70), .z = fp(-30) }, .max = .{ .x = fp(90), .z = fp(90) } };
     var iterator = grid.areaIterator(range);
     try testAreaIterator(&iterator, &[_]usize{
         1, 6, 6, 6, 6, 6, 6, 6, 5, 6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 5, 6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 5,
@@ -1013,7 +1048,9 @@ test "SpatialGrid: const iterator: region queries" {
         3, 3, 3, 3, 3,
     });
 
-    iterator = grid.areaIterator(.{ .min = .{ .x = 0, .z = 0 }, .max = .{ .x = 0, .z = 0 } });
+    iterator = grid.areaIterator(
+        .{ .min = .{ .x = fp(0), .z = fp(0) }, .max = .{ .x = fp(0), .z = fp(0) } },
+    );
     try expect(iterator.next() == null);
 
     grid.remove(handles[0]);
@@ -1026,17 +1063,19 @@ test "SpatialGrid: const iterator: region queries" {
 }
 
 test "SpatialCollection: iterator" {
+    const fp = math.Fix32.fp;
+
     var collection = SpatialCollection.create(std.testing.allocator);
     defer collection.destroy();
 
     const handles = .{
-        try collection.insert(1, .{ .x = -160, .z = -190 }),
-        try collection.insert(2, .{ .x = -120, .z = 70 }),
-        try collection.insert(3, .{ .x = 20, .z = 70 }),
-        try collection.insert(4, .{ .x = 70, .z = 20 }),
-        try collection.insert(5, .{ .x = 80, .z = -130 }),
-        try collection.insert(6, .{ .x = 20, .z = -130 }),
-        try collection.insert(7, .{ .x = 20, .z = -130 }),
+        try collection.insert(1, .{ .x = fp(-160), .z = fp(-190) }),
+        try collection.insert(2, .{ .x = fp(-120), .z = fp(70) }),
+        try collection.insert(3, .{ .x = fp(20), .z = fp(70) }),
+        try collection.insert(4, .{ .x = fp(70), .z = fp(20) }),
+        try collection.insert(5, .{ .x = fp(80), .z = fp(-130) }),
+        try collection.insert(6, .{ .x = fp(20), .z = fp(-130) }),
+        try collection.insert(7, .{ .x = fp(20), .z = fp(-130) }),
     };
 
     var iterator = collection.iterator();
@@ -1070,16 +1109,18 @@ test "SpatialCollection: iterator" {
 }
 
 test "SpatialCollection: iterator: skip cells" {
+    const fp = math.Fix32.fp;
+
     var collection = SpatialCollection.create(std.testing.allocator);
     defer collection.destroy();
 
-    _ = try collection.insert(1, .{ .x = -160, .z = -190 });
-    _ = try collection.insert(2, .{ .x = -120, .z = 70 });
-    _ = try collection.insert(3, .{ .x = 20, .z = 70 });
-    _ = try collection.insert(4, .{ .x = 70, .z = 20 });
-    _ = try collection.insert(5, .{ .x = 80, .z = -130 });
-    _ = try collection.insert(6, .{ .x = 20, .z = -130 });
-    _ = try collection.insert(7, .{ .x = 20, .z = -130 });
+    _ = try collection.insert(1, .{ .x = fp(-160), .z = fp(-190) });
+    _ = try collection.insert(2, .{ .x = fp(-120), .z = fp(70) });
+    _ = try collection.insert(3, .{ .x = fp(20), .z = fp(70) });
+    _ = try collection.insert(4, .{ .x = fp(70), .z = fp(20) });
+    _ = try collection.insert(5, .{ .x = fp(80), .z = fp(-130) });
+    _ = try collection.insert(6, .{ .x = fp(20), .z = fp(-130) });
+    _ = try collection.insert(7, .{ .x = fp(20), .z = fp(-130) });
 
     var iterator = collection.iteratorAdvanced(4, 0);
     try expect(iterator.next().?.* == 2);
@@ -1109,16 +1150,18 @@ test "SpatialCollection: iterator: skip cells" {
 }
 
 test "SpatialCollection: update displaced back references" {
+    const fp = math.Fix32.fp;
+
     var collection = SpatialCollection.create(std.testing.allocator);
     defer collection.destroy();
 
     const handles = .{
-        try collection.insert(0, .{ .x = 0, .z = 10 }),
-        try collection.insert(1, .{ .x = 0, .z = 10 }),
-        try collection.insert(2, .{ .x = 0, .z = 10 }),
+        try collection.insert(0, .{ .x = fp(0), .z = fp(10) }),
+        try collection.insert(1, .{ .x = fp(0), .z = fp(10) }),
+        try collection.insert(2, .{ .x = fp(0), .z = fp(10) }),
     };
     collection.remove(handles[0]);
-    _ = try collection.insert(3, .{ .x = 0, .z = 10 });
+    _ = try collection.insert(3, .{ .x = fp(0), .z = fp(10) });
     collection.remove(handles[2]);
 
     var iterator = collection.iterator();
@@ -1141,18 +1184,28 @@ fn testCellLineIterator(
 }
 
 test "Cell line iterator" {
+    const fp = math.Fix32.fp;
+
     const cell_size = 5;
     const CellType = CellIndexType(cell_size);
 
-    var iterator = cellLineIterator(CellType, .{ .x = 3, .z = -3 }, .{ .x = 3, .z = -3 });
+    var iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(3), .z = fp(-3) },
+        .{ .x = fp(3), .z = fp(-3) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{.{ .x = 0, .z = 0 }});
 
-    iterator = cellLineIterator(CellType, .{ .x = 5, .z = 5 }, .{ .x = 0, .z = 5 });
+    iterator = cellLineIterator(CellType, .{ .x = fp(5), .z = fp(5) }, .{ .x = fp(0), .z = fp(5) });
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = 1, .z = 1 }, .{ .x = 0, .z = 1 },
     });
 
-    iterator = cellLineIterator(CellType, .{ .x = 3, .z = -3 }, .{ .x = 70, .z = -9 });
+    iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(3), .z = fp(-3) },
+        .{ .x = fp(70), .z = fp(-9) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = 0, .z = 0 },   .{ .x = 1, .z = 0 },   .{ .x = 2, .z = 0 },
         .{ .x = 3, .z = 0 },   .{ .x = 4, .z = 0 },   .{ .x = 5, .z = 0 },
@@ -1162,7 +1215,11 @@ test "Cell line iterator" {
         .{ .x = 14, .z = -1 },
     });
 
-    iterator = cellLineIterator(CellType, .{ .x = 3, .z = -3 }, .{ .x = 43, .z = -11 });
+    iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(3), .z = fp(-3) },
+        .{ .x = fp(43), .z = fp(-11) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = 0, .z = 0 },  .{ .x = 1, .z = 0 },  .{ .x = 2, .z = 0 },
         .{ .x = 2, .z = -1 }, .{ .x = 3, .z = -1 }, .{ .x = 4, .z = -1 },
@@ -1171,7 +1228,11 @@ test "Cell line iterator" {
     });
 
     // Previous test in reverse direction.
-    iterator = cellLineIterator(CellType, .{ .x = 43, .z = -11 }, .{ .x = 3, .z = -3 });
+    iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(43), .z = fp(-11) },
+        .{ .x = fp(3), .z = fp(-3) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = 8, .z = -2 }, .{ .x = 7, .z = -2 }, .{ .x = 7, .z = -1 },
         .{ .x = 6, .z = -1 }, .{ .x = 5, .z = -1 }, .{ .x = 4, .z = -1 },
@@ -1180,36 +1241,60 @@ test "Cell line iterator" {
     });
 
     // 3x3 diagonal traversal in all directions.
-    iterator = cellLineIterator(CellType, .{ .x = 15, .z = 15 }, .{ .x = 25, .z = 25 });
+    iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(15), .z = fp(15) },
+        .{ .x = fp(25), .z = fp(25) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = 3, .z = 3 }, .{ .x = 4, .z = 3 }, .{ .x = 4, .z = 4 },
         .{ .x = 5, .z = 4 }, .{ .x = 5, .z = 5 },
     });
-    iterator = cellLineIterator(CellType, .{ .x = 25, .z = 25 }, .{ .x = 15, .z = 15 });
+    iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(25), .z = fp(25) },
+        .{ .x = fp(15), .z = fp(15) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = 5, .z = 5 }, .{ .x = 4, .z = 5 }, .{ .x = 4, .z = 4 },
         .{ .x = 3, .z = 4 }, .{ .x = 3, .z = 3 },
     });
-    iterator = cellLineIterator(CellType, .{ .x = 25, .z = 15 }, .{ .x = 15, .z = 25 });
+    iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(25), .z = fp(15) },
+        .{ .x = fp(15), .z = fp(25) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
-        .{ .x = 5, .z = 3 }, .{ .x = 4, .z = 3 }, .{ .x = 4, .z = 4 },
-        .{ .x = 3, .z = 4 }, .{ .x = 3, .z = 5 },
+        .{ .x = 5, .z = 3 }, .{ .x = 5, .z = 4 }, .{ .x = 4, .z = 4 },
+        .{ .x = 4, .z = 5 }, .{ .x = 3, .z = 5 },
     });
-    iterator = cellLineIterator(CellType, .{ .x = 15, .z = 25 }, .{ .x = 25, .z = 15 });
+    iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(15), .z = fp(25) },
+        .{ .x = fp(25), .z = fp(15) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = 3, .z = 5 }, .{ .x = 4, .z = 5 }, .{ .x = 4, .z = 4 },
         .{ .x = 5, .z = 4 }, .{ .x = 5, .z = 3 },
     });
 
     // 3x4 diagonal traversal.
-    iterator = cellLineIterator(CellType, .{ .x = 15, .z = 15 }, .{ .x = 25, .z = 30 });
+    iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(15), .z = fp(15) },
+        .{ .x = fp(25), .z = fp(30) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = 3, .z = 3 }, .{ .x = 3, .z = 4 }, .{ .x = 4, .z = 4 },
         .{ .x = 4, .z = 5 }, .{ .x = 5, .z = 5 }, .{ .x = 5, .z = 6 },
     });
 
     // Long line downwards.
-    iterator = cellLineIterator(CellType, .{ .x = -6, .z = -3 }, .{ .x = -10.001, .z = 46 });
+    iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(-6), .z = fp(-3) },
+        .{ .x = fp(-10.001), .z = fp(46) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = -1, .z = 0 }, .{ .x = -1, .z = 1 }, .{ .x = -1, .z = 2 },
         .{ .x = -1, .z = 3 }, .{ .x = -1, .z = 4 }, .{ .x = -1, .z = 5 },
@@ -1217,7 +1302,11 @@ test "Cell line iterator" {
         .{ .x = -1, .z = 9 }, .{ .x = -1, .z = 9 }, .{ .x = -2, .z = 9 },
     });
     // Long line upwards.
-    iterator = cellLineIterator(CellType, .{ .x = -10.001, .z = 46 }, .{ .x = -6, .z = -3 });
+    iterator = cellLineIterator(
+        CellType,
+        .{ .x = fp(-10.001), .z = fp(46) },
+        .{ .x = fp(-6), .z = fp(-3) },
+    );
     try testCellLineIterator(cell_size, &iterator, &[_]CellType{
         .{ .x = -2, .z = 9 }, .{ .x = -1, .z = 9 }, .{ .x = -1, .z = 8 },
         .{ .x = -1, .z = 7 }, .{ .x = -1, .z = 6 }, .{ .x = -1, .z = 5 },
@@ -1227,53 +1316,55 @@ test "Cell line iterator" {
 }
 
 test "SpatialGrid: const straight line iterator" {
+    const fp = math.Fix32.fp;
+
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    const factor = @as(f32, @floatFromInt(grid_cell_side_length)) * 0.4;
+    const factor = fp(grid_cell_side_length).mul(fp(0.4));
     _ = try grid.insertIntoArea(1, .{
-        .min = .{ .x = -16 * factor, .z = -19 * factor },
-        .max = .{ .x = -7 * factor, .z = -3 * factor },
+        .min = .{ .x = fp(-16).mul(factor), .z = fp(-19).mul(factor) },
+        .max = .{ .x = fp(-7).mul(factor), .z = fp(-3).mul(factor) },
     });
     _ = try grid.insertIntoArea(2, .{
-        .min = .{ .x = -12 * factor, .z = 7 * factor },
-        .max = .{ .x = -1 * factor, .z = 13 * factor },
+        .min = .{ .x = fp(-12).mul(factor), .z = fp(7).mul(factor) },
+        .max = .{ .x = fp(-1).mul(factor), .z = fp(13).mul(factor) },
     });
     _ = try grid.insertIntoArea(3, .{
-        .min = .{ .x = 2 * factor, .z = 7 * factor },
-        .max = .{ .x = 8 * factor, .z = 13 * factor },
+        .min = .{ .x = fp(2).mul(factor), .z = fp(7).mul(factor) },
+        .max = .{ .x = fp(8).mul(factor), .z = fp(13).mul(factor) },
     });
     _ = try grid.insertIntoArea(4, .{
-        .min = .{ .x = 7 * factor, .z = 2 * factor },
-        .max = .{ .x = 13 * factor, .z = 7 * factor },
+        .min = .{ .x = fp(7).mul(factor), .z = fp(2).mul(factor) },
+        .max = .{ .x = fp(13).mul(factor), .z = fp(7).mul(factor) },
     });
     _ = try grid.insertIntoArea(5, .{
-        .min = .{ .x = 8 * factor, .z = -13 * factor },
-        .max = .{ .x = 13 * factor, .z = -1 * factor },
+        .min = .{ .x = fp(8).mul(factor), .z = fp(-13).mul(factor) },
+        .max = .{ .x = fp(13).mul(factor), .z = fp(-1).mul(factor) },
     });
     _ = try grid.insertIntoArea(6, .{
-        .min = .{ .x = 3 * factor, .z = -13 * factor },
-        .max = .{ .x = 13 * factor, .z = -1 * factor },
+        .min = .{ .x = fp(3).mul(factor), .z = fp(-13).mul(factor) },
+        .max = .{ .x = fp(13).mul(factor), .z = fp(-1).mul(factor) },
     });
     _ = try grid.insertIntoArea(7, .{
-        .min = .{ .x = 3 * factor, .z = -13 * factor },
-        .max = .{ .x = 13 * factor, .z = -1 * factor },
+        .min = .{ .x = fp(3).mul(factor), .z = fp(-13).mul(factor) },
+        .max = .{ .x = fp(13).mul(factor), .z = fp(-1).mul(factor) },
     });
 
     var iterator = grid.straightLineIterator(
-        .{ .x = 0 * factor, .z = 0 * factor },
-        .{ .x = 0 * factor, .z = 0 * factor },
+        .{ .x = fp(0).mul(factor), .z = fp(0).mul(factor) },
+        .{ .x = fp(0).mul(factor), .z = fp(0).mul(factor) },
     );
     try expect(iterator.next() == null);
     iterator = grid.straightLineIterator(
-        .{ .x = -7000 * factor, .z = 3000 * factor },
-        .{ .x = -7000 * factor, .z = 3000 * factor },
+        .{ .x = fp(-7000).mul(factor), .z = fp(3000).mul(factor) },
+        .{ .x = fp(-7000).mul(factor), .z = fp(3000).mul(factor) },
     );
     try expect(iterator.next() == null);
 
     iterator = grid.straightLineIterator(
-        .{ .x = -9 * factor, .z = -4.5 * factor },
-        .{ .x = 12 * factor, .z = 10 * factor },
+        .{ .x = fp(-9).mul(factor), .z = fp(-4.5).mul(factor) },
+        .{ .x = fp(12).mul(factor), .z = fp(10).mul(factor) },
     );
     try expect(iterator.next().? == 1);
     try expect(iterator.next().? == 1);
@@ -1285,8 +1376,8 @@ test "SpatialGrid: const straight line iterator" {
     try expect(iterator.next() == null);
 
     iterator = grid.straightLineIterator(
-        .{ .x = -2 * factor, .z = -2 * factor },
-        .{ .x = 12 * factor, .z = 15 * factor },
+        .{ .x = fp(-2).mul(factor), .z = fp(-2).mul(factor) },
+        .{ .x = fp(12).mul(factor), .z = fp(15).mul(factor) },
     );
     try expect(iterator.next().? == 3);
     try expect(iterator.next().? == 3);
@@ -1297,8 +1388,8 @@ test "SpatialGrid: const straight line iterator" {
     try expect(iterator.next() == null);
 
     iterator = grid.straightLineIterator(
-        .{ .x = -7 * factor, .z = 7 * factor },
-        .{ .x = 3 * factor, .z = -1 * factor },
+        .{ .x = fp(-7).mul(factor), .z = fp(7).mul(factor) },
+        .{ .x = fp(3).mul(factor), .z = fp(-1).mul(factor) },
     );
     try expect(iterator.next().? == 2);
     try expect(iterator.next().? == 2);
@@ -1307,8 +1398,8 @@ test "SpatialGrid: const straight line iterator" {
     try expect(iterator.next() == null);
 
     iterator = grid.straightLineIterator(
-        .{ .x = 0 * factor, .z = 0 * factor },
-        .{ .x = 3 * factor, .z = -1 * factor },
+        .{ .x = fp(0).mul(factor), .z = fp(0).mul(factor) },
+        .{ .x = fp(3).mul(factor), .z = fp(-1).mul(factor) },
     );
     try expect(iterator.next().? == 6);
     try expect(iterator.next().? == 7);

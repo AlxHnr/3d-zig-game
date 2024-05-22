@@ -411,13 +411,8 @@ const AttackingState = struct {
             .radius = Enemy.peer_overlap_radius,
         };
         const direction = enemy.character.moving_circle.velocity.normalize();
-        const bounding_box = circle.getOuterBoundingBoxInGameCoordinates();
-        const bounding_boxF32 = .{
-            .min = bounding_box.min.toFlatVectorF32(),
-            .max = bounding_box.max.toFlatVectorF32(),
-        };
         var iterator = context.attacking_enemy_positions_at_previous_tick.areaIterator(
-            bounding_boxF32,
+            circle.getOuterBoundingBoxInGameCoordinates(),
         );
         var combined_displacement_vector = math.FlatVector.zero;
         var friction_factor = fp(1);

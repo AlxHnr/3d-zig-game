@@ -1,5 +1,5 @@
-const AxisAlignedBoundingBox = @import("cell_index.zig").AxisAlignedBoundingBox;
-const FlatVectorF32 = @import("../math.zig").FlatVectorF32;
+const AxisAlignedBoundingBox = @import("../collision.zig").AxisAlignedBoundingBox;
+const FlatVector = @import("../math.zig").FlatVector;
 const UnorderedCollection = @import("../unordered_collection.zig").UnorderedCollection;
 const cell_line_iterator = @import("cell_line_iterator.zig");
 const std = @import("std");
@@ -77,7 +77,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
             pub fn insertIntoPolygonBorders(
                 self: *Self,
                 object: T,
-                polygon_vertices: []const FlatVectorF32,
+                polygon_vertices: []const FlatVector,
             ) !void {
                 var indices = try getPolygonIndices(self.allocator, polygon_vertices);
                 defer indices.deinit();
@@ -132,7 +132,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
             pub fn insertIntoPolygonBorders(
                 self: *Self,
                 object: T,
-                polygon_vertices: []const FlatVectorF32,
+                polygon_vertices: []const FlatVector,
             ) !*ObjectHandle {
                 var indices = try getPolygonIndices(self.allocator, polygon_vertices);
                 defer indices.deinit();
@@ -243,8 +243,8 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
         /// may be visited multiple times. Will be invalidated by updates to the grid.
         pub fn straightLineIterator(
             self: *const Self,
-            line_start: FlatVectorF32,
-            line_end: FlatVectorF32,
+            line_start: FlatVector,
+            line_end: FlatVector,
         ) ConstStraightLineIterator {
             return .{
                 .cells = &self.cells,
@@ -259,7 +259,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
 
         fn getPolygonIndices(
             allocator: std.mem.Allocator,
-            vertices: []const FlatVectorF32,
+            vertices: []const FlatVector,
         ) !std.AutoHashMap(CellIndex, void) {
             var indices = std.AutoHashMap(CellIndex, void).init(allocator);
             errdefer indices.deinit();

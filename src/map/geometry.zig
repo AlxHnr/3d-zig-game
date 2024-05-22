@@ -592,12 +592,7 @@ pub fn collidesWithCircle(
         &self.spatial_wall_index.all;
 
     // Move displaced_circle out of all walls.
-    const bounding_box = circle.getOuterBoundingBoxInGameCoordinates();
-    const bounding_boxF32 = .{
-        .min = bounding_box.min.toFlatVectorF32(),
-        .max = bounding_box.max.toFlatVectorF32(),
-    };
-    var iterator = spatial_index.areaIterator(bounding_boxF32);
+    var iterator = spatial_index.areaIterator(circle.getOuterBoundingBoxInGameCoordinates());
     while (iterator.next()) |boundaries| {
         if (displaced_circle.collidesWithRectangle(boundaries)) |displacement_vector| {
             displaced_circle.position = displaced_circle.position.add(displacement_vector);
@@ -613,10 +608,7 @@ pub fn collidesWithCircle(
 
 /// Check if two points are separated by a solid wall. Fences are not solid.
 pub fn isSolidWallBetweenPoints(self: Geometry, a: math.FlatVector, b: math.FlatVector) bool {
-    var iterator = self.spatial_wall_index.solid.straightLineIterator(
-        a.toFlatVectorF32(),
-        b.toFlatVectorF32(),
-    );
+    var iterator = self.spatial_wall_index.solid.straightLineIterator(a, b);
     while (iterator.next()) |boundaries| {
         if (boundaries.collidesWithLine(a, b)) {
             return true;
@@ -748,16 +740,9 @@ fn updateCache(self: *Geometry) !void {
 }
 
 fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !*SpatialGrid.ObjectHandle {
-    const boundaries = wall.boundaries.getCornersInGameCoordinates();
-    const boundariesF32 = .{
-        boundaries[0].toFlatVectorF32(),
-        boundaries[1].toFlatVectorF32(),
-        boundaries[2].toFlatVectorF32(),
-        boundaries[3].toFlatVectorF32(),
-    };
     return try grid.insertIntoPolygonBorders(
         wall.boundaries,
-        &boundariesF32,
+        &wall.boundaries.getCornersInGameCoordinates(),
     );
 }
 
@@ -1338,7 +1323,7 @@ const ObstacleGrid = struct {
             return .none;
         }
         const index = self.getIndex(
-            CellIndex.fromPosition(position.subtract(self.map_boundaries.min).toFlatVectorF32()),
+            CellIndex.fromPosition(position.subtract(self.map_boundaries.min)),
         );
         return self.grid[index];
     }
@@ -1363,7 +1348,7 @@ const ObstacleGrid = struct {
         start: math.FlatVector,
         end: math.FlatVector,
     ) void {
-        var iterator = cell_line_iterator(CellIndex, start.toFlatVectorF32(), end.toFlatVectorF32());
+        var iterator = cell_line_iterator(CellIndex, start, end);
         while (iterator.next()) |cell_index| {
             const index = self.getIndex(cell_index);
             if (self.grid[index] != .obstacle_solid) {
@@ -1391,10 +1376,10 @@ const ObstacleGrid = struct {
         z: isize,
         pub const side_length = obstacle_grid_cell_size;
 
-        pub fn fromPosition(position: math.FlatVectorF32) CellIndex {
+        pub fn fromPosition(position: math.FlatVector) CellIndex {
             return .{
-                .x = @intFromFloat(position.x / @as(f32, @floatFromInt(side_length))),
-                .z = @intFromFloat(position.z / @as(f32, @floatFromInt(side_length))),
+                .x = position.x.div(fp(side_length)).convertTo(isize),
+                .z = position.z.div(fp(side_length)).convertTo(isize),
             };
         }
     };

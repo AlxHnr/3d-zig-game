@@ -1,35 +1,33 @@
+const fp = math.Fix32.fp;
+const fp64 = math.Fix64.fp;
 const math = @import("../math.zig");
 const std = @import("std");
 
 /// Visits all cells trough which the specified line passes.
 pub fn iterator(
     comptime CellIndex: type,
-    line_start: math.FlatVectorF32,
-    line_end: math.FlatVectorF32,
+    line_start: math.FlatVector,
+    line_end: math.FlatVector,
 ) Iterator(CellIndex) {
-    const f32_max = std.math.floatMax(f32);
-
     // Adapted from https://lodev.org/cgtutor/raycasting.html
     const direction = line_end.subtract(line_start).normalize();
     const step_lengths_to_next_axis = .{
-        .x = if (@abs(direction.x) < math.epsilon) f32_max else @abs(1 / direction.x),
-        .z = if (@abs(direction.z) < math.epsilon) f32_max else @abs(1 / direction.z),
+        .x = getStepLengthToNextAxis(direction.x),
+        .z = getStepLengthToNextAxis(direction.z),
     };
-    const start = line_start.scale(1 / @as(f32, @floatFromInt(CellIndex.side_length)));
-    const wrapped = .{ .x = @mod(start.x, 1), .z = @mod(start.z, 1) };
+    const start = line_start.scale(fp(1).div(fp(CellIndex.side_length)));
+    const wrapped = .{ .x = start.x.mod(fp(1)), .z = start.z.mod(fp(1)) };
     const distance_to_next_axis = .{
-        .x = step_lengths_to_next_axis.x *
-            if (direction.x < 0 and wrapped.x > math.epsilon) wrapped.x else 1 - wrapped.x,
-        .z = step_lengths_to_next_axis.z *
-            if (direction.z < 0 and wrapped.z > math.epsilon) wrapped.z else 1 - wrapped.z,
+        .x = getDistanceToNextAxis(step_lengths_to_next_axis.x, direction.x, wrapped.x),
+        .z = getDistanceToNextAxis(step_lengths_to_next_axis.z, direction.z, wrapped.z),
     };
 
     return .{
         .current = CellIndex.fromPosition(line_start),
         .last = CellIndex.fromPosition(line_end),
         .step = .{
-            .x = if (direction.x < 0) -1 else 1,
-            .z = if (direction.z < 0) -1 else 1,
+            .x = if (direction.x.lt(fp(0))) -1 else 1,
+            .z = if (direction.z.lt(fp(0))) -1 else 1,
         },
         .step_lengths_to_next_axis = step_lengths_to_next_axis,
         .distance_to_next_axis = distance_to_next_axis,
@@ -41,8 +39,8 @@ pub fn Iterator(comptime CellIndex: type) type {
         current: CellIndex,
         last: CellIndex,
         step: struct { x: i2, z: i2 },
-        step_lengths_to_next_axis: math.FlatVectorF32,
-        distance_to_next_axis: math.FlatVectorF32,
+        step_lengths_to_next_axis: math.FlatVector,
+        distance_to_next_axis: math.FlatVector,
 
         const Self = @This();
 
@@ -58,14 +56,43 @@ pub fn Iterator(comptime CellIndex: type) type {
             if (result.z == self.last.z) {
                 self.step.z = 0;
             }
-            if (self.distance_to_next_axis.z < self.distance_to_next_axis.x) {
-                self.distance_to_next_axis.z += self.step_lengths_to_next_axis.z;
+            if (self.distance_to_next_axis.z.lt(self.distance_to_next_axis.x)) {
+                self.distance_to_next_axis.z =
+                    self.distance_to_next_axis.z.saturatingAdd(self.step_lengths_to_next_axis.z);
                 self.current.z += self.step.z;
             } else {
-                self.distance_to_next_axis.x += self.step_lengths_to_next_axis.x;
+                self.distance_to_next_axis.x =
+                    self.distance_to_next_axis.x.saturatingAdd(self.step_lengths_to_next_axis.x);
                 self.current.x += self.step.x;
             }
             return result;
         }
     };
+}
+
+fn getStepLengthToNextAxis(direction: math.Fix32) math.Fix32 {
+    if (direction.eql(fp(0))) {
+        return math.Fix32.Limits.max;
+    }
+
+    const max32 = math.Fix32.Limits.max.convertTo(math.Fix64);
+    return fp64(1)
+        .div(direction.convertTo(math.Fix64))
+        .clamp(max32.neg(), max32)
+        .abs()
+        .convertTo(math.Fix32);
+}
+
+fn getDistanceToNextAxis(
+    step_length: math.Fix32,
+    direction: math.Fix32,
+    wrapped_start: math.Fix32,
+) math.Fix32 {
+    if (step_length.eql(math.Fix32.Limits.max)) {
+        return math.Fix32.Limits.max;
+    }
+    if (direction.lt(fp(0)) and wrapped_start.gt(fp(0))) {
+        return step_length.mul(wrapped_start);
+    }
+    return step_length.mul(fp(1).sub(wrapped_start));
 }

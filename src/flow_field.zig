@@ -1,4 +1,4 @@
-const AxisAlignedBoundingBox = @import("spatial_partitioning/cell_index.zig").AxisAlignedBoundingBox;
+const AxisAlignedBoundingBox = @import("collision.zig").AxisAlignedBoundingBox;
 const Circle = @import("collision.zig").Circle;
 const FlatVectorF32 = @import("math.zig").FlatVectorF32;
 const Map = @import("map/map.zig").Map;
@@ -60,7 +60,10 @@ pub const Field = struct {
             .crowd_sampling_counter = 0,
             .integration_field = integration_field,
             .directional_vectors = directional_vectors,
-            .boundaries = .{ .min = FlatVectorF32.zero, .max = FlatVectorF32.zero },
+            .boundaries = .{
+                .min = FlatVectorF32.zero.toFlatVector(),
+                .max = FlatVectorF32.zero.toFlatVector(),
+            },
             .queue = PriorityQueue.init(allocator, {}),
         };
     }
@@ -78,8 +81,8 @@ pub const Field = struct {
             const side_length = @as(f32, @floatFromInt(self.grid_cells_per_side * cell_side_length));
             const half_side_length = side_length / 2.0;
             break :block .{
-                .min = .{ .x = target.x - half_side_length, .z = target.z - half_side_length },
-                .max = .{ .x = target.x + half_side_length, .z = target.z + half_side_length },
+                .min = .{ .x = fp(target.x - half_side_length), .z = fp(target.z - half_side_length) },
+                .max = .{ .x = fp(target.x + half_side_length), .z = fp(target.z + half_side_length) },
             };
         };
 
@@ -181,7 +184,7 @@ pub const Field = struct {
     }
 
     fn getIndexFromWorldPosition(self: Field, world_position: FlatVectorF32) ?usize {
-        const cell_position = world_position.subtract(self.boundaries.min)
+        const cell_position = world_position.subtract(self.boundaries.min.toFlatVectorF32())
             .scale(1.0 / @as(f32, @floatFromInt(cell_side_length)));
         const x: isize = @intFromFloat(@ceil(cell_position.x));
         const z: isize = @intFromFloat(@ceil(cell_position.z));
@@ -197,7 +200,7 @@ pub const Field = struct {
         return FlatVectorF32.scale(.{
             .x = @as(f32, @floatFromInt(x)),
             .z = @as(f32, @floatFromInt(z)),
-        }, cell_side_length).add(self.boundaries.min);
+        }, cell_side_length).add(self.boundaries.min.toFlatVectorF32());
     }
 
     fn processCell(
