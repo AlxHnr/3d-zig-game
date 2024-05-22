@@ -136,10 +136,7 @@ pub fn run(
         performance_measurements.begin(.aggregate_gem_billboards);
         for (self.current.gems.items) |snapshot| {
             try billboard_buffer.append(
-                snapshot.makeBillboardData(
-                    spritesheet,
-                    lap_result.next_tick_progress.convertTo(f32),
-                ),
+                snapshot.makeBillboardData(spritesheet, lap_result.next_tick_progress),
             );
         }
         performance_measurements.end(.aggregate_gem_billboards);
