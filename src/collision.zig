@@ -356,23 +356,25 @@ pub const Ray3d = struct {
     /// If the given triangle is not wired counter-clockwise, it will be ignored.
     pub fn collidesWithTriangle(self: Ray3d, triangle: [3]math.Vector3d) ?ImpactPoint {
         // Möller-Trumbore intersection algorithm.
-        const edges = [2]math.Vector3d{
-            triangle[1].subtract(triangle[0]),
-            triangle[2].subtract(triangle[0]),
+        const start_position = math.toVector3dLarge(self.start_position);
+        const direction = math.toVector3dLarge(self.direction);
+        const edges = .{
+            math.toVector3dLarge(triangle[1].subtract(triangle[0])),
+            math.toVector3dLarge(triangle[2].subtract(triangle[0])),
         };
-        const p = self.direction.crossProduct(edges[1]);
+        const p = direction.crossProduct(edges[1]);
         const determinant = edges[0].dotProduct(p);
         if (determinant.eql(fp64(0))) {
             return null;
         }
         const inverted_determinant = fp64(1).div(determinant);
-        const triangle0_offset = self.start_position.subtract(triangle[0]);
+        const triangle0_offset = start_position.subtract(math.toVector3dLarge(triangle[0]));
         const u_parameter = inverted_determinant.mul(triangle0_offset.dotProduct(p));
         if (u_parameter.lt(fp64(0)) or u_parameter.gt(fp64(1))) {
             return null;
         }
         const q_vector = triangle0_offset.crossProduct(edges[0]);
-        const v_parameter = inverted_determinant.mul(self.direction.dotProduct(q_vector));
+        const v_parameter = inverted_determinant.mul(direction.dotProduct(q_vector));
         if (v_parameter.lt(fp64(0)) or v_parameter.add(u_parameter).gt(fp64(1))) {
             return null;
         }
@@ -381,10 +383,13 @@ pub const Ray3d = struct {
         if (distance_from_start_position.eql(fp64(0))) {
             return null;
         }
+        const impact_position = start_position.add(direction.scale(distance_from_start_position));
         return .{
-            .position = self.start_position.add(
-                self.direction.scale(distance_from_start_position.convertTo(math.Fix32)),
-            ),
+            .position = .{
+                .x = impact_position.x.convertTo(math.Fix32),
+                .y = impact_position.y.convertTo(math.Fix32),
+                .z = impact_position.z.convertTo(math.Fix32),
+            },
             .distance_from_start_position = distance_from_start_position,
         };
     }
