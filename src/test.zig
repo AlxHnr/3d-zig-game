@@ -46,8 +46,8 @@ test "Fixedpoint conversion" {
     try expectApproxEqRel(F48_16.fp(3000000.123).convertTo(f32), 3000000.123, epsilon);
     try expectApproxEqRel(F32_32.fp(1.12341234).convertTo(f32), 1.12341234, epsilon);
 
-    try expect(F16_16.fp(120.99).convertTo(F16_16).eql(F16_16.fp(120.99)));
-    try expect(F16_16.fp(-120.99).convertTo(F16_16).eql(F16_16.fp(-120.99)));
+    try expect(F16_16.fp(120.99).eql(F16_16.fp(120.99)));
+    try expect(F16_16.fp(-120.99).eql(F16_16.fp(-120.99)));
     try expect(F16_16.fp(120.99).convertTo(F48_16).eql(F48_16.fp(120.99)));
     try expect(F16_16.fp(-120.99).convertTo(F48_16).eql(F48_16.fp(-120.99)));
     try expect(F48_16.fp(120.99).convertTo(F16_16).eql(F16_16.fp(120.99)));
