@@ -217,11 +217,11 @@ pub const State = struct {
             .floor => {
                 const offset = object_end_position.subtract(object.start_position);
                 const camera_right_axis = camera_direction.rotateRightBy90Degrees();
-                const side_a_length =
-                    offset.projectOnto(camera_direction).length().convertTo(math.Fix32);
+                const side_a_length = offset.toVector3d()
+                    .projectOnto(camera_direction.toVector3d()).length().convertTo(math.Fix32);
                 const side_a_offset = camera_direction.normalize().scale(side_a_length);
-                const side_b_length =
-                    offset.projectOnto(camera_right_axis).length().convertTo(math.Fix32);
+                const side_b_length = offset.toVector3d()
+                    .projectOnto(camera_right_axis.toVector3d()).length().convertTo(math.Fix32);
 
                 var side_a_start = object.start_position;
                 var side_a_end = side_a_start.add(side_a_offset);

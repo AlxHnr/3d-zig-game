@@ -331,24 +331,26 @@ pub const Ray3d = struct {
             return null;
         }
         const start_y64 = self.start_position.y.convertTo(math.Fix64);
-        const direction64 = .{
-            .x = self.direction.x.convertTo(math.Fix64),
-            .y = self.direction.y.convertTo(math.Fix64),
-            .z = self.direction.z.convertTo(math.Fix64),
-        };
-        const offset_to_ground = math.Vector3d{
+        const direction64 = math.toVector3dLarge(self.direction);
+        const offset_to_ground = math.Vector3dLarge{
             .x = if (direction64.x.eql(fp64(0)))
-                fp(0)
+                fp64(0)
             else
-                start_y64.neg().div(direction64.y.div(direction64.x)).convertTo(math.Fix32),
-            .y = fp(0),
+                start_y64.neg().div(direction64.y.div(direction64.x)),
+            .y = fp64(0),
             .z = if (direction64.z.eql(fp64(0)))
-                fp(0)
+                fp64(0)
             else
-                start_y64.neg().div(direction64.y.div(direction64.z)).convertTo(math.Fix32),
+                start_y64.neg().div(direction64.y.div(direction64.z)),
         };
+        const impact_position = math.toVector3dLarge(self.start_position).add(offset_to_ground);
+        if (impact_position.x.abs().gt(math.Fix32.Limits.max.convertTo(math.Fix64)) or
+            impact_position.z.abs().gt(math.Fix32.Limits.max.convertTo(math.Fix64)))
+        {
+            return null;
+        }
         return .{
-            .position = self.start_position.add(offset_to_ground),
+            .position = math.toVector3d(impact_position),
             .distance_from_start_position = offset_to_ground.length(),
         };
     }

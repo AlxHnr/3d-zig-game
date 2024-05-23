@@ -135,10 +135,6 @@ pub const FlatVector = struct {
     pub fn rotateRightBy90Degrees(self: FlatVector) FlatVector {
         return .{ .x = self.z.neg(), .z = self.x };
     }
-
-    pub fn projectOnto(self: FlatVector, other: FlatVector) FlatVector {
-        return other.scale(self.dotProduct(other).div(other.dotProduct(other)).convertTo(Fix32));
-    }
 };
 
 /// Vector on a flat plane with no height information.
@@ -226,6 +222,14 @@ pub const FlatVectorF32 = struct {
 
 pub const Vector3d = Vector3dCustom(Fix32, Fix64);
 pub const Vector3dLarge = Vector3dCustom(Fix64, Fix64);
+
+pub fn toVector3d(vector: Vector3dLarge) Vector3d {
+    return .{
+        .x = vector.x.convertTo(Fix32),
+        .y = vector.y.convertTo(Fix32),
+        .z = vector.z.convertTo(Fix32),
+    };
+}
 
 pub fn toVector3dLarge(vector: Vector3d) Vector3dLarge {
     return .{
@@ -320,6 +324,10 @@ pub fn Vector3dCustom(
                 .y = Convert.down(self_large.z.mul(other_large.x).sub(self_large.x.mul(other_large.z))),
                 .z = Convert.down(self_large.x.mul(other_large.y).sub(self_large.y.mul(other_large.x))),
             };
+        }
+
+        pub fn projectOnto(self: Self, other: Self) LargeSelf {
+            return other.toLargeSelf().scale(self.dotProduct(other).div(other.dotProduct(other)));
         }
 
         pub fn negate(self: Self) Self {
