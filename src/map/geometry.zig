@@ -824,7 +824,7 @@ const Floor = struct {
         side_b_length: math.Fix32,
     ) Floor {
         const offset_a = side_a_end.subtract(side_a_start);
-        const side_a_length = offset_a.length();
+        const side_a_length = offset_a.length().convertTo(math.Fix32);
         const rotation = offset_a.computeRotationToOtherVector(.{ .x = fp(0), .z = fp(1) });
         const offset_b = offset_a.rotateRightBy90Degrees().negate().normalize().scale(side_b_length);
         const center = side_a_start.add(offset_a.scale(fp(0.5))).add(offset_b.scale(fp(0.5)));
@@ -832,14 +832,10 @@ const Floor = struct {
             .object_id = object_id,
             .floor_type = floor_type,
             .model_matrix = math.Matrix.identity
-                .rotate(math.Vector3dF32.x_axis, std.math.degreesToRadians(-90))
-                .scale(.{
-                .x = side_b_length.convertTo(f32),
-                .y = 1,
-                .z = side_a_length.convertTo(f32),
-            })
-                .rotate(math.Vector3dF32.y_axis, rotation.neg().convertTo(f32))
-                .translate(center.toVector3d().toVector3dF32()),
+                .rotate(math.Vector3d.x_axis, fp(-90).toRadians())
+                .scale(.{ .x = side_b_length, .y = fp(1), .z = side_a_length })
+                .rotate(math.Vector3d.y_axis, rotation.neg())
+                .translate(center.toVector3d()),
             .boundaries = collision.Rectangle.create(side_a_start, side_a_end, side_b_length),
             .tint = getDefaultTint(floor_type),
             .side_a_start = side_a_start,
@@ -916,14 +912,9 @@ const Wall = struct {
         return Wall{
             .object_id = object_id,
             .model_matrix = math.Matrix.identity
-                .scale(.{
-                .x = length.convertTo(f32),
-                .y = height.convertTo(f32),
-                .z = render_thickness.convertTo(f32),
-            })
-                .rotate(math.Vector3d.y_axis.toVector3dF32(), rotation_angle.convertTo(f32))
-                .translate(center.toVector3d().add(math.Vector3d.y_axis.scale(height.div(fp(2))))
-                .toVector3dF32()),
+                .scale(.{ .x = length, .y = height, .z = render_thickness })
+                .rotate(math.Vector3d.y_axis, rotation_angle)
+                .translate(center.toVector3d().add(math.Vector3d.y_axis.scale(height.div(fp(2))))),
             .tint = Wall.getDefaultTint(wall_type),
             .boundaries = collision.Rectangle.create(
                 wall_type_properties.corrected_start_position.add(side_a_up_offset),

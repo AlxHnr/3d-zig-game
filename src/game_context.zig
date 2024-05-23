@@ -271,23 +271,22 @@ pub const Context = struct {
         return camera.get3DRay(mouse_x, mouse_y, screen_dimensions, max_camera_distance);
     }
 
-    pub fn increaseCameraDistance(self: *Context, value: f32) void {
-        self.main_character.camera.increaseDistanceToObject(fp(value));
+    pub fn increaseCameraDistance(self: *Context, value: math.Fix32) void {
+        self.main_character.camera.increaseDistanceToObject(value);
     }
 
-    pub fn setCameraAngleFromGround(self: *Context, angle: f32) void {
-        self.main_character.camera.setAngleFromGround(fp(angle));
+    pub fn setCameraAngleFromGround(self: *Context, angle: math.Fix32) void {
+        self.main_character.camera.setAngleFromGround(angle);
     }
 
     pub fn resetCameraAngleFromGround(self: *Context) void {
         self.main_character.camera.resetAngleFromGround();
     }
 
-    pub fn getCameraDirection(self: Context) math.Vector3dF32 {
+    pub fn getCameraDirection(self: Context) math.Vector3d {
         return self.main_character
             .getCamera(fp(self.render_loop.getInterpolationIntervalUsedInLatestFrame()))
-            .getDirectionToTarget()
-            .toVector3dF32();
+            .getDirectionToTarget();
     }
 
     fn loadMap(

@@ -6,6 +6,7 @@ const PerformanceMeasurements = @import("performance_measurements.zig").Measurem
 const RenderLoop = @import("render_loop.zig");
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const edit_mode = @import("edit_mode.zig");
+const fp = math.Fix32.fp;
 const gl = @import("gl");
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
@@ -178,7 +179,7 @@ const ProgramContext = struct {
         try self.edit_mode_state.updateCurrentActionTarget(
             self.game_context.getMutableMap(),
             ray,
-            self.game_context.getCameraDirection().toFlatVector().toFlatVector(),
+            self.game_context.getCameraDirection().toFlatVector(),
         );
 
         var event: sdl.SDL_Event = undefined;
@@ -209,7 +210,7 @@ const ProgramContext = struct {
                 }
             } else if (event.type == sdl.SDL_MOUSEWHEEL) {
                 if (sdl.SDL_GetMouseState(null, null) & sdl.SDL_BUTTON_RMASK == 0) {
-                    self.game_context.increaseCameraDistance(event.wheel.preciseY * -2.5);
+                    self.game_context.increaseCameraDistance(fp(event.wheel.preciseY * -2.5));
                 } else if (event.wheel.preciseY < 0) {
                     self.edit_mode_state.cycleInsertedObjectSubtypeForwards();
                 } else {
@@ -220,9 +221,7 @@ const ProgramContext = struct {
                     switch (self.edit_mode_view) {
                         .from_behind => {
                             self.edit_mode_view = .top_down;
-                            self.game_context.setCameraAngleFromGround(
-                                std.math.degreesToRadians(90),
-                            );
+                            self.game_context.setCameraAngleFromGround(fp(90).toRadians());
                         },
                         .top_down => {
                             self.edit_mode_view = .from_behind;

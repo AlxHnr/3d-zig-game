@@ -466,14 +466,6 @@ pub const Matrix = struct {
         return .{ .rows = result };
     }
 
-    pub fn multiplyScalar(self: Matrix, scalar: f32) Matrix {
-        var result: [4]@Vector(4, f32) = undefined;
-        for (self.rows, 0..) |row, index| {
-            result[index] = row * @as(@Vector(4, f32), @splat(scalar));
-        }
-        return .{ .rows = result };
-    }
-
     /// M * V, where V contains (x, y, z, w). To achieve V * M use .transpose().
     pub fn multiplyVector4d(self: Matrix, vector: @Vector(4, f32)) @Vector(4, f32) {
         return .{
@@ -484,21 +476,29 @@ pub const Matrix = struct {
         };
     }
 
-    pub fn scale(self: Matrix, dimensions: Vector3dF32) Matrix {
+    pub fn scale(self: Matrix, dimensions: Vector3d) Matrix {
         var scaling = identity;
-        scaling.rows[0][0] = dimensions.x;
-        scaling.rows[1][1] = dimensions.y;
-        scaling.rows[2][2] = dimensions.z;
+        scaling.rows[0][0] = dimensions.x.convertTo(f32);
+        scaling.rows[1][1] = dimensions.y.convertTo(f32);
+        scaling.rows[2][2] = dimensions.z.convertTo(f32);
         return scaling.multiply(self);
     }
 
-    pub fn rotate(self: Matrix, axis: Vector3dF32, angle: f32) Matrix {
+    pub fn rotate(self: Matrix, axis_to_rotate_around: Vector3d, roatation_angle: Fix32) Matrix {
+        const axis = .{
+            .x = axis_to_rotate_around.x.convertTo(f32),
+            .y = axis_to_rotate_around.y.convertTo(f32),
+            .z = axis_to_rotate_around.z.convertTo(f32),
+        };
+        const angle = roatation_angle.convertTo(f32);
+
+        const sine = std.math.sin(angle);
         const cosine = std.math.cos(angle);
         const inverted_cosine = 1 - cosine;
         const inverted_cosine_x_y = inverted_cosine * axis.x * axis.y;
         const inverted_cosine_x_z = inverted_cosine * axis.x * axis.z;
         const inverted_cosine_y_z = inverted_cosine * axis.y * axis.z;
-        const axis_sine = axis.scale(std.math.sin(angle));
+        const axis_sine = .{ .x = axis.x * sine, .y = axis.y * sine, .z = axis.z * sine };
         const rotation = Matrix{ .rows = .{
             .{
                 inverted_cosine * axis.x * axis.x + cosine,
@@ -523,11 +523,11 @@ pub const Matrix = struct {
         return rotation.multiply(self);
     }
 
-    pub fn translate(self: Matrix, offset: Vector3dF32) Matrix {
+    pub fn translate(self: Matrix, offset: Vector3d) Matrix {
         var translation = identity;
-        translation.rows[0][3] = offset.x;
-        translation.rows[1][3] = offset.y;
-        translation.rows[2][3] = offset.z;
+        translation.rows[0][3] = offset.x.convertTo(f32);
+        translation.rows[1][3] = offset.y.convertTo(f32);
+        translation.rows[2][3] = offset.z.convertTo(f32);
         return translation.multiply(self);
     }
 
@@ -606,5 +606,13 @@ pub const Matrix = struct {
         - matrix[2][0] * matrix[1][1] * matrix[0][2] //
         - matrix[2][1] * matrix[1][2] * matrix[0][0] //
         - matrix[2][2] * matrix[1][0] * matrix[0][1];
+    }
+
+    fn multiplyScalar(self: Matrix, scalar: f32) Matrix {
+        var result: [4]@Vector(4, f32) = undefined;
+        for (self.rows, 0..) |row, index| {
+            result[index] = row * @as(@Vector(4, f32), @splat(scalar));
+        }
+        return .{ .rows = result };
     }
 };
