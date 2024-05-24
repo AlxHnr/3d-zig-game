@@ -1,4 +1,5 @@
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
+const fp = math.Fix32.fp;
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
 const simulation = @import("simulation.zig");
@@ -51,7 +52,7 @@ pub const Controller = struct {
     pub fn render(
         self: *Controller,
         screen_dimensions: util.ScreenDimensions,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
     ) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -169,7 +170,7 @@ const Dialog = union(enum) {
 
     pub fn prepareRender(
         self: *Dialog,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
     ) !void {
         return switch (self.*) {
             inline else => |*subtype| subtype.prepareRender(
@@ -187,7 +188,7 @@ const Dialog = union(enum) {
     pub fn populateSpriteData(
         self: Dialog,
         screen_dimensions: util.ScreenDimensions,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
     ) void {
@@ -256,7 +257,7 @@ const Prompt = struct {
 
     pub fn prepareRender(
         self: *Prompt,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
     ) !void {
         try self.text_block.animated_text_block.prepareRender(
             interval_between_previous_and_current_tick,
@@ -270,7 +271,7 @@ const Prompt = struct {
     pub fn populateSpriteData(
         self: Prompt,
         screen_dimensions: util.ScreenDimensions,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
     ) void {
@@ -397,7 +398,7 @@ const ChoiceBox = struct {
 
     pub fn prepareRender(
         self: *ChoiceBox,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
     ) !void {
         for (self.text_blocks) |*text_block| {
             try text_block.animated_text_block.prepareRender(
@@ -413,7 +414,7 @@ const ChoiceBox = struct {
     pub fn populateSpriteData(
         self: ChoiceBox,
         screen_dimensions: util.ScreenDimensions,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
     ) void {
@@ -554,12 +555,12 @@ const SlideInAnimationBox = struct {
         return .{
             .widget = .{ .box = ui.Box.wrap(widget_to_wrap, spritesheet) },
             .state = .opening,
-            .movement_animation = AnimationState.create(0, 1),
+            .movement_animation = AnimationState.create(fp(0), fp(1)),
         };
     }
 
     pub fn processElapsedTick(self: *SlideInAnimationBox) void {
-        self.movement_animation.processElapsedTick(simulation.kphToGameUnitsPerTick(43.2).convertTo(f32));
+        self.movement_animation.processElapsedTick(simulation.kphToGameUnitsPerTick(43.2));
 
         switch (self.state) {
             .opening, .closing => {
@@ -593,7 +594,7 @@ const SlideInAnimationBox = struct {
     pub fn populateSpriteData(
         self: SlideInAnimationBox,
         screen_dimensions: util.ScreenDimensions,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
     ) void {
@@ -603,13 +604,16 @@ const SlideInAnimationBox = struct {
         const window_open_interval = switch (self.state) {
             .open => raw_interval,
             .opening => raw_interval,
-            .closing => 1 - raw_interval,
-            .closed => 1 - raw_interval,
+            .closing => fp(1).sub(raw_interval),
+            .closed => fp(1).sub(raw_interval),
         };
         const dimensions = self.widget.getDimensionsInPixels();
         self.widget.populateSpriteData(
             screen_dimensions.width / 2 - dimensions.width / 2,
-            screen_dimensions.height - math.scaleU16(dimensions.height, window_open_interval),
+            screen_dimensions.height - math.scaleU16(
+                dimensions.height,
+                window_open_interval.convertTo(f32),
+            ),
             out,
         );
     }
@@ -639,10 +643,7 @@ const AnimatedTextBlock = struct {
             .original_segments = segments,
             .reusable_buffer = text_rendering.ReusableBuffer.create(allocator),
             .spritesheet = spritesheet,
-            .codepoint_progress = AnimationState.create(
-                0,
-                @as(f32, @floatFromInt(try countCodepoints(segments))),
-            ),
+            .codepoint_progress = AnimationState.create(fp(0), fp(try countCodepoints(segments))),
             .widget = widget,
         };
     }
@@ -658,7 +659,7 @@ const AnimatedTextBlock = struct {
     }
 
     pub fn processElapsedTick(self: *AnimatedTextBlock) void {
-        const reveal_codepoints_per_tick = simulation.kphToGameUnitsPerTick(648).convertTo(f32);
+        const reveal_codepoints_per_tick = simulation.kphToGameUnitsPerTick(648);
         self.codepoint_progress.processElapsedTick(reveal_codepoints_per_tick);
     }
 
@@ -668,11 +669,10 @@ const AnimatedTextBlock = struct {
 
     pub fn prepareRender(
         self: *AnimatedTextBlock,
-        interval_between_previous_and_current_tick: f32,
+        interval_between_previous_and_current_tick: math.Fix32,
     ) !void {
-        const codepoints_to_reveal = @as(usize, @intFromFloat(
-            self.codepoint_progress.getInterval(interval_between_previous_and_current_tick),
-        ));
+        const codepoints_to_reveal = self.codepoint_progress
+            .getInterval(interval_between_previous_and_current_tick).convertTo(usize);
         const truncated_segments = try text_rendering.truncateTextSegments(
             &self.reusable_buffer,
             self.original_segments,
@@ -708,12 +708,12 @@ const AnimatedTextBlock = struct {
 };
 
 const AnimationState = struct {
-    at_previous_tick: f32,
-    at_next_tick: f32,
-    start_value: f32,
-    end_value: f32,
+    at_previous_tick: math.Fix32,
+    at_next_tick: math.Fix32,
+    start_value: math.Fix32,
+    end_value: math.Fix32,
 
-    pub fn create(start_value: f32, end_value: f32) AnimationState {
+    pub fn create(start_value: math.Fix32, end_value: math.Fix32) AnimationState {
         return .{
             .at_previous_tick = start_value,
             .at_next_tick = start_value,
@@ -722,13 +722,10 @@ const AnimationState = struct {
         };
     }
 
-    pub fn processElapsedTick(self: *AnimationState, step: f32) void {
+    pub fn processElapsedTick(self: *AnimationState, step: math.Fix32) void {
         self.at_previous_tick = self.at_next_tick;
-        self.at_next_tick = std.math.clamp(
-            self.at_next_tick + step,
-            self.start_value,
-            self.end_value,
-        );
+        self.at_next_tick = self.at_next_tick.add(step)
+            .clamp(self.start_value, self.end_value);
     }
 
     pub fn reset(self: *AnimationState) void {
@@ -736,12 +733,14 @@ const AnimationState = struct {
     }
 
     pub fn hasFinished(self: AnimationState) bool {
-        return math.isEqual(self.at_previous_tick, self.end_value);
+        return self.at_previous_tick.eql(self.end_value);
     }
 
-    pub fn getInterval(self: AnimationState, interval_between_previous_and_current_tick: f32) f32 {
-        return math.lerp(
-            self.at_previous_tick,
+    pub fn getInterval(
+        self: AnimationState,
+        interval_between_previous_and_current_tick: math.Fix32,
+    ) math.Fix32 {
+        return self.at_previous_tick.lerp(
             self.at_next_tick,
             interval_between_previous_and_current_tick,
         );

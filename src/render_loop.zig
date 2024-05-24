@@ -210,10 +210,7 @@ pub fn run(
             self.current.main_character.gem_count,
             self.current.main_character.character.health.current,
         );
-        try dialog_controller.render(
-            extra_data.screen_dimensions,
-            lap_result.next_tick_progress.convertTo(f32),
-        );
+        try dialog_controller.render(extra_data.screen_dimensions, lap_result.next_tick_progress);
         try renderEditMode(
             extra_data.edit_mode_state,
             &sprite_renderer,
