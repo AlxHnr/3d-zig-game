@@ -1,5 +1,5 @@
 const Color = @import("util.zig").Color;
-const FlowField = @import("flow_field.zig").Field;
+const FlowField = @import("flow_field.zig");
 const GameCharacter = @import("game_unit.zig").GameCharacter;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
