@@ -3,6 +3,7 @@
 const Error = @import("error.zig").Error;
 const Fix32 = @import("math.zig").Fix32;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const fp = Fix32.fp;
 const gl = @import("gl");
 const sdl = @import("sdl.zig");
 const std = @import("std");
@@ -205,12 +206,13 @@ pub const SpriteSheetTexture = struct {
     const font_character_side_length = 8;
 
     /// Gap between consecutive characters in a sentence.
-    pub const FontLetterSpacing = struct { horizontal: f32, vertical: f32 };
+    pub const FontLetterSpacing = struct { horizontal: Fix32, vertical: Fix32 };
 
-    pub fn getFontLetterSpacing(_: SpriteSheetTexture, scaling_factor: f32) FontLetterSpacing {
-        const character_padding_length = @as(f32, 1);
-        const padding = (character_padding_length / @as(f32, font_character_side_length)) *
-            scaling_factor;
+    pub fn getFontLetterSpacing(_: SpriteSheetTexture, scaling_factor: Fix32) FontLetterSpacing {
+        const character_padding_length = fp(1);
+        const padding = character_padding_length.div(fp(font_character_side_length)).mul(
+            scaling_factor,
+        );
         return .{ .horizontal = padding, .vertical = padding };
     }
 

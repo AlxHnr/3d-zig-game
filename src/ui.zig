@@ -2,8 +2,9 @@ const Color = @import("util.zig").Color;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
-const text_rendering = @import("text_rendering.zig");
+const fp = math.Fix32.fp;
 const math = @import("math.zig");
+const text_rendering = @import("text_rendering.zig");
 
 /// Highlight groups for text inside ui.Box.
 pub const Highlight = struct {
@@ -83,12 +84,12 @@ pub const Text = struct {
     pub fn getDimensionsInPixels(self: Text) ScreenDimensions {
         const dimensions = text_rendering.getTextBlockDimensions(
             self.wrapped_segments,
-            @as(f32, @floatFromInt(self.font_size)),
+            fp(self.font_size),
             self.spritesheet.*,
         );
         return .{
-            .width = @as(u16, @intFromFloat(dimensions.width)),
-            .height = @as(u16, @intFromFloat(dimensions.height)),
+            .width = dimensions.width.convertTo(u16),
+            .height = dimensions.height.convertTo(u16),
         };
     }
 

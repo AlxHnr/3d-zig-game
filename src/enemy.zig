@@ -295,7 +295,7 @@ pub const PrerenderedNames = struct {
 
             text_rendering.populateBillboardDataExactPixelSizeWithOffset(
                 text_segment,
-                .{ .x = 0, .y = 0, .z = 0 },
+                .{ .x = fp(0), .y = fp(0), .z = fp(0) },
                 0,
                 RenderSnapshot.health_bar_height * 2,
                 spritesheet.getFontSizeMultiple(RenderSnapshot.enemy_name_font_scale),

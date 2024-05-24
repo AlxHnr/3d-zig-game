@@ -1,11 +1,14 @@
 //! Contains functions for rendering text using individual letter sprites. The characters ' ' and
 //! '\n' affect the formatting of the rendered text. All strings passed to these functions are
 //! assumed to contain valid UTF-8.
-const std = @import("std");
+
+const Color = @import("util.zig").Color;
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
-const Color = @import("util.zig").Color;
-const Vector3dF32 = @import("math.zig").Vector3dF32;
+const Vector3d = math.Vector3d;
+const fp = math.Fix32.fp;
+const math = @import("math.zig");
+const std = @import("std");
 
 pub const TextSegment = struct {
     color: Color,
@@ -19,34 +22,36 @@ pub fn getSpriteCount(segments: []const TextSegment) usize {
 }
 
 pub const Dimensions = struct {
-    width: f32,
-    height: f32,
+    width: math.Fix32,
+    height: math.Fix32,
 };
 
 pub fn getTextBlockDimensions(
     segments: []const TextSegment,
-    character_size: f32,
+    character_size: math.Fix32,
     spritesheet: SpriteSheetTexture,
 ) Dimensions {
     const info = getInfo(segments);
     const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
-    const longest_line = @as(f32, @floatFromInt(info.codepoint_count_in_longest_line));
-    const line_count = @as(f32, @floatFromInt(1 + info.newline_count));
+    const longest_line = fp(info.codepoint_count_in_longest_line);
+    const line_count = fp(1 + info.newline_count);
 
-    const horizontal_spaces = 1 + longest_line;
-    const vertical_spaces = 1 + line_count;
+    const horizontal_spaces = fp(1).add(longest_line);
+    const vertical_spaces = fp(1).add(line_count);
     return .{
-        .width = longest_line * character_size + horizontal_spaces * font_letter_spacing.horizontal,
-        .height = line_count * character_size + vertical_spaces * font_letter_spacing.vertical,
+        .width = longest_line.mul(character_size)
+            .add(horizontal_spaces.mul(font_letter_spacing.horizontal)),
+        .height = line_count.mul(character_size)
+            .add(vertical_spaces.mul(font_letter_spacing.vertical)),
     };
 }
 
 /// Renders 2d strings in 3d space.
 pub fn populateBillboardData(
     segments: []const TextSegment,
-    center_position: Vector3dF32,
+    center_position: Vector3d,
     /// Size is specified in game-world units.
-    character_size: f32,
+    character_size: math.Fix32,
     spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all sprites. See getSpriteCount().
     out: []SpriteData,
@@ -67,7 +72,7 @@ pub fn populateBillboardData(
 /// exact size independent from its distance to the camera.
 pub fn populateBillboardDataExactPixelSize(
     segments: []const TextSegment,
-    center_position: Vector3dF32,
+    center_position: Vector3d,
     character_size_pixels: u16,
     spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all sprites. See getSpriteCount().
@@ -88,7 +93,7 @@ pub fn populateBillboardDataExactPixelSize(
 /// the rendered center of the text block on the screen. This can be used for adjustments.
 pub fn populateBillboardDataExactPixelSizeWithOffset(
     segments: []const TextSegment,
-    center_position: Vector3dF32,
+    center_position: Vector3d,
     pixel_offset_from_center_x: i16,
     pixel_offset_from_center_y: i16,
     character_size_pixels: u16,
@@ -98,18 +103,18 @@ pub fn populateBillboardDataExactPixelSizeWithOffset(
 ) void {
     const top_left_corner = getOffsetToTopLeftCorner(
         segments,
-        @floatFromInt(character_size_pixels),
+        fp(character_size_pixels),
         spritesheet,
     ).add(.{
-        .x = @as(f32, @floatFromInt(pixel_offset_from_center_x)),
-        .y = -@as(f32, @floatFromInt(pixel_offset_from_center_y)),
-        .z = 0,
+        .x = fp(pixel_offset_from_center_x),
+        .y = fp(pixel_offset_from_center_y).neg(),
+        .z = fp(0),
     });
     populateSpriteDataRaw(
         segments,
         center_position,
         top_left_corner,
-        @floatFromInt(character_size_pixels),
+        fp(character_size_pixels),
         true,
         true,
         spritesheet,
@@ -130,16 +135,16 @@ pub fn populateSpriteData(
     out: []SpriteData,
 ) void {
     const position = .{
-        .x = @as(f32, @floatFromInt(screen_position_x)),
-        .y = @as(f32, @floatFromInt(screen_position_y)),
-        .z = 0,
+        .x = fp(screen_position_x),
+        .y = fp(screen_position_y),
+        .z = fp(0),
     };
-    const offset_to_top_left_corner = .{ .x = 0, .y = 0, .z = 0 };
+    const offset_to_top_left_corner = .{ .x = fp(0), .y = fp(0), .z = fp(0) };
     populateSpriteDataRaw(
         segments,
         position,
         offset_to_top_left_corner,
-        @floatFromInt(character_size_pixels),
+        fp(character_size_pixels),
         false,
         false,
         spritesheet,
@@ -303,36 +308,36 @@ fn getInfo(segments: []const TextSegment) TextSegmentInfo {
 
 fn getOffsetToTopLeftCorner(
     segments: []const TextSegment,
-    character_size: f32,
+    character_size: math.Fix32,
     spritesheet: SpriteSheetTexture,
-) Vector3dF32 {
+) Vector3d {
     const info = getInfo(segments);
     const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
     const half_sizes = .{
-        .w = (character_size + font_letter_spacing.horizontal) / 2,
-        .h = (character_size + font_letter_spacing.vertical) / 2,
+        .w = character_size.add(font_letter_spacing.horizontal).div(fp(2)),
+        .h = character_size.add(font_letter_spacing.vertical).div(fp(2)),
     };
     return .{
-        .x = -@as(f32, @floatFromInt(info.codepoint_count_in_longest_line)) * half_sizes.w,
-        .y = @as(f32, @floatFromInt(info.newline_count + 1)) * half_sizes.h,
-        .z = 0,
+        .x = fp(info.codepoint_count_in_longest_line).mul(half_sizes.w).neg(),
+        .y = fp(info.newline_count + 1).mul(half_sizes.h),
+        .z = fp(0),
     };
 }
 
-fn flip(value: f32, y_axis_points_upwards: bool) f32 {
+fn flip(value: math.Fix32, y_axis_points_upwards: bool) math.Fix32 {
     if (y_axis_points_upwards) {
-        return -value;
+        return value.neg();
     }
     return value;
 }
 
 fn populateSpriteDataRaw(
     segments: []const TextSegment,
-    position: Vector3dF32,
-    offset_to_top_left_corner: Vector3dF32,
+    position: Vector3d,
+    offset_to_top_left_corner: Vector3d,
     /// Depending on the renderer, the character size can be either relative to game-world units or
     /// to screen pixels. See `SpriteRenderer` and `BillboardRenderer`.
-    character_size: f32,
+    character_size: math.Fix32,
     /// True if the sprite should have a fixed pixel size independent from its distance.
     preserve_exact_pixel_size: bool,
     y_axis_points_upwards: bool,
@@ -344,20 +349,20 @@ fn populateSpriteDataRaw(
     // the text block.
     const y_offset = flip(character_size, y_axis_points_upwards);
     const font_letter_spacing = spritesheet.getFontLetterSpacing(character_size);
-    const offset_increment = Vector3dF32{
-        .x = character_size + font_letter_spacing.horizontal,
-        .y = y_offset + flip(font_letter_spacing.vertical, y_axis_points_upwards),
+    const offset_increment = .{
+        .x = character_size.add(font_letter_spacing.horizontal),
+        .y = y_offset.add(flip(font_letter_spacing.vertical, y_axis_points_upwards)),
         .z = undefined,
     };
     const start_position = offset_to_top_left_corner.add(.{
         .x = font_letter_spacing.horizontal,
         .y = font_letter_spacing.vertical,
-        .z = 0,
+        .z = fp(0),
     });
     var offset = start_position.add(.{
-        .x = character_size / 2,
-        .y = y_offset / 2,
-        .z = 0,
+        .x = character_size.div(fp(2)),
+        .y = y_offset.div(fp(2)),
+        .z = fp(0),
     });
 
     var index: usize = 0;
@@ -365,21 +370,31 @@ fn populateSpriteDataRaw(
         var codepoint_iterator = std.unicode.Utf8View.initUnchecked(segment.text).iterator();
         while (codepoint_iterator.nextCodepoint()) |codepoint| {
             if (codepoint == ' ') {
-                offset.x = offset.x + offset_increment.x;
+                offset.x = offset.x.add(offset_increment.x);
             } else if (codepoint == '\n') {
-                offset.x = start_position.x + character_size / 2;
-                offset.y = offset.y + offset_increment.y;
+                offset.x = start_position.x.add(character_size.div(fp(2)));
+                offset.y = offset.y.add(offset_increment.y);
             } else {
                 const source = spritesheet.getFontCharacterTexcoords(codepoint);
                 out[index] = .{
-                    .position = .{ .x = position.x, .y = position.y, .z = position.z },
-                    .size = .{ .w = character_size, .h = character_size },
-                    .offset_from_origin = .{ .x = offset.x, .y = offset.y },
+                    .position = .{
+                        .x = position.x.convertTo(f32),
+                        .y = position.y.convertTo(f32),
+                        .z = position.z.convertTo(f32),
+                    },
+                    .size = .{
+                        .w = character_size.convertTo(f32),
+                        .h = character_size.convertTo(f32),
+                    },
+                    .offset_from_origin = .{
+                        .x = offset.x.convertTo(f32),
+                        .y = offset.y.convertTo(f32),
+                    },
                     .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
                     .tint = .{ .r = segment.color.r, .g = segment.color.g, .b = segment.color.b },
                     .preserve_exact_pixel_size = if (preserve_exact_pixel_size) 1 else 0,
                 };
-                offset.x = offset.x + offset_increment.x;
+                offset.x = offset.x.add(offset_increment.x);
                 index = index + 1;
             }
         }
