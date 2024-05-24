@@ -328,7 +328,7 @@ pub const Renderer = struct {
         self.billboard_renderer.render(
             vp_matrix,
             screen_dimensions,
-            camera_direction_to_target.toVector3dF32(),
+            camera_direction_to_target,
             spritesheet.id,
         );
     }

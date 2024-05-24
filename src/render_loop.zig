@@ -2,6 +2,7 @@ const Color = @import("util.zig").Color;
 const DialogController = @import("dialog.zig").Controller;
 const EditModeState = @import("edit_mode.zig").State;
 const EnemySnapshot = @import("enemy.zig").RenderSnapshot;
+const Fix32 = @import("math.zig").Fix32;
 const GemSnapshot = @import("gem.zig").RenderSnapshot;
 const GeometryRenderer = @import("map/geometry.zig").Renderer;
 const GeometrySnapshot = @import("map/geometry.zig").RenderSnapshot;
@@ -20,6 +21,7 @@ const textures = @import("textures.zig");
 const ui = @import("ui.zig");
 
 const Loop = @This();
+const Fix32Int = @TypeOf(fp(0).internal);
 
 allocator: std.mem.Allocator,
 keep_running: std.atomic.Value(bool),
@@ -40,7 +42,7 @@ extra_data: struct {
 },
 
 /// Value between 0 and 1.
-interpolation_interval_used_in_latest_frame: std.atomic.Value(f32),
+interpolation_interval_used_in_latest_frame: std.atomic.Value(Fix32Int),
 
 pub fn create(
     allocator: std.mem.Allocator,
@@ -62,7 +64,8 @@ pub fn create(
             .edit_mode_state = edit_mode_state,
             .player_is_on_obstacle_tile = false,
         },
-        .interpolation_interval_used_in_latest_frame = std.atomic.Value(f32).init(0),
+        .interpolation_interval_used_in_latest_frame = std.atomic.Value(Fix32Int)
+            .init(fp(0).internal),
     };
 }
 
@@ -191,7 +194,7 @@ pub fn run(
         billboard_renderer.render(
             vp_matrix,
             extra_data.screen_dimensions,
-            camera.getDirectionToTarget().toVector3dF32(),
+            camera.getDirectionToTarget(),
             spritesheet.id,
         );
         performance_measurements.end(.draw_billboards);
@@ -229,13 +232,13 @@ pub fn run(
         }
 
         self.interpolation_interval_used_in_latest_frame
-            .store(lap_result.next_tick_progress.convertTo(f32), .unordered);
+            .store(lap_result.next_tick_progress.internal, .unordered);
         sdl.SDL_GL_SwapWindow(window);
     }
 }
 
-pub fn getInterpolationIntervalUsedInLatestFrame(self: Loop) f32 {
-    return self.interpolation_interval_used_in_latest_frame.load(.unordered);
+pub fn getInterpolationIntervalUsedInLatestFrame(self: Loop) Fix32 {
+    return .{ .internal = self.interpolation_interval_used_in_latest_frame.load(.unordered) };
 }
 
 pub fn sendStop(self: *Loop) void {

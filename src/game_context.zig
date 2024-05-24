@@ -170,7 +170,7 @@ pub const Context = struct {
             self.main_character.markAllButtonsAsReleased();
         }
         self.main_character.applyCurrentInput(
-            fp(self.render_loop.getInterpolationIntervalUsedInLatestFrame()),
+            self.render_loop.getInterpolationIntervalUsedInLatestFrame(),
         );
 
         performance_measurements.begin(.logic_total);
@@ -260,7 +260,7 @@ pub const Context = struct {
         screen_dimensions: ScreenDimensions,
     ) collision.Ray3d {
         const camera = self.main_character.getCamera(
-            fp(self.render_loop.getInterpolationIntervalUsedInLatestFrame()),
+            self.render_loop.getInterpolationIntervalUsedInLatestFrame(),
         );
         const ray_wall_collision = self.map.geometry
             .cast3DRayToWalls(camera.get3DRayFromTargetToSelf());
@@ -285,7 +285,7 @@ pub const Context = struct {
 
     pub fn getCameraDirection(self: Context) math.Vector3d {
         return self.main_character
-            .getCamera(fp(self.render_loop.getInterpolationIntervalUsedInLatestFrame()))
+            .getCamera(self.render_loop.getInterpolationIntervalUsedInLatestFrame())
             .getDirectionToTarget();
     }
 

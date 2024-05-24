@@ -1,11 +1,12 @@
+const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const Shader = @import("shader.zig").Shader;
 const animation = @import("animation.zig");
-const std = @import("std");
 const assert = std.debug.assert;
+const fp = math.Fix32.fp;
 const gl = @import("gl");
 const math = @import("math.zig");
 const meshes = @import("meshes.zig");
-const Shader = @import("shader.zig").Shader;
-const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const std = @import("std");
 
 pub const WallRenderer = struct {
     vao_id: c_uint,
@@ -302,7 +303,7 @@ pub const SpriteRenderer = struct {
             .{ 0, 0, 0, 0 },
             .{ 0, 0, 0, 1 },
         } };
-        const forward = .{ .x = 0, .y = 0, .z = -1 };
+        const forward = .{ .x = fp(0), .y = fp(0), .z = fp(-1) };
         self.renderer.render(screen_to_ndc_matrix, screen_dimensions, forward, texture_id);
     }
 };
@@ -417,14 +418,14 @@ pub const BillboardRenderer = struct {
         self: BillboardRenderer,
         vp_matrix: math.Matrix,
         screen_dimensions: ScreenDimensions,
-        camera_direction: math.Vector3dF32,
+        camera_direction: math.Vector3d,
         texture_id: c_uint,
     ) void {
-        const camera_rotation_to_z_axis =
-            camera_direction.toFlatVector().computeRotationToOtherVector(.{ .x = 0, .z = -1 });
+        const camera_rotation_to_z_axis = camera_direction.toFlatVector()
+            .computeRotationToOtherVector(.{ .x = fp(0), .z = fp(-1) });
         const y_rotation_towards_camera = [2]f32{
-            std.math.sin(camera_rotation_to_z_axis),
-            std.math.cos(camera_rotation_to_z_axis),
+            camera_rotation_to_z_axis.sin().convertTo(f32),
+            camera_rotation_to_z_axis.cos().convertTo(f32),
         };
         const screen_dimensions_f32 = [2]f32{
             @as(f32, @floatFromInt(screen_dimensions.width)),
