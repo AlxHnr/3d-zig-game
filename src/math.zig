@@ -46,10 +46,6 @@ pub const FlatVector = struct {
 
     pub const zero = FlatVector{ .x = fp(0), .z = fp(0) };
 
-    pub fn toFlatVectorF32(self: FlatVector) FlatVectorF32 {
-        return .{ .x = self.x.convertTo(f32), .z = self.z.convertTo(f32) };
-    }
-
     pub fn toVector3d(self: FlatVector) Vector3d {
         return .{ .x = self.x, .y = fp(0), .z = self.z };
     }
@@ -137,89 +133,6 @@ pub const FlatVector = struct {
     }
 };
 
-/// Vector on a flat plane with no height information.
-pub const FlatVectorF32 = struct {
-    x: f32,
-    z: f32,
-
-    pub const zero = FlatVectorF32{ .x = 0, .z = 0 };
-
-    pub fn toVector3d(self: FlatVectorF32) Vector3dF32 {
-        return .{ .x = self.x, .y = 0, .z = self.z };
-    }
-
-    pub fn toFlatVector(self: FlatVectorF32) FlatVector {
-        return .{ .x = fp(self.x), .z = fp(self.z) };
-    }
-
-    pub fn normalize(self: FlatVectorF32) FlatVectorF32 {
-        const own_length = self.length();
-        return if (own_length < epsilon)
-            self
-        else
-            .{ .x = self.x / own_length, .z = self.z / own_length };
-    }
-
-    pub fn lerp(self: FlatVectorF32, other: FlatVectorF32, t: f32) FlatVectorF32 {
-        return .{ .x = _lerp(self.x, other.x, t), .z = _lerp(self.z, other.z, t) };
-    }
-
-    pub fn add(self: FlatVectorF32, other: FlatVectorF32) FlatVectorF32 {
-        return .{ .x = self.x + other.x, .z = self.z + other.z };
-    }
-
-    pub fn subtract(self: FlatVectorF32, other: FlatVectorF32) FlatVectorF32 {
-        return .{ .x = self.x - other.x, .z = self.z - other.z };
-    }
-
-    pub fn scale(self: FlatVectorF32, factor: f32) FlatVectorF32 {
-        return .{ .x = self.x * factor, .z = self.z * factor };
-    }
-
-    pub fn length(self: FlatVectorF32) f32 {
-        return std.math.sqrt(self.lengthSquared());
-    }
-
-    pub fn lengthSquared(self: FlatVectorF32) f32 {
-        return self.x * self.x + self.z * self.z;
-    }
-
-    pub fn dotProduct(self: FlatVectorF32, other: FlatVectorF32) f32 {
-        return self.x * other.x + self.z * other.z;
-    }
-
-    /// Get the angle needed to rotate this vector to have the same direction as another vector. The
-    /// given vectors don't need to be normalized.
-    pub fn computeRotationToOtherVector(self: FlatVectorF32, other: FlatVectorF32) f32 {
-        const other_normalized = other.normalize();
-        const angle = std.math.acos(std.math.clamp(self.normalize().dotProduct(
-            other_normalized,
-        ), -1, 1));
-        return if (other_normalized.dotProduct(.{ .x = self.z, .z = -self.x }) < 0)
-            -angle
-        else
-            angle;
-    }
-
-    pub fn negate(self: FlatVectorF32) FlatVectorF32 {
-        return .{ .x = -self.x, .z = -self.z };
-    }
-
-    pub fn rotate(self: FlatVectorF32, angle: f32) FlatVectorF32 {
-        const sin = std.math.sin(angle);
-        const cos = std.math.cos(angle);
-        return .{ .x = self.x * cos + self.z * sin, .z = -self.x * sin + self.z * cos };
-    }
-
-    pub fn rotateRightBy90Degrees(self: FlatVectorF32) FlatVectorF32 {
-        return .{ .x = -self.z, .z = self.x };
-    }
-
-    pub fn projectOnto(self: FlatVectorF32, other: FlatVectorF32) FlatVectorF32 {
-        return other.scale(self.dotProduct(other) / other.dotProduct(other));
-    }
-};
-
 pub const Vector3d = Vector3dCustom(Fix32, Fix64);
 pub const Vector3dLarge = Vector3dCustom(Fix64, Fix64);
 
@@ -239,14 +152,6 @@ pub fn Vector3dCustom(
         /// Will cut off the height component.
         pub fn toFlatVector(self: Self) FlatVector {
             return .{ .x = self.x, .z = self.z };
-        }
-
-        pub fn toVector3dF32(self: Self) Vector3dF32 {
-            return .{
-                .x = self.x.convertTo(f32),
-                .y = self.y.convertTo(f32),
-                .z = self.z.convertTo(f32),
-            };
         }
 
         pub fn convertTo(self: Self, Vector3dType: type) Vector3dType {
@@ -350,84 +255,6 @@ pub fn Vector3dCustom(
         const LargeSelf = Vector3dCustom(LargeFixType, LargeFixType);
     };
 }
-
-pub const Vector3dF32 = struct {
-    x: f32,
-    y: f32,
-    z: f32,
-
-    pub const y_axis = Vector3dF32{ .x = 0, .y = 1, .z = 0 };
-    pub const x_axis = Vector3dF32{ .x = 1, .y = 0, .z = 0 };
-
-    /// Will cut off the height component.
-    pub fn toFlatVector(self: Vector3dF32) FlatVectorF32 {
-        return .{ .x = self.x, .z = self.z };
-    }
-
-    pub fn toVector3d(self: Vector3dF32) Vector3d {
-        return .{ .x = fp(self.x), .y = fp(self.y), .z = fp(self.z) };
-    }
-
-    pub fn normalize(self: Vector3dF32) Vector3dF32 {
-        const own_length = self.length();
-        return if (own_length < epsilon)
-            self
-        else
-            .{ .x = self.x / own_length, .y = self.y / own_length, .z = self.z / own_length };
-    }
-
-    pub fn lerp(self: Vector3dF32, other: Vector3dF32, t: f32) Vector3dF32 {
-        return .{
-            .x = _lerp(self.x, other.x, t),
-            .y = _lerp(self.y, other.y, t),
-            .z = _lerp(self.z, other.z, t),
-        };
-    }
-
-    pub fn scale(self: Vector3dF32, factor: f32) Vector3dF32 {
-        return .{ .x = self.x * factor, .y = self.y * factor, .z = self.z * factor };
-    }
-
-    pub fn add(self: Vector3dF32, other: Vector3dF32) Vector3dF32 {
-        return .{ .x = self.x + other.x, .y = self.y + other.y, .z = self.z + other.z };
-    }
-
-    pub fn subtract(self: Vector3dF32, other: Vector3dF32) Vector3dF32 {
-        return .{ .x = self.x - other.x, .y = self.y - other.y, .z = self.z - other.z };
-    }
-
-    pub fn length(self: Vector3dF32) f32 {
-        return std.math.sqrt(self.lengthSquared());
-    }
-
-    pub fn lengthSquared(self: Vector3dF32) f32 {
-        return self.x * self.x + self.y * self.y + self.z * self.z;
-    }
-
-    pub fn dotProduct(self: Vector3dF32, other: Vector3dF32) f32 {
-        return self.x * other.x + self.y * other.y + self.z * other.z;
-    }
-
-    pub fn crossProduct(self: Vector3dF32, other: Vector3dF32) Vector3dF32 {
-        return .{
-            .x = self.y * other.z - self.z * other.y,
-            .y = self.z * other.x - self.x * other.z,
-            .z = self.x * other.y - self.y * other.x,
-        };
-    }
-
-    pub fn negate(self: Vector3dF32) Vector3dF32 {
-        return .{ .x = -self.x, .y = -self.y, .z = -self.z };
-    }
-
-    pub fn rotate(self: Vector3dF32, axis: Vector3dF32, angle: f32) Vector3dF32 {
-        const rescaled_axis = axis.normalize().scale(std.math.sin(angle / 2));
-        const rescaled_axis_cross = rescaled_axis.crossProduct(self);
-        return self
-            .add(rescaled_axis_cross.scale(std.math.cos(angle / 2) * 2))
-            .add(rescaled_axis.crossProduct(rescaled_axis_cross).scale(2));
-    }
-};
 
 pub const Matrix = struct {
     rows: [4]@Vector(4, f32),
