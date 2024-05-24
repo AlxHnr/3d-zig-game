@@ -31,9 +31,6 @@ pub fn Fixedpoint(comptime integer_bit_count: u6, comptime fraction_bit_count: u
         /// converting to raw integers or fixedpoint types, precision loss (underflow) is handled by
         /// cutting off precision bits.
         pub fn convertTo(self: Self, comptime T: type) T {
-            if (T == Self) {
-                @compileError("unnecessary conversion to identical fixedpoint type");
-            }
             return switch (@typeInfo(T)) {
                 .Int, .ComptimeInt => @intCast(@divTrunc(self.internal, scaling_factor)),
                 .Float, .ComptimeFloat => @as(T, @floatFromInt(self.internal)) / scaling_factor,
