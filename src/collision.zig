@@ -331,7 +331,7 @@ pub const Ray3d = struct {
             return null;
         }
         const start_y64 = self.start_position.y.convertTo(math.Fix64);
-        const direction64 = math.toVector3dLarge(self.direction);
+        const direction64 = self.direction.convertTo(math.Vector3dLarge);
         const offset_to_ground = math.Vector3dLarge{
             .x = if (direction64.x.eql(fp64(0)))
                 fp64(0)
@@ -343,14 +343,15 @@ pub const Ray3d = struct {
             else
                 start_y64.neg().div(direction64.y.div(direction64.z)),
         };
-        const impact_position = math.toVector3dLarge(self.start_position).add(offset_to_ground);
+        const impact_position =
+            self.start_position.convertTo(math.Vector3dLarge).add(offset_to_ground);
         if (impact_position.x.abs().gt(math.Fix32.Limits.max.convertTo(math.Fix64)) or
             impact_position.z.abs().gt(math.Fix32.Limits.max.convertTo(math.Fix64)))
         {
             return null;
         }
         return .{
-            .position = math.toVector3d(impact_position),
+            .position = impact_position.convertTo(math.Vector3d),
             .distance_from_start_position = offset_to_ground.length(),
         };
     }
@@ -358,11 +359,11 @@ pub const Ray3d = struct {
     /// If the given triangle is not wired counter-clockwise, it will be ignored.
     pub fn collidesWithTriangle(self: Ray3d, triangle: [3]math.Vector3d) ?ImpactPoint {
         // Möller-Trumbore intersection algorithm.
-        const start_position = math.toVector3dLarge(self.start_position);
-        const direction = math.toVector3dLarge(self.direction);
+        const start_position = self.start_position.convertTo(math.Vector3dLarge);
+        const direction = self.direction.convertTo(math.Vector3dLarge);
         const edges = .{
-            math.toVector3dLarge(triangle[1].subtract(triangle[0])),
-            math.toVector3dLarge(triangle[2].subtract(triangle[0])),
+            triangle[1].subtract(triangle[0]).convertTo(math.Vector3dLarge),
+            triangle[2].subtract(triangle[0]).convertTo(math.Vector3dLarge),
         };
         const p = direction.crossProduct(edges[1]);
         const determinant = edges[0].dotProduct(p);
@@ -370,7 +371,7 @@ pub const Ray3d = struct {
             return null;
         }
         const inverted_determinant = fp64(1).div(determinant);
-        const triangle0_offset = start_position.subtract(math.toVector3dLarge(triangle[0]));
+        const triangle0_offset = start_position.subtract(triangle[0].convertTo(math.Vector3dLarge));
         const u_parameter = inverted_determinant.mul(triangle0_offset.dotProduct(p));
         if (u_parameter.lt(fp64(0)) or u_parameter.gt(fp64(1))) {
             return null;

@@ -223,22 +223,6 @@ pub const FlatVectorF32 = struct {
 pub const Vector3d = Vector3dCustom(Fix32, Fix64);
 pub const Vector3dLarge = Vector3dCustom(Fix64, Fix64);
 
-pub fn toVector3d(vector: Vector3dLarge) Vector3d {
-    return .{
-        .x = vector.x.convertTo(Fix32),
-        .y = vector.y.convertTo(Fix32),
-        .z = vector.z.convertTo(Fix32),
-    };
-}
-
-pub fn toVector3dLarge(vector: Vector3d) Vector3dLarge {
-    return .{
-        .x = vector.x.convertTo(Fix64),
-        .y = vector.y.convertTo(Fix64),
-        .z = vector.z.convertTo(Fix64),
-    };
-}
-
 pub fn Vector3dCustom(
     comptime FixType: type,
     /// Will be used in places where overflows are likely.
@@ -265,15 +249,23 @@ pub fn Vector3dCustom(
             };
         }
 
+        pub fn convertTo(self: Self, Vector3dType: type) Vector3dType {
+            return .{
+                .x = self.x.convertTo(Vector3dType.UnderlyingFixType),
+                .y = self.y.convertTo(Vector3dType.UnderlyingFixType),
+                .z = self.z.convertTo(Vector3dType.UnderlyingFixType),
+            };
+        }
+
         pub fn normalize(self: Self) Self {
             const own_length = self.length();
             return if (own_length.eql(LargeFixType.fp(0)))
                 self
             else
                 .{
-                    .x = Convert.down(Convert.up(self.x).div(own_length)),
-                    .y = Convert.down(Convert.up(self.y).div(own_length)),
-                    .z = Convert.down(Convert.up(self.z).div(own_length)),
+                    .x = self.x.convertTo(LargeFixType).div(own_length).convertTo(FixType),
+                    .y = self.y.convertTo(LargeFixType).div(own_length).convertTo(FixType),
+                    .z = self.z.convertTo(LargeFixType).div(own_length).convertTo(FixType),
                 };
         }
 
@@ -302,32 +294,34 @@ pub fn Vector3dCustom(
         }
 
         pub fn lengthSquared(self: Self) LargeFixType {
-            const self_large = self.toLargeSelf();
+            const self_large = self.convertTo(LargeSelf);
             return self_large.x.mul(self_large.x)
                 .add(self_large.y.mul(self_large.y))
                 .add(self_large.z.mul(self_large.z));
         }
 
         pub fn dotProduct(self: Self, other: Self) LargeFixType {
-            const self_large = self.toLargeSelf();
-            const other_large = other.toLargeSelf();
+            const self_large = self.convertTo(LargeSelf);
+            const other_large = other.convertTo(LargeSelf);
             return self_large.x.mul(other_large.x)
                 .add(self_large.y.mul(other_large.y))
                 .add(self_large.z.mul(other_large.z));
         }
 
         pub fn crossProduct(self: Self, other: Self) Self {
-            const self_large = self.toLargeSelf();
-            const other_large = other.toLargeSelf();
-            return .{
-                .x = Convert.down(self_large.y.mul(other_large.z).sub(self_large.z.mul(other_large.y))),
-                .y = Convert.down(self_large.z.mul(other_large.x).sub(self_large.x.mul(other_large.z))),
-                .z = Convert.down(self_large.x.mul(other_large.y).sub(self_large.y.mul(other_large.x))),
+            const self_large = self.convertTo(LargeSelf);
+            const other_large = other.convertTo(LargeSelf);
+            const large_result = LargeSelf{
+                .x = self_large.y.mul(other_large.z).sub(self_large.z.mul(other_large.y)),
+                .y = self_large.z.mul(other_large.x).sub(self_large.x.mul(other_large.z)),
+                .z = self_large.x.mul(other_large.y).sub(self_large.y.mul(other_large.x)),
             };
+            return large_result.convertTo(Self);
         }
 
         pub fn projectOnto(self: Self, other: Self) LargeSelf {
-            return other.toLargeSelf().scale(self.dotProduct(other).div(other.dotProduct(other)));
+            return other.convertTo(LargeSelf)
+                .scale(self.dotProduct(other).div(other.dotProduct(other)));
         }
 
         pub fn negate(self: Self) Self {
@@ -336,43 +330,24 @@ pub fn Vector3dCustom(
 
         pub fn rotate(self: Self, axis: Self, angle: FixType) Self {
             const half_angle = angle.div(fp(2));
-            const half_angle_cos2 = half_angle.cos().mul(fp(2)).convertTo(Fix64);
-            const rescaled = axis.normalize().scale(half_angle.sin()).toLargeSelf();
-            const large_self = self.toLargeSelf();
+            const half_angle_cos2 = half_angle.cos().mul(fp(2)).convertTo(LargeFixType);
+            const rescaled = axis.normalize().scale(half_angle.sin()).convertTo(LargeSelf);
+            const large_self = self.convertTo(LargeSelf);
             const rescaled_x = rescaled.crossProduct(large_self);
             const rescaled_x_scaled = rescaled_x.scale(half_angle_cos2);
             const rescaled_x_x = rescaled.crossProduct(rescaled_x);
             const two = LargeFixType.fp(2);
-            return .{
-                .x = Convert.down(large_self.x.add(rescaled_x_scaled.x).add(rescaled_x_x.x.mul(two))),
-                .y = Convert.down(large_self.y.add(rescaled_x_scaled.y).add(rescaled_x_x.y.mul(two))),
-                .z = Convert.down(large_self.z.add(rescaled_x_scaled.z).add(rescaled_x_x.z.mul(two))),
+            const large_result = LargeSelf{
+                .x = large_self.x.add(rescaled_x_scaled.x).add(rescaled_x_x.x.mul(two)),
+                .y = large_self.y.add(rescaled_x_scaled.y).add(rescaled_x_x.y.mul(two)),
+                .z = large_self.z.add(rescaled_x_scaled.z).add(rescaled_x_x.z.mul(two)),
             };
+            return large_result.convertTo(Self);
         }
 
         const Self = @This();
+        const UnderlyingFixType = FixType;
         const LargeSelf = Vector3dCustom(LargeFixType, LargeFixType);
-
-        // Pick conversion functions to avoid unnecessary conversion errors at comptime.
-        const Convert = if (FixType == LargeFixType) struct {
-            pub fn up(value: FixType) LargeFixType {
-                return value;
-            }
-            pub fn down(value: LargeFixType) FixType {
-                return value;
-            }
-        } else struct {
-            pub fn up(value: FixType) LargeFixType {
-                return value.convertTo(LargeFixType);
-            }
-            pub fn down(value: LargeFixType) FixType {
-                return value.convertTo(FixType);
-            }
-        };
-
-        fn toLargeSelf(self: Self) LargeSelf {
-            return .{ .x = Convert.up(self.x), .y = Convert.up(self.y), .z = Convert.up(self.z) };
-        }
     };
 }
 
