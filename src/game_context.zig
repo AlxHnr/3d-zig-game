@@ -111,7 +111,7 @@ pub const Context = struct {
             .main_character = game_unit.Player.create(
                 fp(0),
                 fp(0),
-                fp(spritesheet.getSpriteAspectRatio(.player_back_frame_1)),
+                spritesheet.getSpriteAspectRatio(.player_back_frame_1),
             ),
             .main_character_flow_field = flow_field,
 

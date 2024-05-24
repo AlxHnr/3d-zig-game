@@ -76,7 +76,7 @@ pub const RenderSnapshot = struct {
         interval_between_previous_and_current_tick: math.Fix32,
     ) SpriteData {
         const source = spritesheet.getSpriteTexcoords(.gem);
-        const sprite_aspect_ratio = spritesheet.getSpriteAspectRatio(.gem);
+        const sprite_aspect_ratio = spritesheet.getSpriteAspectRatio(.gem).convertTo(f32);
         const state = self.interpolate(interval_between_previous_and_current_tick);
         const height = 1.5;
         var result = SpriteData{

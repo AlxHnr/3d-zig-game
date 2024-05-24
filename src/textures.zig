@@ -1,6 +1,7 @@
 //! Helpers for loading all known textures.
 
 const Error = @import("error.zig").Error;
+const Fix32 = @import("math.zig").Fix32;
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const gl = @import("gl");
 const sdl = @import("sdl.zig");
@@ -188,7 +189,7 @@ pub const SpriteSheetTexture = struct {
     }
 
     /// Returns the aspect ratio (height / width) of the specified sprite.
-    pub fn getSpriteAspectRatio(_: SpriteSheetTexture, sprite_id: SpriteId) f32 {
+    pub fn getSpriteAspectRatio(_: SpriteSheetTexture, sprite_id: SpriteId) Fix32 {
         return sprite_aspect_ratio_map.get(sprite_id);
     }
 
@@ -305,12 +306,13 @@ pub const SpriteSheetTexture = struct {
         };
     }
 
-    fn computeSpriteAspectRatioMap() std.EnumArray(SpriteId, f32) {
-        var result: std.EnumArray(SpriteId, f32) = undefined;
+    fn computeSpriteAspectRatioMap() std.EnumArray(SpriteId, Fix32) {
+        var result: std.EnumArray(SpriteId, Fix32) = undefined;
         for (std.enums.values(SpriteId), 0..) |key, index| {
             const ratio =
-                @as(f32, sprite_source_pixel_map[index].h) /
-                @as(f32, sprite_source_pixel_map[index].w);
+                Fix32.fp(sprite_source_pixel_map[index].h).div(
+                Fix32.fp(sprite_source_pixel_map[index].w),
+            );
             result.set(key, ratio);
         }
         return result;

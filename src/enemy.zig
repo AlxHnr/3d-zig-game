@@ -63,7 +63,7 @@ pub const Enemy = struct {
     ) Enemy {
         const character = GameCharacter.create(
             position,
-            config.height.div(fp(spritesheet.getSpriteAspectRatio(config.sprite))),
+            config.height.div(spritesheet.getSpriteAspectRatio(config.sprite)),
             config.height,
             fp(0),
             config.max_health,

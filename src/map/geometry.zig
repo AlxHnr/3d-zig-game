@@ -1123,8 +1123,8 @@ const BillboardObject = struct {
             .position = position,
             .radius = width.div(fp(2)),
         };
-        const half_height =
-            boundaries.radius.convertTo(f32) * spritesheet.getSpriteAspectRatio(sprite_id);
+        const half_height = boundaries.radius
+            .mul(spritesheet.getSpriteAspectRatio(sprite_id)).convertTo(f32);
         const tint = getDefaultTint(object_type);
         return .{
             .object_id = object_id,
