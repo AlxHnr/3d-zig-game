@@ -64,7 +64,8 @@ pub fn Fixedpoint(comptime integer_bit_count: u6, comptime fraction_bit_count: u
             const result =
                 @as(IntermediateType, self.internal) *
                 @as(IntermediateType, other.internal);
-            return .{ .internal = @intCast(@divTrunc(result, scaling_factor)) };
+            const rounding = scaling_factor / 2;
+            return .{ .internal = @intCast(@divTrunc(result + rounding, scaling_factor)) };
         }
 
         pub fn div(self: Self, other: Self) Self {

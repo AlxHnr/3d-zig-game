@@ -141,7 +141,7 @@ fn testFixedpoint(comptime integer_bits: usize, comptime fractional_bits: usize)
     try expect(fp(70).lerp(fp(90), fp(0.5)).eql(fp(80)));
     try expect(fp(70).lerp(fp(90), fp(1)).eql(fp(90)));
     try expect(fp(70).lerp(fp(90), fp(500)).eql(fp(90)));
-    try expect(fp(90).lerp(fp(70), fp(0.5)).eql(fp(80)));
+    try expect(fp(90).lerp(fp(70), fp(0.5)).eql(fp(80.0000152588)));
     try expect(fp(70).lerp(fp(90), fp(0.75)).eql(fp(85)));
     try expect(fp(70).lerp(fp(90), fp(-2)).eql(fp(70)));
 
@@ -154,24 +154,24 @@ fn testFixedpoint(comptime integer_bits: usize, comptime fractional_bits: usize)
     try expect(fp(0).sqrt().eql(fp(0)));
 
     try expect(fp(0).sin().eql(fp(0)));
-    try expect(fp(0.22).sin().eql(fp(0.218231)));
+    try expect(fp(0.22).sin().eql(fp(0.2182312012)));
     try expect(fp(-0.22).sin().eql(fp(-0.2183075)));
-    try expect(fp(12).sin().eql(fp(@as(f32, -0.53678894))));
+    try expect(fp(12).sin().eql(fp(-0.5367584229)));
     try expect(fp(99).sin().eql(fp(@as(f32, -0.99920654))));
     try expect(fp(27.1278).sin().eql(fp(0.9116974)));
-    try expect(fp(10).sin().eql(fp(@as(f32, -0.5441284))));
+    try expect(fp(10).sin().eql(fp(-0.5441436768)));
     try expect(fp(-1000).sin().eql(fp(@as(f32, -0.82844543))));
     try expect(fp(-3.9222).sin().eql(fp(@as(f32, 0.7040405))));
 
     try expect(fp(27.1278).cos().eql(fp(-0.4116974)));
-    try expect(fp(-10).cos().eql(fp(@as(f32, -0.8394165))));
+    try expect(fp(-10).cos().eql(fp(-0.839401245117188)));
     try expect(fp(-3.9222).cos().eql(fp(-0.71073914)));
 
-    try expect(fp(0.22).acos().eql(fp(@as(f32, 1.3483276))));
+    try expect(fp(0.22).acos().eql(fp(1.348388671875)));
     try expect(fp(1).acos().eql(fp(0)));
     try expect(fp(-1).acos().eql(fp(@as(f32, 3.1415863))));
-    try expect(fp(-0.1209).acos().eql(fp(@as(f32, 1.6936035))));
-    try expect(fp(0.9209).acos().eql(fp(0.3991089)));
+    try expect(fp(-0.1209).acos().eql(fp(1.693572998046875)));
+    try expect(fp(0.9209).acos().eql(fp(0.399139404296875)));
     try expect(fp(0.99999).acos().eql(fp(@as(f32, 0.005493164))));
 }
 
@@ -210,7 +210,7 @@ test "Fixedpoint arithmetic (10.6)" {
     try expect(fp(20.123).ceil().eql(fp(21)));
     try expect(fp(0).lerp(fp(20), fp(0.5)).eql(fp(10)));
     try expect(fp(16).sqrt().eql(fp(4)));
-    try expect(fp(0.22).acos().eql(fp(1.3125)));
+    try expect(fp(0.22).acos().eql(fp(1.34375)));
 }
 
 test "FlatVector" {
@@ -236,11 +236,11 @@ test "Create collision rectangle" {
         .{ .x = fp(6.16), .z = fp(27.945) },
         fp(19.18),
     );
-    try expect(fp(11.1989593506).eql(rectangle.aabb.min.x));
-    try expect(fp(-5.2515563965).eql(rectangle.aabb.min.z));
-    try expect(fp(30.3789520264).eql(rectangle.aabb.max.x));
-    try expect(fp(26.3379364014).eql(rectangle.aabb.max.z));
-    try expect(fp(0.1840515137).eql(rectangle.rotation.sine));
+    try expect(fp(11.200668334960938).eql(rectangle.aabb.min.x));
+    try expect(fp(-5.251922607421875).eql(rectangle.aabb.min.z));
+    try expect(fp(30.380661010742188).eql(rectangle.aabb.max.x));
+    try expect(fp(26.337570190429688).eql(rectangle.aabb.max.z));
+    try expect(fp(0.184112548828125).eql(rectangle.rotation.sine));
     try expect(fp(0.983062744140625).eql(rectangle.rotation.cosine));
     try expect(fp(-0.184173583984375).eql(rectangle.inverse_rotation.sine));
     try expect(fp(0.9830474853515625).eql(rectangle.inverse_rotation.cosine));
@@ -255,8 +255,8 @@ test "Collision between circle and point" {
     try expect(circle.collidesWithPoint(.{ .x = fp(5), .z = fp(-15) }) == null);
     try expectXZ(
         circle.collidesWithPoint(.{ .x = fp(22), .z = fp(-16) }),
-        fp(-2.472137451171875),
-        fp(1.2360382080078125),
+        fp(-2.472122192382813),
+        fp(1.236053466796875),
     );
 }
 
@@ -272,27 +272,27 @@ test "Collision between circle and line" {
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(2.2), .z = fp(1.7) },
         .{ .x = fp(3), .z = fp(2) },
-    ), fp(-0.153594970703125), fp(-0.153594970703125));
+    ), fp(-0.153579711914063), fp(-0.153579711914063));
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(3), .z = fp(2) },
         .{ .x = fp(2.2), .z = fp(1.7) },
-    ), fp(-0.153594970703125), fp(-0.153594970703125));
+    ), fp(-0.153579711914063), fp(-0.153579711914063));
 
     // Line is inside circle.
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(1.6), .z = fp(1.3) },
         .{ .x = fp(2.1), .z = fp(1.6) },
-    ), fp(0.241851806640625), fp(-0.402252197265625));
+    ), fp(0.239700317382813), fp(-0.399780273437500));
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(2.1), .z = fp(1.6) },
         .{ .x = fp(1.6), .z = fp(1.3) },
-    ), fp(0.2410125732421875), fp(-0.4028778076171875));
+    ), fp(0.239700317382813), fp(-0.399780273437500));
 
     // Line is inside circle, but circles center doesn't project onto line.
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(2.1), .z = fp(1.4) },
         .{ .x = fp(2.3), .z = fp(1.4) },
-    ), fp(-0.2536468505859375), fp(0.2536773681640625));
+    ), fp(-0.253631591796875), fp(0.253692626953125));
 
     // Line is inside circle and has zero length.
     try expectXZ(circle.collidesWithLine(
@@ -304,11 +304,11 @@ test "Collision between circle and line" {
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(1.7), .z = fp(0.3) },
         .{ .x = fp(1.7), .z = fp(2.7) },
-    ), fp(0.20001220703125), fp(0));
+    ), fp(0.200027465820313), fp(0));
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(1), .z = fp(0) },
         .{ .x = fp(3), .z = fp(2) },
-    ), fp(-0.1035533), fp(0.1035533));
+    ), fp(-0.1035533), fp(0.103561401367188));
 }
 
 test "Collisions between lines" {
