@@ -33,12 +33,6 @@ pub const Color = struct {
             .b = math.lerp(self.b, other.b, t),
         };
     }
-
-    pub fn isEqual(a: Color, b: Color) bool {
-        return math.isEqual(a.r, b.r) and
-            math.isEqual(a.g, b.g) and
-            math.isEqual(a.b, b.b);
-    }
 };
 
 /// Generates unique ids for distinguishing all objects in the game.

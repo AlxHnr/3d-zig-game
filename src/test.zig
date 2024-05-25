@@ -19,7 +19,7 @@ const CellLineIterator = @import("spatial_partitioning/cell_line_iterator.zig").
 const Fixedpoint = @import("fixedpoint.zig").Fixedpoint;
 const cellLineIterator = @import("spatial_partitioning/cell_line_iterator.zig").iterator;
 
-const epsilon = math.epsilon;
+const epsilon = 0.00001;
 const expect = std.testing.expect;
 const expectApproxEqRel = std.testing.expectApproxEqRel;
 
@@ -456,13 +456,23 @@ fn expectSegments(
     }
 }
 
+fn isEqual(a: f32, b: f32) bool {
+    return @abs(a - b) < epsilon;
+}
+
+fn colorIsEqual(a: util.Color, b: util.Color) bool {
+    return isEqual(a.r, b.r) and
+        isEqual(a.g, b.g) and
+        isEqual(a.b, b.b);
+}
+
 fn expectSegmentColors(
     segments: []const text_rendering.TextSegment,
     expected_colors: []const util.Color,
 ) !void {
     try expect(segments.len == expected_colors.len);
     for (segments, 0..) |segment, index| {
-        try expect(segment.color.isEqual(expected_colors[index]));
+        try expect(colorIsEqual(segment.color, expected_colors[index]));
     }
 }
 

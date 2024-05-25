@@ -610,10 +610,8 @@ const SlideInAnimationBox = struct {
         const dimensions = self.widget.getDimensionsInPixels();
         self.widget.populateSpriteData(
             screen_dimensions.width / 2 - dimensions.width / 2,
-            screen_dimensions.height - math.scaleU16(
-                dimensions.height,
-                window_open_interval.convertTo(f32),
-            ),
+            screen_dimensions.height -
+                fp(dimensions.height).mul(window_open_interval).convertTo(u16),
             out,
         );
     }

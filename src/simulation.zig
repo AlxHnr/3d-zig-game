@@ -6,7 +6,7 @@ const std = @import("std");
 /// This constant specifies a base value to which everything in the game relates to. To slow down or
 /// speed up the game at runtime, use `TickTimer.start()`. Increasing the tickrate will also
 /// change applied frictions (wall, crowd) and increase the velocity limit. Huge tickrates can break
-/// movement by causing substeps to be shorter than `math.epsilon`.
+/// movement by making substeps shorter than the current precision allows.
 pub const tickrate = 30;
 
 // The following constants must be manually recomputed every time the tickrate changes. This does

@@ -193,7 +193,7 @@ pub const Player = struct {
             self.orientation,
         );
         self.animation_cycle.processElapsedTick(
-            self.character.moving_circle.velocity.length().mul(fp64(0.75)).convertTo(f32),
+            self.character.moving_circle.velocity.length().convertTo(math.Fix32).mul(fp(0.75)),
         );
     }
 
@@ -270,10 +270,7 @@ pub const Player = struct {
                 .height = self.height.lerp(other.height, t),
                 .velocity = self.velocity.lerp(other.velocity, t),
                 .camera = self.camera.lerp(other.camera, t),
-                .animation_cycle = self.animation_cycle.lerp(
-                    other.animation_cycle,
-                    t.convertTo(f32),
-                ),
+                .animation_cycle = self.animation_cycle.lerp(other.animation_cycle, t),
             };
         }
     };

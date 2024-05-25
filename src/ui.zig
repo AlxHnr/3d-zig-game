@@ -287,11 +287,15 @@ pub const Spacing = struct {
     fixed_pixels: struct { horizontal: u16, vertical: u16 },
     /// Values based on the size of the wrapped widget, where {0.5, 0.5} means adding half of
     /// the wrapped_widget's size both to the left and the right plus the top and bottom.
-    percentual: struct { horizontal: f32, vertical: f32 },
+    percentual: struct { horizontal: math.Fix32, vertical: math.Fix32 },
 
     /// Returned object will keep a reference to the given widget. A horizontal value of 0.5 means
     /// adding half of the wrapped widgets width to both the left and the right of it.
-    pub fn wrapPercentual(widget_to_wrap: *const Widget, horizontal: f32, vertical: f32) Spacing {
+    pub fn wrapPercentual(
+        widget_to_wrap: *const Widget,
+        horizontal: math.Fix32,
+        vertical: math.Fix32,
+    ) Spacing {
         return .{
             .wrapped_widget = widget_to_wrap,
             .fixed_pixels = .{ .horizontal = 0, .vertical = 0 },
@@ -307,17 +311,17 @@ pub const Spacing = struct {
         return .{
             .wrapped_widget = widget_to_wrap,
             .fixed_pixels = .{ .horizontal = horizontal, .vertical = vertical },
-            .percentual = .{ .horizontal = 0, .vertical = 0 },
+            .percentual = .{ .horizontal = fp(0), .vertical = fp(0) },
         };
     }
 
     pub fn getDimensionsInPixels(self: Spacing) ScreenDimensions {
         const content = self.wrapped_widget.getDimensionsInPixels();
         return .{
-            .width = math.scaleU16(content.width, self.percentual.horizontal * 2 + 1) +
-                self.fixed_pixels.horizontal * 2,
-            .height = math.scaleU16(content.height, self.percentual.vertical * 2 + 1) +
-                self.fixed_pixels.vertical * 2,
+            .width = fp(content.width).mul(self.percentual.horizontal.mul(fp(2)).add(fp(1)))
+                .convertTo(u16) + self.fixed_pixels.horizontal * 2,
+            .height = fp(content.height).mul(self.percentual.vertical.mul(fp(2)).add(fp(1)))
+                .convertTo(u16) + self.fixed_pixels.vertical * 2,
         };
     }
 
@@ -335,10 +339,10 @@ pub const Spacing = struct {
     ) void {
         const content = self.wrapped_widget.getDimensionsInPixels();
         const offset = .{
-            .x = math.scaleU16(content.width, self.percentual.horizontal) +
-                self.fixed_pixels.horizontal,
-            .y = math.scaleU16(content.height, self.percentual.vertical) +
-                self.fixed_pixels.vertical,
+            .x = fp(content.width).mul(self.percentual.horizontal)
+                .convertTo(u16) + self.fixed_pixels.horizontal,
+            .y = fp(content.height).mul(self.percentual.vertical)
+                .convertTo(u16) + self.fixed_pixels.vertical,
         };
         self.wrapped_widget.populateSpriteData(
             screen_position_x + offset.x,
@@ -354,7 +358,7 @@ pub const Box = struct {
     /// Non-owning pointer.
     spritesheet: *const SpriteSheetTexture,
     /// Dimensions of the dialog box elements. Assumed to be the same for all dialog box sprites.
-    scaled_sprite: struct { width: f32, height: f32 },
+    scaled_sprite: struct { width: math.Fix32, height: math.Fix32 },
 
     const dialog_sprite_count = 9;
     const dialog_sprite_scale = 2;
@@ -366,8 +370,8 @@ pub const Box = struct {
             .wrapped_widget = widget_to_wrap,
             .spritesheet = spritesheet,
             .scaled_sprite = .{
-                .width = @as(f32, @floatFromInt(dimensions.width)) * dialog_sprite_scale,
-                .height = @as(f32, @floatFromInt(dimensions.height)) * dialog_sprite_scale,
+                .width = fp(dimensions.width).mul(fp(dialog_sprite_scale)),
+                .height = fp(dimensions.height).mul(fp(dialog_sprite_scale)),
             },
         };
     }
@@ -384,8 +388,8 @@ pub const Box = struct {
     /// Get the boxes frame size in pixels.
     pub fn getFrameDimensionsWithoutContent(self: Box) ScreenDimensions {
         return .{
-            .width = @as(u16, @intFromFloat(self.scaled_sprite.width)) * 2,
-            .height = @as(u16, @intFromFloat(self.scaled_sprite.height)) * 2,
+            .width = self.scaled_sprite.width.convertTo(u16) * 2,
+            .height = self.scaled_sprite.height.convertTo(u16) * 2,
         };
     }
 
@@ -406,7 +410,10 @@ pub const Box = struct {
             .w = @as(f32, @floatFromInt(content_u16.width)),
             .h = @as(f32, @floatFromInt(content_u16.height)),
         };
-        const sprite = .{ .w = self.scaled_sprite.width, .h = self.scaled_sprite.height };
+        const sprite = .{
+            .w = self.scaled_sprite.width.convertTo(f32),
+            .h = self.scaled_sprite.height.convertTo(f32),
+        };
 
         const helper = SpriteDataHelper.create(
             self.spritesheet,

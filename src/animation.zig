@@ -1,21 +1,22 @@
-const std = @import("std");
+const fp = math.Fix32.fp;
 const math = @import("math.zig");
+const std = @import("std");
 
 /// For cycling between 3 frames in a loop like this: 0 -> 1 -> 2 -> 1 -> 0.
 pub const FourStepCycle = struct {
     /// Moves from 0 to 1 and wraps around to 0,
-    cycle: f32,
+    cycle: math.Fix32,
     step: u2,
 
     pub fn create() FourStepCycle {
-        return .{ .cycle = 0, .step = 0 };
+        return .{ .cycle = fp(0), .step = 0 };
     }
 
     /// Takes a speed value >= 0 where 1 skips a full frame,
-    pub fn processElapsedTick(self: *FourStepCycle, speed: f32) void {
-        self.cycle = self.cycle + @max(0, speed);
-        if (self.cycle > 1) {
-            self.cycle = 0;
+    pub fn processElapsedTick(self: *FourStepCycle, speed: math.Fix32) void {
+        self.cycle = self.cycle.add(speed.max(fp(0)));
+        if (self.cycle.gt(fp(1))) {
+            self.cycle = fp(0);
             self.step = self.step +% 1;
         }
     }
@@ -24,10 +25,10 @@ pub const FourStepCycle = struct {
         return if (self.step == 3) 1 else self.step;
     }
 
-    pub fn lerp(self: FourStepCycle, other: FourStepCycle, t: f32) FourStepCycle {
+    pub fn lerp(self: FourStepCycle, other: FourStepCycle, t: math.Fix32) FourStepCycle {
         return .{
-            .cycle = math.lerp(self.cycle, other.cycle, t),
-            .step = if (t < 0.5) self.step else other.step,
+            .cycle = self.cycle.lerp(other.cycle, t),
+            .step = if (t.lt(fp(0.5))) self.step else other.step,
         };
     }
 };

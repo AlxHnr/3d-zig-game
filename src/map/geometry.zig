@@ -129,7 +129,7 @@ pub fn createFromSerializableData(
 
 pub fn processElapsedTick(self: *Geometry) void {
     self.floor_animation_state.processElapsedTick(
-        math.Fix64.fp(1).div(simulation.secondsToTicks(0.8)).convertTo(f32),
+        fp(1).div(simulation.secondsToTicks(0.8).convertTo(math.Fix32)),
     );
 }
 
@@ -1283,12 +1283,12 @@ const ObstacleGrid = struct {
         map_boundaries.max = map_boundaries.max.add(padding_for_storing_extra_neighbors);
 
         const map_dimensions = .{
-            .w = map_boundaries.max.x.sub(map_boundaries.min.x).convertTo(f32),
-            .h = map_boundaries.max.z.sub(map_boundaries.min.z).convertTo(f32),
+            .w = map_boundaries.max.x.sub(map_boundaries.min.x),
+            .h = map_boundaries.max.z.sub(map_boundaries.min.z),
         };
         const map_cell_count = .{
-            .w = @as(usize, @intFromFloat(map_dimensions.w / cell_size.convertTo(f32))) + 1,
-            .h = @as(usize, @intFromFloat(map_dimensions.h / cell_size.convertTo(f32))) + 1,
+            .w = map_dimensions.w.div(cell_size).add(fp(1)).convertTo(usize),
+            .h = map_dimensions.h.div(cell_size).add(fp(1)).convertTo(usize),
         };
         const total_cell_count = map_cell_count.w * map_cell_count.h;
         self.* = .{
