@@ -2531,44 +2531,6 @@
    "t": "short_metal_fence",
    "start": {
     "x": {
-     "internal": -2449744
-    },
-    "z": {
-     "internal": 1747678
-    }
-   },
-   "end": {
-    "x": {
-     "internal": 2815474
-    },
-    "z": {
-     "internal": 1714204
-    }
-   }
-  },
-  {
-   "t": "short_metal_fence",
-   "start": {
-    "x": {
-     "internal": 2815474
-    },
-    "z": {
-     "internal": 1714204
-    }
-   },
-   "end": {
-    "x": {
-     "internal": 2791170
-    },
-    "z": {
-     "internal": -2228025
-    }
-   }
-  },
-  {
-   "t": "short_metal_fence",
-   "start": {
-    "x": {
      "internal": 2791170
     },
     "z": {
@@ -2680,21 +2642,59 @@
    }
   },
   {
-   "t": "metal_fence",
+   "t": "short_metal_fence",
    "start": {
     "x": {
-     "internal": 14632609
+     "internal": 2808088
     },
     "z": {
-     "internal": 3185515
+     "internal": 1714096
     }
    },
    "end": {
     "x": {
-     "internal": 21113554
+     "internal": -2452733
     },
     "z": {
-     "internal": 3064998
+     "internal": 1744372
+    }
+   }
+  },
+  {
+   "t": "short_metal_fence",
+   "start": {
+    "x": {
+     "internal": 2804985
+    },
+    "z": {
+     "internal": 1706007
+    }
+   },
+   "end": {
+    "x": {
+     "internal": 2791640
+    },
+    "z": {
+     "internal": -2225028
+    }
+   }
+  },
+  {
+   "t": "metal_fence",
+   "start": {
+    "x": {
+     "internal": 21079849
+    },
+    "z": {
+     "internal": 3070965
+    }
+   },
+   "end": {
+    "x": {
+     "internal": 14664910
+    },
+    "z": {
+     "internal": 3204733
     }
    }
   }
