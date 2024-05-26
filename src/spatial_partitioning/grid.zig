@@ -268,7 +268,15 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
                 const next_vertex = vertices[@mod(next_index, vertices.len)];
                 var iterator = cell_line_iterator.iterator(CellIndex, vertex, next_vertex);
                 while (iterator.next()) |cell_index| {
-                    try indices.put(cell_index, {});
+                    try indices.put(.{ .x = cell_index.x - 1, .z = cell_index.z - 1 }, {});
+                    try indices.put(.{ .x = cell_index.x + 0, .z = cell_index.z - 1 }, {});
+                    try indices.put(.{ .x = cell_index.x + 1, .z = cell_index.z - 1 }, {});
+                    try indices.put(.{ .x = cell_index.x - 1, .z = cell_index.z + 0 }, {});
+                    try indices.put(.{ .x = cell_index.x + 0, .z = cell_index.z + 0 }, {});
+                    try indices.put(.{ .x = cell_index.x + 1, .z = cell_index.z + 0 }, {});
+                    try indices.put(.{ .x = cell_index.x - 1, .z = cell_index.z + 1 }, {});
+                    try indices.put(.{ .x = cell_index.x + 0, .z = cell_index.z + 1 }, {});
+                    try indices.put(.{ .x = cell_index.x + 1, .z = cell_index.z + 1 }, {});
                 }
             }
 
