@@ -2,7 +2,7 @@ const std = @import("std");
 
 /// Fixed-point numeric type for deterministic computations which are portably reproducible.
 /// Non-saturating. Overflows cause a panic in debug builds.
-pub fn Fixedpoint(comptime integer_bit_count: u6, comptime fraction_bit_count: u6) type {
+pub fn Fixedpoint(comptime integer_bit_count: u7, comptime fraction_bit_count: u7) type {
     comptime {
         std.debug.assert(integer_bit_count > 0);
         std.debug.assert(fraction_bit_count > 0);
