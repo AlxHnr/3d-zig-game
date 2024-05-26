@@ -575,35 +575,29 @@ pub fn cast3DRayToObjects(self: Geometry, ray: collision.Ray3d) ?RayCollision {
     return null;
 }
 
-/// If a collision occurs, return a displacement vector for moving the given circle out of the
-/// map geometry. The returned displacement vector must be added to the given circles position
-/// to resolve the collision.
-pub fn collidesWithCircle(
-    self: Geometry,
-    circle: collision.Circle,
-    ignore_fences: bool,
-) ?math.FlatVector {
-    var found_collision = false;
-    var displaced_circle = circle;
+pub fn moveOutOfWalls(self: Geometry, object: collision.Circle) collision.Circle {
+    var circle = object;
 
-    const spatial_index = if (ignore_fences)
-        &self.spatial_wall_index.solid
-    else
-        &self.spatial_wall_index.all;
+    // Specific situations require more than one iteration. Most calls to this function stop after
+    // one iteration, with very few going beyond 2. The upper bound must be large enough to prevent
+    // the object from passing in-between two walls which overlap at a very steep angle.
+    for (0..32) |_| {
+        const outer_bounding_box = circle.getOuterBoundingBoxInGameCoordinates();
 
-    // Move displaced_circle out of all walls.
-    var iterator = spatial_index.areaIterator(circle.getOuterBoundingBoxInGameCoordinates());
-    while (iterator.next()) |boundaries| {
-        if (displaced_circle.collidesWithRectangle(boundaries)) |displacement_vector| {
-            displaced_circle.position = displaced_circle.position.add(displacement_vector);
-            found_collision = true;
+        var found_collision = false;
+        var iterator = self.spatial_wall_index.all.areaIterator(outer_bounding_box);
+        while (iterator.next()) |boundaries| {
+            if (circle.collidesWithRectangle(boundaries)) |displacement_vector| {
+                circle.position = circle.position.add(displacement_vector);
+                found_collision = true;
+            }
+        }
+        if (!found_collision) {
+            break;
         }
     }
 
-    return if (found_collision)
-        displaced_circle.position.subtract(circle.position)
-    else
-        null;
+    return circle;
 }
 
 /// Check if two points are separated by a solid wall. Fences are not solid.
@@ -995,7 +989,10 @@ const Wall = struct {
         end_position: math.FlatVector,
         wall_type: WallType,
     ) WallTypeProperties {
-        const fence_thickness = fp(0.25); // Only needed for collision boundaries, fences are flat.
+        // Limit determined by trial and error. See moving_circle.zig.
+        const minimal_wall_thickness = fp(0.25);
+        // Only needed for collision boundaries, fences are flat.
+        const fence_thickness = minimal_wall_thickness;
         var properties = WallTypeProperties{
             .corrected_start_position = start_position,
             .corrected_end_position = end_position,
@@ -1040,6 +1037,7 @@ const Wall = struct {
                 properties.texture_scale = fp(16);
             },
         }
+        std.debug.assert(properties.thickness.gte(minimal_wall_thickness));
         return properties;
     }
 

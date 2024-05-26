@@ -49,23 +49,13 @@ pub const MovingCircle = struct {
         // Max applicable velocity (limit) per tick is `radius * self.traces.len`.
         var index: usize = 0;
         var remaining_velocity = velocity_length_squared.sqrt().convertTo(math.Fix32);
-        var boundaries = .{ .position = self.getPosition(), .radius = self.radius };
+        var boundaries = collision.Circle{ .position = self.getPosition(), .radius = self.radius };
         var trace: @TypeOf(self.trace) = undefined;
         while (remaining_velocity.gt(fp(0)) and index < self.trace.len) : (index += 1) {
             const substep_length = remaining_velocity.min(self.radius);
+            boundaries.position = boundaries.position.add(direction.scale(substep_length));
+            boundaries = map.geometry.moveOutOfWalls(boundaries);
             remaining_velocity = remaining_velocity.sub(substep_length);
-
-            var substep = direction.scale(substep_length);
-            if (map.geometry.collidesWithCircle(boundaries, self.pass_trough_fences)) |displacement_vector| {
-                boundaries.position = boundaries.position.add(displacement_vector);
-                const friction = fp(1).add(
-                    direction.dotProduct(displacement_vector.normalize())
-                        .clamp(fp64(-1), fp64(0)).convertTo(math.Fix32),
-                );
-                self.velocity = self.velocity.scale(friction);
-                substep = substep.scale(friction);
-            }
-            boundaries.position = boundaries.position.add(substep);
             trace[index] = boundaries.position;
         }
         self.setTrace(trace[0..index]);

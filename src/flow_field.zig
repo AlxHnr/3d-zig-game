@@ -374,8 +374,10 @@ const GrowingRadiusIterator = struct {
                 .radius = fp(cell_side_length).mul(self.radius_factor),
             };
             self.radius_factor = self.radius_factor.mul(fp(2));
-            if (self.map.geometry.collidesWithCircle(circle, false)) |displacement_vector| {
-                return self.position.add(displacement_vector);
+
+            const corrected_position = self.map.geometry.moveOutOfWalls(circle).position;
+            if (!corrected_position.equal(circle.position)) {
+                return corrected_position;
             }
         }
         return null;

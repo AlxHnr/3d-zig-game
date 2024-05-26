@@ -221,7 +221,8 @@ pub const Circle = struct {
         else
             math.FlatVector{ .x = fp(0), .z = displacement_z };
 
-        return rectangle.inverse_rotation.rotate(displacement_vector);
+        const result = rectangle.inverse_rotation.rotate(displacement_vector);
+        return if (result.equal(math.FlatVector.zero)) null else result;
     }
 
     pub fn getOuterBoundingBoxInGameCoordinates(self: Circle) AxisAlignedBoundingBox {
