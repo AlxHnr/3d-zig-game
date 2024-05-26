@@ -2,7 +2,6 @@
 const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const collision = @import("collision.zig");
 const fp = math.Fix32.fp;
-const fp64 = math.Fix64.fp;
 const math = @import("math.zig");
 const simulation = @import("simulation.zig");
 const std = @import("std");
@@ -185,10 +184,10 @@ fn getViewMatrix(self: Camera, max_distance_from_target: ?math.Fix64) math.Matri
 fn getAdjustedCameraPosition(self: Camera, max_distance_from_target: ?math.Fix64) math.Vector3d {
     const offset_from_target = self.getPosition().subtract(self.target_position);
     const max_distance = max_distance_from_target orelse offset_from_target.length();
-    const distance = offset_from_target.length().min(max_distance);
-    const prevent_seeing_trough_walls_factor = fp64(0.95);
+    const distance = offset_from_target.length().min(max_distance).convertTo(math.Fix32);
+    const prevent_seeing_trough_walls_factor = fp(0.8);
     const updated_offset = offset_from_target.normalize()
-        .scale(distance.mul(prevent_seeing_trough_walls_factor).convertTo(math.Fix32));
+        .scale(distance.mul(prevent_seeing_trough_walls_factor));
     return self.target_position.add(updated_offset);
 }
 
