@@ -1311,7 +1311,9 @@ const ObstacleGrid = struct {
     }
 
     fn getObstacleTile(self: ObstacleGrid, position: math.FlatVector) TileType {
-        if (!self.map_boundaries.collidesWithPoint(position)) {
+        if (self.map_boundaries.sizeIsZero() or
+            !self.map_boundaries.collidesWithPoint(position))
+        {
             return .none;
         }
         const index = self.getIndex(

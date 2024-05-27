@@ -16,6 +16,10 @@ pub const AxisAlignedBoundingBox = struct {
             point.x.lte(self.max.x) and
             point.z.lte(self.max.z);
     }
+
+    pub fn sizeIsZero(self: AxisAlignedBoundingBox) bool {
+        return self.min.equal(self.max);
+    }
 };
 
 pub const Rectangle = struct {
