@@ -73,7 +73,7 @@ pub fn increaseDistanceToObject(self: *Camera, offset: math.Fix32) void {
 
 /// Angle between 0 and 1.55 (89 degrees). Will be clamped into this range.
 pub fn setAngleFromGround(self: *Camera, angle: math.Fix32) void {
-    self.target_angle_from_ground = angle.clamp(fp(0), fp(89).toRadians());
+    self.target_angle_from_ground = angle.clamp(fp(0), fp(80).toRadians());
 }
 
 pub fn resetAngleFromGround(self: *Camera) void {
