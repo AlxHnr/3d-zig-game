@@ -90,28 +90,6 @@ pub const Rectangle = struct {
         return self.collidesWithRotatedPoint(self.rotation.rotate(point));
     }
 
-    pub fn getCornersInGameCoordinates(self: Rectangle) [4]math.FlatVector {
-        return .{
-            self.inverse_rotation.rotate(self.aabb.min),
-            self.inverse_rotation.rotate(.{ .x = self.aabb.min.x, .z = self.aabb.max.z }),
-            self.inverse_rotation.rotate(self.aabb.max),
-            self.inverse_rotation.rotate(.{ .x = self.aabb.max.x, .z = self.aabb.min.z }),
-        };
-    }
-
-    /// Returned bounding box may be larger than the rotated rectangle.
-    pub fn getOuterBoundingBoxInGameCoordinates(self: Rectangle) AxisAlignedBoundingBox {
-        const corners = self.getCornersInGameCoordinates();
-        var result = .{ .min = corners[0], .max = corners[0] };
-        for (corners[1..]) |corner| {
-            result.min.x = result.min.x.min(corner.x);
-            result.min.z = result.min.z.min(corner.z);
-            result.max.x = result.max.x.min(corner.x);
-            result.max.z = result.max.z.min(corner.z);
-        }
-        return result;
-    }
-
     fn collidesWithRotatedPoint(self: Rectangle, rotated_point: math.FlatVector) bool {
         return self.aabb.collidesWithPoint(rotated_point);
     }
