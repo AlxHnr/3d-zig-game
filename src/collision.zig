@@ -1,5 +1,6 @@
 //! Contains helpers for representing collision boundaries and resolving collisions.
 
+const Fixedpoint = @import("fixedpoint.zig").Fixedpoint;
 const fp = math.Fix32.fp;
 const fp64 = math.Fix64.fp;
 const math = @import("math.zig");
@@ -360,41 +361,41 @@ pub const Ray3d = struct {
     /// If the given triangle is not wired counter-clockwise, it will be ignored.
     pub fn collidesWithTriangle(self: Ray3d, triangle: [3]math.Vector3d) ?ImpactPoint {
         // Möller-Trumbore intersection algorithm.
-        const start_position = self.start_position.convertTo(math.Vector3dLarge);
-        const direction = self.direction.convertTo(math.Vector3dLarge);
+        const Fix64Precise = Fixedpoint(40, 24);
+        const Vector3dPrecise = math.Vector3dCustom(Fix64Precise, Fix64Precise);
+        const fp64p = Fix64Precise.fp;
+
+        const start_position = self.start_position.convertTo(Vector3dPrecise);
+        const direction = self.direction.convertTo(Vector3dPrecise);
         const edges = .{
-            triangle[1].subtract(triangle[0]).convertTo(math.Vector3dLarge),
-            triangle[2].subtract(triangle[0]).convertTo(math.Vector3dLarge),
+            triangle[1].subtract(triangle[0]).convertTo(Vector3dPrecise),
+            triangle[2].subtract(triangle[0]).convertTo(Vector3dPrecise),
         };
         const p = direction.crossProduct(edges[1]);
         const determinant = edges[0].dotProduct(p);
-        if (determinant.eql(fp64(0))) {
+        if (determinant.eql(fp64p(0))) {
             return null;
         }
-        const inverted_determinant = fp64(1).div(determinant);
-        const triangle0_offset = start_position.subtract(triangle[0].convertTo(math.Vector3dLarge));
+        const inverted_determinant = fp64p(1).div(determinant);
+        const triangle0_offset = start_position.subtract(triangle[0].convertTo(Vector3dPrecise));
         const u_parameter = inverted_determinant.mul(triangle0_offset.dotProduct(p));
-        if (u_parameter.lt(fp64(0)) or u_parameter.gt(fp64(1))) {
+        if (u_parameter.lt(fp64p(0)) or u_parameter.gt(fp64p(1))) {
             return null;
         }
         const q_vector = triangle0_offset.crossProduct(edges[0]);
         const v_parameter = inverted_determinant.mul(direction.dotProduct(q_vector));
-        if (v_parameter.lt(fp64(0)) or v_parameter.add(u_parameter).gt(fp64(1))) {
+        if (v_parameter.lt(fp64p(0)) or v_parameter.add(u_parameter).gt(fp64p(1))) {
             return null;
         }
         const distance_from_start_position =
             inverted_determinant.mul(edges[1].dotProduct(q_vector));
-        if (distance_from_start_position.lte(fp64(0))) {
+        if (distance_from_start_position.lte(fp64p(0))) {
             return null;
         }
         const impact_position = start_position.add(direction.scale(distance_from_start_position));
         return .{
-            .position = .{
-                .x = impact_position.x.convertTo(math.Fix32),
-                .y = impact_position.y.convertTo(math.Fix32),
-                .z = impact_position.z.convertTo(math.Fix32),
-            },
-            .distance_from_start_position = distance_from_start_position,
+            .position = impact_position.convertTo(math.Vector3d),
+            .distance_from_start_position = distance_from_start_position.convertTo(math.Fix64),
         };
     }
 
