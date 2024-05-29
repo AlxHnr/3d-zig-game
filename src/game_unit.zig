@@ -64,7 +64,7 @@ pub const GameCharacter = struct {
             const speed64 = self.movement_speed.convertTo(math.Fix64);
             if (self.moving_circle.velocity.lengthSquared().gt(speed64.mul(speed64))) {
                 self.moving_circle.velocity =
-                    self.moving_circle.velocity.normalize().scale(self.movement_speed);
+                    self.moving_circle.velocity.normalizeApproximate().scale(self.movement_speed);
             }
         } else {
             self.moving_circle.velocity =

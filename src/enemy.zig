@@ -427,15 +427,16 @@ const AttackingState = struct {
                 combined_displacement_vector = combined_displacement_vector.add(displacement_vector);
                 friction_factor = friction_factor.mul(fp(1).add(
                     enemy_friction_constant.mul(
-                        direction.dotProduct(displacement_vector.normalize())
+                        direction.dotProduct(displacement_vector.normalizeApproximate())
                             .convertTo(math.Fix32).clamp(fp(-1), fp(0)),
                     ),
                 ));
             } else if (!collides_with_peer) {
                 const offset_to_peer = position.subtract(peer.position);
-                const direction_to_peer = offset_to_peer.normalize();
+                const direction_to_peer = offset_to_peer.normalizeApproximate();
                 const distance_factor = fp(1).min(
-                    offset_to_peer.length().convertTo(math.Fix32).div(Enemy.peer_flock_radius),
+                    offset_to_peer.lengthApproximate()
+                        .convertTo(math.Fix32).div(Enemy.peer_flock_radius),
                 );
                 average_velocity.add(
                     direction_to_peer.scale(enemy.character.movement_speed).lerp(

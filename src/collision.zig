@@ -118,8 +118,8 @@ pub const Circle = struct {
             return null;
         }
 
-        return center_to_point_offset.normalize().scale(
-            self.radius.sub(center_to_point_offset.length().convertTo(math.Fix32)),
+        return center_to_point_offset.normalizeApproximate().scale(
+            self.radius.sub(center_to_point_offset.lengthApproximate().convertTo(math.Fix32)),
         );
     }
 

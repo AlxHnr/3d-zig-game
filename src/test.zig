@@ -255,8 +255,8 @@ test "Collision between circle and point" {
     try expect(circle.collidesWithPoint(.{ .x = fp(5), .z = fp(-15) }) == null);
     try expectXZ(
         circle.collidesWithPoint(.{ .x = fp(22), .z = fp(-16) }),
-        fp(-2.472122192382813),
-        fp(1.236053466796875),
+        fp(-2.3128204345703125),
+        fp(1.156402587890625),
     );
 }
 
@@ -272,43 +272,43 @@ test "Collision between circle and line" {
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(2.2), .z = fp(1.7) },
         .{ .x = fp(3), .z = fp(2) },
-    ), fp(-0.153579711914063), fp(-0.153579711914063));
+    ), fp(-0.168121337890625), fp(-0.168121337890625));
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(3), .z = fp(2) },
         .{ .x = fp(2.2), .z = fp(1.7) },
-    ), fp(-0.153579711914063), fp(-0.153579711914063));
+    ), fp(-0.168121337890625), fp(-0.168121337890625));
 
     // Line is inside circle.
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(1.6), .z = fp(1.3) },
         .{ .x = fp(2.1), .z = fp(1.6) },
-    ), fp(0.239700317382813), fp(-0.399780273437500));
+    ), fp(0.23236083984375), fp(-0.3875274658203125));
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(2.1), .z = fp(1.6) },
         .{ .x = fp(1.6), .z = fp(1.3) },
-    ), fp(0.239700317382813), fp(-0.399780273437500));
+    ), fp(0.23236083984375), fp(-0.3875274658203125));
 
     // Line is inside circle, but circles center doesn't project onto line.
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(2.1), .z = fp(1.4) },
         .{ .x = fp(2.3), .z = fp(1.4) },
-    ), fp(-0.253631591796875), fp(0.253692626953125));
+    ), fp(-0.2680511474609375), fp(0.2681121826171875));
 
     // Line is inside circle and has zero length.
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(1.6), .z = fp(1.3) },
         .{ .x = fp(1.6), .z = fp(1.3) },
-    ), fp(0.0472135), fp(0.0236068));
+    ), fp(0.0312652587890625), fp(0.0156402587890625));
 
     // Line goes trough circle.
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(1.7), .z = fp(0.3) },
         .{ .x = fp(1.7), .z = fp(2.7) },
-    ), fp(0.200027465820313), fp(0));
+    ), fp(0.2205963134765625), fp(0));
     try expectXZ(circle.collidesWithLine(
         .{ .x = fp(1), .z = fp(0) },
         .{ .x = fp(3), .z = fp(2) },
-    ), fp(-0.1035533), fp(0.103561401367188));
+    ), fp(-0.11810302734375), fp(0.1181182861328125));
 }
 
 test "Collisions between lines" {

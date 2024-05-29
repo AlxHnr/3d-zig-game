@@ -43,11 +43,11 @@ pub const MovingCircle = struct {
         if (self.velocity.equal(math.FlatVector.zero)) {
             return;
         }
-        const direction = self.velocity.normalize();
+        const direction = self.velocity.normalizeApproximate();
 
         // Max applicable velocity (limit) per tick is `radius * self.traces.len`.
         var index: usize = 0;
-        var remaining_velocity = self.velocity.length().convertTo(math.Fix32);
+        var remaining_velocity = self.velocity.lengthApproximate().convertTo(math.Fix32);
         var boundaries = collision.Circle{ .position = self.getPosition(), .radius = self.radius };
         var trace: @TypeOf(self.trace) = undefined;
         while (remaining_velocity.gt(fp(0)) and index < self.trace.len) : (index += 1) {

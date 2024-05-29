@@ -33,14 +33,11 @@ pub const FlatVector = struct {
     }
 
     pub fn normalize(self: FlatVector) FlatVector {
-        const own_length = self.length();
-        return if (own_length.eql(fp64(0)))
-            self
-        else
-            .{
-                .x = self.x.convertTo(Fix64).div(own_length).convertTo(Fix32),
-                .z = self.z.convertTo(Fix64).div(own_length).convertTo(Fix32),
-            };
+        return self.normalizeInternal(self.length());
+    }
+
+    pub fn normalizeApproximate(self: FlatVector) FlatVector {
+        return self.normalizeInternal(self.lengthApproximate());
     }
 
     pub fn lerp(self: FlatVector, other: FlatVector, t: Fix32) FlatVector {
@@ -65,6 +62,16 @@ pub const FlatVector = struct {
 
     pub fn length(self: FlatVector) Fix64 {
         return self.lengthSquared().sqrt();
+    }
+
+    pub fn lengthApproximate(self: FlatVector) Fix64 {
+        const alpha = fp64(0.96043387010342);
+        const beta = fp64(0.397824734759316);
+        const x = self.x.abs().convertTo(Fix64);
+        const z = self.z.abs().convertTo(Fix64);
+        const min = x.min(z);
+        const max = x.max(z);
+        return alpha.mul(max).add(beta.mul(min));
     }
 
     pub fn lengthSquared(self: FlatVector) Fix64 {
@@ -112,6 +119,16 @@ pub const FlatVector = struct {
 
     pub fn rotateRightBy90Degrees(self: FlatVector) FlatVector {
         return .{ .x = self.z.neg(), .z = self.x };
+    }
+
+    fn normalizeInternal(self: FlatVector, own_length: Fix64) FlatVector {
+        return if (own_length.eql(fp64(0)))
+            self
+        else
+            .{
+                .x = self.x.convertTo(Fix64).div(own_length).convertTo(Fix32),
+                .z = self.z.convertTo(Fix64).div(own_length).convertTo(Fix32),
+            };
     }
 };
 
