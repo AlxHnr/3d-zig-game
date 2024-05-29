@@ -28,9 +28,9 @@ pub const Color = struct {
 
     pub fn lerp(self: Color, other: Color, t: f32) Color {
         return .{
-            .r = math.lerp(self.r, other.r, t),
-            .g = math.lerp(self.g, other.g, t),
-            .b = math.lerp(self.b, other.b, t),
+            .r = math.lerpf32(self.r, other.r, t),
+            .g = math.lerpf32(self.g, other.g, t),
+            .b = math.lerpf32(self.b, other.b, t),
         };
     }
 };

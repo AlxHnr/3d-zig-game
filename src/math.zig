@@ -10,19 +10,8 @@ pub const Fix64 = Fixedpoint(48, 16);
 
 /// Linearly interpolate between a and b. T is a value between 0 and 1. Will be clamped into this
 /// range.
-pub const lerp = _lerp;
-fn _lerp(a: f32, b: f32, t: f32) f32 {
+pub fn lerpf32(a: f32, b: f32, t: f32) f32 {
     return a + (b - a) * std.math.clamp(t, 0, 1);
-}
-
-pub fn lerpU32(a: u32, b: u32, t: f32) u32 {
-    const a_f32 = @as(f32, @floatFromInt(a));
-    const b_f32 = @as(f32, @floatFromInt(b));
-    return @as(u32, @intFromFloat(_lerp(a_f32, b_f32, t)));
-}
-
-pub fn scaleU16(value: u16, factor: f32) u16 {
-    return @as(u16, @intFromFloat(@as(f32, @floatFromInt(value)) * factor));
 }
 
 /// Returns < 0 when there is no overlap. 0 when the edges touch. Overlap length otherwise.

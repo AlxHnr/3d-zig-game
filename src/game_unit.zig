@@ -55,7 +55,7 @@ pub const GameCharacter = struct {
     pub fn processElapsedTick(self: *GameCharacter, map: Map) void {
         self.moving_circle.processElapsedTick(map);
 
-        const is_accelerating = self.acceleration_direction.length().gt(fp64(0));
+        const is_accelerating = !self.acceleration_direction.equal(math.FlatVector.zero);
         if (is_accelerating) {
             const acceleration =
                 self.movement_speed.div(simulation.secondsToTicks(0.084).convertTo(math.Fix32));

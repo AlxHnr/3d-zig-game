@@ -40,15 +40,14 @@ pub const MovingCircle = struct {
     }
 
     pub fn processElapsedTick(self: *MovingCircle, map: Map) void {
-        const velocity_length_squared = self.velocity.lengthSquared();
-        if (velocity_length_squared.eql(fp64(0))) {
+        if (self.velocity.equal(math.FlatVector.zero)) {
             return;
         }
         const direction = self.velocity.normalize();
 
         // Max applicable velocity (limit) per tick is `radius * self.traces.len`.
         var index: usize = 0;
-        var remaining_velocity = velocity_length_squared.sqrt().convertTo(math.Fix32);
+        var remaining_velocity = self.velocity.length().convertTo(math.Fix32);
         var boundaries = collision.Circle{ .position = self.getPosition(), .radius = self.radius };
         var trace: @TypeOf(self.trace) = undefined;
         while (remaining_velocity.gt(fp(0)) and index < self.trace.len) : (index += 1) {

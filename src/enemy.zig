@@ -174,21 +174,16 @@ pub const RenderSnapshot = struct {
         camera: ThirdPersonCamera,
         t: math.Fix32,
     ) InterpolatedState {
+        const t64 = t.convertTo(math.Fix64);
         const values = .{
             .position = self.state_at_previous_tick.position.lerp(self.current_state.position, t),
             .radius = self.state_at_previous_tick.radius.lerp(self.current_state.radius, t),
             .height = self.state_at_previous_tick.height.lerp(self.current_state.height, t),
             .health = .{
-                .current = math.lerpU32(
-                    self.state_at_previous_tick.health.current,
-                    self.current_state.health.current,
-                    t.convertTo(f32),
-                ),
-                .max = math.lerpU32(
-                    self.state_at_previous_tick.health.max,
-                    self.current_state.health.max,
-                    t.convertTo(f32),
-                ),
+                .current = fp64(self.state_at_previous_tick.health.current)
+                    .lerp(fp64(self.current_state.health.current), t64).convertTo(u32),
+                .max = fp64(self.state_at_previous_tick.health.max)
+                    .lerp(fp64(self.current_state.health.max), t64).convertTo(u32),
             },
         };
         const distance =
