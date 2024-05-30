@@ -183,7 +183,7 @@ fn getIndex(self: Field, x: usize, z: usize) usize {
 
 fn getIndexFromWorldPosition(self: Field, world_position: math.FlatVector) ?usize {
     const cell_position = world_position.subtract(self.boundaries.min)
-        .scale(fp(1).div(fp(cell_side_length)));
+        .multiplyScalar(fp(1).div(fp(cell_side_length)));
     const x = cell_position.x.ceil().convertTo(isize);
     const z = cell_position.z.ceil().convertTo(isize);
     if (x < 0 or x >= self.grid_cells_per_side or
@@ -196,7 +196,7 @@ fn getIndexFromWorldPosition(self: Field, world_position: math.FlatVector) ?usiz
 
 fn getWorldPosition(self: Field, x: usize, z: usize) math.FlatVector {
     const position = math.FlatVector{ .x = fp(x), .z = fp(z) };
-    return position.scale(fp(cell_side_length)).add(self.boundaries.min);
+    return position.multiplyScalar(fp(cell_side_length)).add(self.boundaries.min);
 }
 
 fn processCell(

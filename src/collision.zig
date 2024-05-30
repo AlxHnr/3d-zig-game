@@ -118,7 +118,7 @@ pub const Circle = struct {
             return null;
         }
 
-        return center_to_point_offset.normalizeApproximate().scale(
+        return center_to_point_offset.normalizeApproximate().multiplyScalar(
             self.radius.sub(center_to_point_offset.lengthApproximate().convertTo(math.Fix32)),
         );
     }
@@ -157,7 +157,7 @@ pub const Circle = struct {
         if (t.gte(fp64(0)) and t.lte(fp64(1))) {
             // Circle's center can be projected onto line.
             const closest_point_on_line =
-                line_start.add(line_offset.scale(t.convertTo(math.Fix32)));
+                line_start.add(line_offset.multiplyScalar(t.convertTo(math.Fix32)));
             return self.collidesWithPoint(closest_point_on_line);
         }
 
@@ -292,7 +292,8 @@ pub fn lineCollidesWithPoint(
     if (t.lt(fp64(0)) or t.gt(fp64(1))) {
         return false;
     }
-    const closest_point_on_line = line_start.add(line_offset.scale(t.convertTo(math.Fix32)));
+    const closest_point_on_line =
+        line_start.add(line_offset.multiplyScalar(t.convertTo(math.Fix32)));
     return closest_point_on_line.equal(point);
 }
 
@@ -374,7 +375,8 @@ pub const Ray3d = struct {
         if (distance_from_start_position.lte(fp64p(0))) {
             return null;
         }
-        const impact_position = start_position.add(direction.scale(distance_from_start_position));
+        const impact_position =
+            start_position.add(direction.multiplyScalar(distance_from_start_position));
         return .{
             .position = impact_position.convertTo(math.Vector3d),
             .distance_from_start_position = distance_from_start_position.convertTo(math.Fix64),

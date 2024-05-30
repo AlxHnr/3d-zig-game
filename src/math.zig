@@ -56,8 +56,8 @@ pub const FlatVector = struct {
         return .{ .x = self.x.sub(other.x), .z = self.z.sub(other.z) };
     }
 
-    pub fn scale(self: FlatVector, factor: Fix32) FlatVector {
-        return .{ .x = self.x.mul(factor), .z = self.z.mul(factor) };
+    pub fn multiplyScalar(self: FlatVector, scalar: Fix32) FlatVector {
+        return .{ .x = self.x.mul(scalar), .z = self.z.mul(scalar) };
     }
 
     pub fn length(self: FlatVector) Fix64 {
@@ -181,7 +181,7 @@ pub fn Vector3dCustom(
             };
         }
 
-        pub fn scale(self: Self, factor: FixType) Self {
+        pub fn multiplyScalar(self: Self, factor: FixType) Self {
             return .{ .x = self.x.mul(factor), .y = self.y.mul(factor), .z = self.z.mul(factor) };
         }
 
@@ -225,7 +225,7 @@ pub fn Vector3dCustom(
 
         pub fn projectOnto(self: Self, other: Self) LargeSelf {
             return other.convertTo(LargeSelf)
-                .scale(self.dotProduct(other).div(other.dotProduct(other)));
+                .multiplyScalar(self.dotProduct(other).div(other.dotProduct(other)));
         }
 
         pub fn negate(self: Self) Self {
@@ -235,10 +235,10 @@ pub fn Vector3dCustom(
         pub fn rotate(self: Self, axis: Self, angle: FixType) Self {
             const half_angle = angle.div(fp(2));
             const half_angle_cos2 = half_angle.cos().mul(fp(2)).convertTo(LargeFixType);
-            const rescaled = axis.normalize().scale(half_angle.sin()).convertTo(LargeSelf);
+            const rescaled = axis.normalize().multiplyScalar(half_angle.sin()).convertTo(LargeSelf);
             const large_self = self.convertTo(LargeSelf);
             const rescaled_x = rescaled.crossProduct(large_self);
-            const rescaled_x_scaled = rescaled_x.scale(half_angle_cos2);
+            const rescaled_x_scaled = rescaled_x.multiplyScalar(half_angle_cos2);
             const rescaled_x_x = rescaled.crossProduct(rescaled_x);
             const two = LargeFixType.fp(2);
             const large_result = LargeSelf{

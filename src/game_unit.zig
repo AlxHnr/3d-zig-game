@@ -59,16 +59,17 @@ pub const GameCharacter = struct {
         if (is_accelerating) {
             const acceleration =
                 self.movement_speed.div(simulation.secondsToTicks(0.084).convertTo(math.Fix32));
-            self.moving_circle.velocity =
-                self.moving_circle.velocity.add(self.acceleration_direction.scale(acceleration));
+            self.moving_circle.velocity = self.moving_circle.velocity.add(
+                self.acceleration_direction.multiplyScalar(acceleration),
+            );
             const speed64 = self.movement_speed.convertTo(math.Fix64);
             if (self.moving_circle.velocity.lengthSquared().gt(speed64.mul(speed64))) {
-                self.moving_circle.velocity =
-                    self.moving_circle.velocity.normalizeApproximate().scale(self.movement_speed);
+                self.moving_circle.velocity = self.moving_circle.velocity
+                    .normalizeApproximate().multiplyScalar(self.movement_speed);
             }
         } else {
             self.moving_circle.velocity =
-                self.moving_circle.velocity.scale(fp(simulation.game_unit_stop_factor));
+                self.moving_circle.velocity.multiplyScalar(fp(simulation.game_unit_stop_factor));
         }
     }
 };

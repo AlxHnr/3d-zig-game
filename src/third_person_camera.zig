@@ -141,13 +141,13 @@ pub fn getPosition(self: Camera) math.Vector3d {
     const offset_from_object = direction_to_camera
         .toVector3d()
         .rotate(camera_right, self.angle_from_ground)
-        .scale(self.distance_from_object);
+        .multiplyScalar(self.distance_from_object);
     return self.target_position.add(offset_from_object);
 }
 
 /// Add a Y offset to the specified target so it is rendered in the bottom part of the screen.
 fn add3dHeight(target_position: math.FlatVector) math.Vector3d {
-    return target_position.toVector3d().add(math.Vector3d.y_axis.scale(fp(3)));
+    return target_position.toVector3d().add(math.Vector3d.y_axis.multiplyScalar(fp(3)));
 }
 
 /// Takes an optional distance limit to prevent walls from covering the cameras target object.
@@ -187,7 +187,7 @@ fn getAdjustedCameraPosition(self: Camera, max_distance_from_target: ?math.Fix64
     const distance = offset_from_target.length().min(max_distance).convertTo(math.Fix32);
     const prevent_seeing_trough_walls_factor = fp(0.8);
     const updated_offset = offset_from_target.normalize()
-        .scale(distance.mul(prevent_seeing_trough_walls_factor));
+        .multiplyScalar(distance.mul(prevent_seeing_trough_walls_factor));
     return self.target_position.add(updated_offset);
 }
 

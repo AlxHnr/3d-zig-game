@@ -219,7 +219,7 @@ pub const State = struct {
                 const camera_right_axis = camera_direction.rotateRightBy90Degrees();
                 const side_a_length = offset.toVector3d()
                     .projectOnto(camera_direction.toVector3d()).length().convertTo(math.Fix32);
-                const side_a_offset = camera_direction.normalize().scale(side_a_length);
+                const side_a_offset = camera_direction.normalize().multiplyScalar(side_a_length);
                 const side_b_length = offset.toVector3d()
                     .projectOnto(camera_right_axis.toVector3d()).length().convertTo(math.Fix32);
 

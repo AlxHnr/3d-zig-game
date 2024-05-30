@@ -15,7 +15,7 @@ pub fn iterator(
         .x = getStepLengthToNextAxis(direction.x),
         .z = getStepLengthToNextAxis(direction.z),
     };
-    const start = line_start.scale(fp(1).div(fp(CellIndex.side_length)));
+    const start = line_start.multiplyScalar(fp(1).div(fp(CellIndex.side_length)));
     const wrapped = .{ .x = start.x.mod(fp(1)), .z = start.z.mod(fp(1)) };
     const distance_to_next_axis = .{
         .x = getDistanceToNextAxis(step_lengths_to_next_axis.x, direction.x, wrapped.x),

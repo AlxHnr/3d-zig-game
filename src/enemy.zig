@@ -156,7 +156,7 @@ pub const RenderSnapshot = struct {
 
             @memcpy(out_slice, cached_text);
             const position = state.values.position.toVector3d().add(
-                math.Vector3d.y_axis.scale(
+                math.Vector3d.y_axis.multiplyScalar(
                     state.values.height.mul(fp(offset_to_player_height_factor)),
                 ),
             );
@@ -439,14 +439,16 @@ const AttackingState = struct {
                         .convertTo(math.Fix32).div(Enemy.peer_flock_radius),
                 );
                 average_velocity.add(
-                    direction_to_peer.scale(enemy.character.movement_speed).lerp(
+                    direction_to_peer.multiplyScalar(enemy.character.movement_speed).lerp(
                         enemy.character.moving_circle.velocity,
                         distance_factor,
                     ),
                 );
                 const slowdown = fp(1).add(direction.dotProduct(direction_to_peer.negate())
                     .convertTo(math.Fix32).clamp(fp(-1), fp(0)));
-                average_acceleration_direction.add(peer.acceleration_direction.scale(slowdown));
+                average_acceleration_direction.add(
+                    peer.acceleration_direction.multiplyScalar(slowdown),
+                );
             }
         }
 
@@ -456,10 +458,10 @@ const AttackingState = struct {
             const speed64 = enemy.character.movement_speed.convertTo(math.Fix64);
             if (enemy.character.moving_circle.velocity.lengthSquared().gt(speed64.mul(speed64))) {
                 enemy.character.moving_circle.velocity = enemy.character.moving_circle.velocity
-                    .normalize().scale(enemy.character.movement_speed);
+                    .normalize().multiplyScalar(enemy.character.movement_speed);
             }
             enemy.character.moving_circle.velocity =
-                enemy.character.moving_circle.velocity.scale(friction_factor);
+                enemy.character.moving_circle.velocity.multiplyScalar(friction_factor);
         } else {
             enemy.character.moving_circle.velocity = average_velocity.compute();
             enemy.character.acceleration_direction = average_acceleration_direction.compute();
@@ -480,7 +482,7 @@ const AttackingState = struct {
         }
 
         fn compute(self: AverageAccumulator) math.FlatVector {
-            return self.total.scale(fp(1).div(self.count));
+            return self.total.multiplyScalar(fp(1).div(self.count));
         }
     };
 };

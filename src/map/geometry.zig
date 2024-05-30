@@ -817,8 +817,10 @@ const Floor = struct {
         const offset_a = side_a_end.subtract(side_a_start);
         const side_a_length = offset_a.length().convertTo(math.Fix32);
         const rotation = offset_a.computeRotationToOtherVector(.{ .x = fp(0), .z = fp(1) });
-        const offset_b = offset_a.rotateRightBy90Degrees().negate().normalize().scale(side_b_length);
-        const center = side_a_start.add(offset_a.scale(fp(0.5))).add(offset_b.scale(fp(0.5)));
+        const offset_b = offset_a.rotateRightBy90Degrees().negate()
+            .normalize().multiplyScalar(side_b_length);
+        const center = side_a_start.add(offset_a.multiplyScalar(fp(0.5)))
+            .add(offset_b.multiplyScalar(fp(0.5)));
         return Floor{
             .object_id = object_id,
             .floor_type = floor_type,
@@ -899,8 +901,9 @@ const Wall = struct {
         const render_thickness = if (isFence(wall_type)) fp(0) else thickness;
 
         const side_a_up_offset = math.FlatVector.normalize(.{ .x = offset.z, .z = offset.x.neg() })
-            .scale(thickness.div(fp(2)));
-        const center = wall_type_properties.corrected_start_position.add(offset.scale(fp(0.5)));
+            .multiplyScalar(thickness.div(fp(2)));
+        const center = wall_type_properties.corrected_start_position
+            .add(offset.multiplyScalar(fp(0.5)));
         const start_corners = .{
             wall_type_properties.corrected_start_position.add(side_a_up_offset),
             wall_type_properties.corrected_start_position.subtract(side_a_up_offset),
@@ -910,7 +913,7 @@ const Wall = struct {
             .model_matrix = math.Matrix.identity
                 .scale(.{ .x = length, .y = height, .z = render_thickness })
                 .rotate(math.Vector3d.y_axis, rotation_angle)
-                .translate(center.toVector3d().add(math.Vector3d.y_axis.scale(height.div(fp(2))))),
+                .translate(center.toVector3d().add(math.Vector3d.y_axis.multiplyScalar(height.div(fp(2))))),
             .boundaries = collision.Rectangle.create(start_corners[0], start_corners[1], length),
             .corner_positions = .{
                 start_corners[0],
@@ -937,7 +940,7 @@ const Wall = struct {
             corner_positions[2].toVector3d(),
             corner_positions[3].toVector3d(),
         };
-        const vertical_offset = math.Vector3d.y_axis.scale(getWallTypeHeight(wall_type));
+        const vertical_offset = math.Vector3d.y_axis.multiplyScalar(getWallTypeHeight(wall_type));
         var closest_impact_point: ?collision.Ray3d.ImpactPoint = null;
 
         var side: usize = 0;
@@ -1018,8 +1021,8 @@ const Wall = struct {
             .castle_tower => {
                 // Towers are centered around their start position.
                 const half_side_length = fp(3);
-                const rescaled_offset =
-                    end_position.subtract(start_position).normalize().scale(half_side_length);
+                const rescaled_offset = end_position.subtract(start_position)
+                    .normalize().multiplyScalar(half_side_length);
                 properties.corrected_start_position = start_position.subtract(rescaled_offset);
                 properties.corrected_end_position = start_position.add(rescaled_offset);
                 properties.thickness = half_side_length.mul(fp(2));
@@ -1162,9 +1165,10 @@ const BillboardObject = struct {
     }
 
     fn cast3DRay(self: BillboardObject, ray: collision.Ray3d) ?collision.Ray3d.ImpactPoint {
-        const offset_to_top = math.Vector3d.y_axis.scale(self.boundaries.radius.mul(fp(2)));
+        const offset_to_top =
+            math.Vector3d.y_axis.multiplyScalar(self.boundaries.radius.mul(fp(2)));
         const offset_to_right = ray.direction.toFlatVector().normalize().rotateRightBy90Degrees()
-            .scale(self.boundaries.radius).toVector3d();
+            .multiplyScalar(self.boundaries.radius).toVector3d();
         return ray.collidesWithQuad(.{
             self.boundaries.position.toVector3d().subtract(offset_to_right),
             self.boundaries.position.toVector3d().add(offset_to_right),
