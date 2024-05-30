@@ -1,6 +1,6 @@
 const DialogController = @import("dialog.zig").Controller;
 const Error = @import("error.zig").Error;
-const GameContext = @import("game_context.zig").Context;
+const GameContext = @import("game_context.zig");
 const InputButton = @import("game_unit.zig").InputButton;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
 const RenderLoop = @import("render_loop.zig");
