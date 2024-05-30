@@ -32,18 +32,6 @@ pub const FlatVector = struct {
         return .{ .x = self.x, .y = fp(0), .z = self.z };
     }
 
-    pub fn normalize(self: FlatVector) FlatVector {
-        return self.normalizeInternal(self.length());
-    }
-
-    pub fn normalizeApproximate(self: FlatVector) FlatVector {
-        return self.normalizeInternal(self.lengthApproximate());
-    }
-
-    pub fn lerp(self: FlatVector, other: FlatVector, t: Fix32) FlatVector {
-        return .{ .x = self.x.lerp(other.x, t), .z = self.z.lerp(other.z, t) };
-    }
-
     pub fn equal(self: FlatVector, other: FlatVector) bool {
         return self.x.eql(other.x) and self.z.eql(other.z);
     }
@@ -90,6 +78,18 @@ pub const FlatVector = struct {
             .z = other.z.convertTo(Fix64),
         };
         return self64.x.mul(other64.x).add(self64.z.mul(other64.z));
+    }
+
+    pub fn normalize(self: FlatVector) FlatVector {
+        return self.normalizeInternal(self.length());
+    }
+
+    pub fn normalizeApproximate(self: FlatVector) FlatVector {
+        return self.normalizeInternal(self.lengthApproximate());
+    }
+
+    pub fn lerp(self: FlatVector, other: FlatVector, t: Fix32) FlatVector {
+        return .{ .x = self.x.lerp(other.x, t), .z = self.z.lerp(other.z, t) };
     }
 
     /// Get the angle needed to rotate this vector to have the same direction as another vector. The
@@ -161,36 +161,24 @@ pub fn Vector3dCustom(
             };
         }
 
-        pub fn normalize(self: Self) Self {
-            const own_length = self.length();
-            return if (own_length.eql(LargeFixType.fp(0)))
-                self
-            else
-                .{
-                    .x = self.x.convertTo(LargeFixType).div(own_length).convertTo(FixType),
-                    .y = self.y.convertTo(LargeFixType).div(own_length).convertTo(FixType),
-                    .z = self.z.convertTo(LargeFixType).div(own_length).convertTo(FixType),
-                };
+        pub fn add(self: Self, other: Self) Self {
+            return .{
+                .x = self.x.add(other.x),
+                .y = self.y.add(other.y),
+                .z = self.z.add(other.z),
+            };
         }
 
-        pub fn lerp(self: Self, other: Self, t: FixType) Self {
-            return .{
-                .x = self.x.lerp(other.x, t),
-                .y = self.y.lerp(other.y, t),
-                .z = self.z.lerp(other.z, t),
-            };
+        pub fn subtract(self: Self, other: Self) Self {
+            return .{ .x = self.x.sub(other.x), .y = self.y.sub(other.y), .z = self.z.sub(other.z) };
         }
 
         pub fn multiplyScalar(self: Self, factor: FixType) Self {
             return .{ .x = self.x.mul(factor), .y = self.y.mul(factor), .z = self.z.mul(factor) };
         }
 
-        pub fn add(self: Self, other: Self) Self {
-            return .{ .x = self.x.add(other.x), .y = self.y.add(other.y), .z = self.z.add(other.z) };
-        }
-
-        pub fn subtract(self: Self, other: Self) Self {
-            return .{ .x = self.x.sub(other.x), .y = self.y.sub(other.y), .z = self.z.sub(other.z) };
+        pub fn negate(self: Self) Self {
+            return .{ .x = self.x.neg(), .y = self.y.neg(), .z = self.z.neg() };
         }
 
         pub fn length(self: Self) LargeFixType {
@@ -223,13 +211,29 @@ pub fn Vector3dCustom(
             return large_result.convertTo(Self);
         }
 
+        pub fn normalize(self: Self) Self {
+            const own_length = self.length();
+            return if (own_length.eql(LargeFixType.fp(0)))
+                self
+            else
+                .{
+                    .x = self.x.convertTo(LargeFixType).div(own_length).convertTo(FixType),
+                    .y = self.y.convertTo(LargeFixType).div(own_length).convertTo(FixType),
+                    .z = self.z.convertTo(LargeFixType).div(own_length).convertTo(FixType),
+                };
+        }
+
+        pub fn lerp(self: Self, other: Self, t: FixType) Self {
+            return .{
+                .x = self.x.lerp(other.x, t),
+                .y = self.y.lerp(other.y, t),
+                .z = self.z.lerp(other.z, t),
+            };
+        }
+
         pub fn projectOnto(self: Self, other: Self) LargeSelf {
             return other.convertTo(LargeSelf)
                 .multiplyScalar(self.dotProduct(other).div(other.dotProduct(other)));
-        }
-
-        pub fn negate(self: Self) Self {
-            return .{ .x = self.x.neg(), .y = self.y.neg(), .z = self.z.neg() };
         }
 
         pub fn rotate(self: Self, axis: Self, angle: FixType) Self {
