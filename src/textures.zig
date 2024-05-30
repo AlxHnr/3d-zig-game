@@ -196,14 +196,9 @@ pub const SpriteSheetTexture = struct {
 
     /// Returns a question mark if the given codepoint is not supported or does not represent a
     /// printable character. All font characters have an aspect ratio of 1.
-    pub fn getFontCharacterTexcoords(self: SpriteSheetTexture, codepoint: u21) TextureCoordinates {
-        if (codepoint < '!' or codepoint > '~') {
-            return self.getFontCharacterTexcoords('?');
-        }
-        return font_texcoord_map[codepoint - '!'];
+    pub fn getFontCharacterTexcoords(_: SpriteSheetTexture, codepoint: u21) TextureCoordinates {
+        return font_texcoord_map[getCharacterIndex(codepoint)];
     }
-
-    const font_character_side_length = 8;
 
     /// Gap between consecutive characters in a sentence.
     pub const FontLetterSpacing = struct { horizontal: Fix32, vertical: Fix32 };
@@ -225,6 +220,8 @@ pub const SpriteSheetTexture = struct {
     const texture_width = 512;
     const texture_height = 512;
     const font_character_count = 94;
+    const custom_character_count = 8; // Extra arrows in spritesheet.
+    const font_character_side_length = 8;
 
     /// Source pixel coordinates with (0, 0) at the top left corner.
     const TextureSourceRectangle = struct { x: u16, y: u16, w: u16, h: u16 };
@@ -262,15 +259,27 @@ pub const SpriteSheetTexture = struct {
     );
 
     const font_source_pixel_map = blk: {
-        var result: [font_character_count]TextureSourceRectangle = undefined;
-        for (result, 0..) |_, index| {
+        const w = font_character_side_length;
+        const h = font_character_side_length;
+
+        var result: [font_character_count + custom_character_count]TextureSourceRectangle = undefined;
+        for (result[0..font_character_count], 0..) |_, index| {
             result[index] = .{
                 .x = @as(u16, @mod(index, 32) * 16),
                 .y = @as(u16, @divFloor(index, 32) * 16),
-                .w = 8,
-                .h = 8,
+                .w = w,
+                .h = h,
             };
         }
+        result[getCharacterIndex(forceDecodeUtf8("←"))] = .{ .x = 352, .y = 48, .w = w, .h = h };
+        result[getCharacterIndex(forceDecodeUtf8("↖"))] = .{ .x = 368, .y = 48, .w = w, .h = h };
+        result[getCharacterIndex(forceDecodeUtf8("↑"))] = .{ .x = 384, .y = 48, .w = w, .h = h };
+        result[getCharacterIndex(forceDecodeUtf8("↗"))] = .{ .x = 400, .y = 48, .w = w, .h = h };
+        result[getCharacterIndex(forceDecodeUtf8("→"))] = .{ .x = 416, .y = 48, .w = w, .h = h };
+        result[getCharacterIndex(forceDecodeUtf8("↘"))] = .{ .x = 432, .y = 48, .w = w, .h = h };
+        result[getCharacterIndex(forceDecodeUtf8("↓"))] = .{ .x = 448, .y = 48, .w = w, .h = h };
+        result[getCharacterIndex(forceDecodeUtf8("↙"))] = .{ .x = 464, .y = 48, .w = w, .h = h };
+
         break :blk result;
     };
 
@@ -285,7 +294,7 @@ pub const SpriteSheetTexture = struct {
     };
 
     const font_texcoord_map = blk: {
-        var result: [font_character_count]TextureCoordinates = undefined;
+        var result: [font_source_pixel_map.len]TextureCoordinates = undefined;
         for (result, 0..) |_, index| {
             result[index] = toTexcoords(font_source_pixel_map[index]);
         }
@@ -305,6 +314,23 @@ pub const SpriteSheetTexture = struct {
         break :blk result;
     };
 
+    fn getCharacterIndex(codepoint: u21) usize {
+        if (codepoint >= '!' and codepoint <= '~') {
+            return codepoint - '!';
+        }
+        return switch (codepoint) {
+            forceDecodeUtf8("←") => font_character_count + 0,
+            forceDecodeUtf8("↖") => font_character_count + 1,
+            forceDecodeUtf8("↑") => font_character_count + 2,
+            forceDecodeUtf8("↗") => font_character_count + 3,
+            forceDecodeUtf8("→") => font_character_count + 4,
+            forceDecodeUtf8("↘") => font_character_count + 5,
+            forceDecodeUtf8("↓") => font_character_count + 6,
+            forceDecodeUtf8("↙") => font_character_count + 7,
+            else => getCharacterIndex('?'),
+        };
+    }
+
     fn toTexcoords(source: TextureSourceRectangle) TextureCoordinates {
         return .{
             .x = @as(f32, source.x) / texture_width,
@@ -312,6 +338,10 @@ pub const SpriteSheetTexture = struct {
             .w = @as(f32, source.w) / texture_width,
             .h = @as(f32, source.h) / texture_height,
         };
+    }
+
+    fn forceDecodeUtf8(bytes: []const u8) u21 {
+        return std.unicode.utf8Decode(bytes) catch unreachable;
     }
 };
 
