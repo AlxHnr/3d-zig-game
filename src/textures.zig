@@ -260,17 +260,8 @@ pub const SpriteSheetTexture = struct {
             .yellow_floating_eye = .{ .x = 40, .y = 168, .w = 16, .h = 24 },
         },
     );
-    const font_source_pixel_map = computeFontSourcePixelMap();
 
-    /// Maps sprite ids to OpenGL texture coordinates ranging from 0 to 1, where (0, 0) is the top
-    /// left of the sprite sheet.
-    const sprite_texcoord_map = computeSpriteTexcoordMap();
-    const font_texcoord_map = computeFontTexcoordMap();
-
-    /// Maps sprite ids to (height / width).
-    const sprite_aspect_ratio_map = computeSpriteAspectRatioMap();
-
-    fn computeFontSourcePixelMap() [font_character_count]TextureSourceRectangle {
+    const font_source_pixel_map = blk: {
         var result: [font_character_count]TextureSourceRectangle = undefined;
         for (result, 0..) |_, index| {
             result[index] = .{
@@ -280,35 +271,29 @@ pub const SpriteSheetTexture = struct {
                 .h = 8,
             };
         }
-        return result;
-    }
+        break :blk result;
+    };
 
-    fn computeSpriteTexcoordMap() std.EnumArray(SpriteId, TextureCoordinates) {
+    /// Maps sprite ids to OpenGL texture coordinates ranging from 0 to 1, where (0, 0) is the top
+    /// left of the sprite sheet.
+    const sprite_texcoord_map = blk: {
         var result: std.EnumArray(SpriteId, TextureCoordinates) = undefined;
         for (std.enums.values(SpriteId), 0..) |key, index| {
             result.set(key, toTexcoords(sprite_source_pixel_map[index]));
         }
-        return result;
-    }
+        break :blk result;
+    };
 
-    fn computeFontTexcoordMap() [font_character_count]TextureCoordinates {
+    const font_texcoord_map = blk: {
         var result: [font_character_count]TextureCoordinates = undefined;
         for (result, 0..) |_, index| {
             result[index] = toTexcoords(font_source_pixel_map[index]);
         }
-        return result;
-    }
+        break :blk result;
+    };
 
-    fn toTexcoords(source: TextureSourceRectangle) TextureCoordinates {
-        return .{
-            .x = @as(f32, source.x) / texture_width,
-            .y = @as(f32, source.y) / texture_height,
-            .w = @as(f32, source.w) / texture_width,
-            .h = @as(f32, source.h) / texture_height,
-        };
-    }
-
-    fn computeSpriteAspectRatioMap() std.EnumArray(SpriteId, Fix32) {
+    /// Maps sprite ids to (height / width).
+    const sprite_aspect_ratio_map = blk: {
         var result: std.EnumArray(SpriteId, Fix32) = undefined;
         for (std.enums.values(SpriteId), 0..) |key, index| {
             const ratio =
@@ -317,7 +302,16 @@ pub const SpriteSheetTexture = struct {
             );
             result.set(key, ratio);
         }
-        return result;
+        break :blk result;
+    };
+
+    fn toTexcoords(source: TextureSourceRectangle) TextureCoordinates {
+        return .{
+            .x = @as(f32, source.x) / texture_width,
+            .y = @as(f32, source.y) / texture_height,
+            .w = @as(f32, source.w) / texture_width,
+            .h = @as(f32, source.h) / texture_height,
+        };
     }
 };
 
