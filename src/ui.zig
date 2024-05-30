@@ -107,8 +107,8 @@ pub const Text = struct {
     ) void {
         return text_rendering.populateSpriteData(
             self.wrapped_segments,
-            screen_position_x,
-            screen_position_y,
+            fp(screen_position_x),
+            fp(screen_position_y),
             self.font_size,
             self.spritesheet.*,
             out,

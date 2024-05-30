@@ -390,8 +390,8 @@ fn renderEditMode(
     try sprite_buffer.resize(text_rendering.getSpriteCount(&segments));
     text_rendering.populateSpriteData(
         &segments,
-        0,
-        0,
+        fp(0),
+        fp(0),
         spritesheet.getFontSizeMultiple(2),
         spritesheet,
         sprite_buffer.items,

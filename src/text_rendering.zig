@@ -127,22 +127,17 @@ pub fn populateBillboardDataExactPixelSizeWithOffset(
 pub fn populateSpriteData(
     segments: []const TextSegment,
     /// Top left corner of the first character.
-    screen_position_x: u16,
-    screen_position_y: u16,
+    screen_position_x: math.Fix32,
+    screen_position_y: math.Fix32,
     character_size_pixels: u16,
     spritesheet: SpriteSheetTexture,
     /// Must have enough capacity to store all sprites. See getSpriteCount().
     out: []SpriteData,
 ) void {
-    const position = .{
-        .x = fp(screen_position_x),
-        .y = fp(screen_position_y),
-        .z = fp(0),
-    };
     const offset_to_top_left_corner = .{ .x = fp(0), .y = fp(0), .z = fp(0) };
     populateSpriteDataRaw(
         segments,
-        position,
+        .{ .x = screen_position_x, .y = screen_position_y, .z = fp(0) },
         offset_to_top_left_corner,
         fp(character_size_pixels),
         false,
