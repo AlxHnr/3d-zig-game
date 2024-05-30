@@ -144,25 +144,49 @@ pub fn sampleCrowd(self: *Field, position: math.FlatVector) void {
     self.crowd_sampling_counter += 1;
 }
 
-pub fn dumpAsText(self: Field, writer: std.fs.File.Writer) !void {
-    for (0..self.grid_cells_per_side) |z| {
-        for (0..self.grid_cells_per_side) |x| {
-            _ = try writer.write(
-                switch (self.directional_vectors[self.getIndex(x, z)]) {
-                    .up_left => "↖",
-                    .up => "↑",
-                    .up_right => "↗",
-                    .left => "←",
-                    .none => " ",
-                    .right => "→",
-                    .down_left => "↙",
-                    .down => "↓",
-                    .down_right => "↘",
-                },
-            );
-        }
-        _ = try writer.write("\n");
+pub const PrintableSnapshot = struct {
+    grid_cells_per_side: usize,
+    directional_vectors: std.ArrayList(Direction),
+
+    pub fn create(allocator: std.mem.Allocator) PrintableSnapshot {
+        return .{
+            .grid_cells_per_side = 0,
+            .directional_vectors = std.ArrayList(Direction).init(allocator),
+        };
     }
+
+    pub fn destroy(self: *PrintableSnapshot) void {
+        self.directional_vectors.deinit();
+    }
+
+    /// Given buffer will be reset and overwritten.
+    pub fn formatIntoBuffer(self: PrintableSnapshot, buffer: *std.ArrayList(u8)) !void {
+        buffer.clearRetainingCapacity();
+        for (0..self.grid_cells_per_side) |z| {
+            for (0..self.grid_cells_per_side) |x| {
+                try buffer.appendSlice(
+                    switch (self.directional_vectors.items[getIndex(self, x, z)]) {
+                        .up_left => "↖",
+                        .up => "↑",
+                        .up_right => "↗",
+                        .left => "←",
+                        .none => " ",
+                        .right => "→",
+                        .down_left => "↙",
+                        .down => "↓",
+                        .down_right => "↘",
+                    },
+                );
+            }
+            try buffer.appendSlice("\n");
+        }
+    }
+};
+
+pub fn updatePrintableSnapshot(self: Field, snapshot: *PrintableSnapshot) !void {
+    try snapshot.directional_vectors.resize(self.directional_vectors.len);
+    @memcpy(snapshot.directional_vectors.items, self.directional_vectors);
+    snapshot.grid_cells_per_side = self.grid_cells_per_side;
 }
 
 fn pushPositionOutOfObstacleCells(position: math.FlatVector, map: Map) math.FlatVector {
@@ -177,7 +201,7 @@ fn pushPositionOutOfObstacleCells(position: math.FlatVector, map: Map) math.Flat
     return position;
 }
 
-fn getIndex(self: Field, x: usize, z: usize) usize {
+fn getIndex(self: anytype, x: usize, z: usize) usize {
     return z * self.grid_cells_per_side + x;
 }
 
