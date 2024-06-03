@@ -28,6 +28,9 @@ const ProgramContext = struct {
     edit_mode_state: edit_mode.State,
     edit_mode_view: enum { from_behind, top_down },
 
+    render_flow_field: bool,
+    flow_field_font_size: u16,
+
     const default_map_path = "maps/default.json";
 
     /// Returned context will keep a reference to the given allocator for its entire lifetime.
@@ -120,6 +123,9 @@ const ProgramContext = struct {
             .game_context = game_context,
             .edit_mode_state = edit_mode_state,
             .edit_mode_view = .from_behind,
+
+            .render_flow_field = false,
+            .flow_field_font_size = game_context.spritesheet.getFontSizeMultiple(1),
         };
     }
 
@@ -209,7 +215,13 @@ const ProgramContext = struct {
                     );
                 }
             } else if (event.type == sdl.SDL_MOUSEWHEEL) {
-                if (sdl.SDL_GetMouseState(null, null) & sdl.SDL_BUTTON_RMASK == 0) {
+                if (self.render_flow_field) {
+                    const min = fp(self.game_context.spritesheet.getFontSizeMultiple(1)).div(fp(2));
+                    const max = fp(self.game_context.spritesheet.getFontSizeMultiple(4));
+                    self.flow_field_font_size =
+                        fp(self.flow_field_font_size).add(fp(std.math.sign(event.wheel.preciseY)))
+                        .clamp(min, max).convertTo(@TypeOf(self.flow_field_font_size));
+                } else if (sdl.SDL_GetMouseState(null, null) & sdl.SDL_BUTTON_RMASK == 0) {
                     self.game_context.increaseCameraDistance(fp(event.wheel.preciseY * -2.5));
                 } else if (event.wheel.preciseY < 0) {
                     self.edit_mode_state.cycleInsertedObjectSubtypeForwards();
@@ -228,6 +240,8 @@ const ProgramContext = struct {
                             self.game_context.resetCameraAngleFromGround();
                         },
                     }
+                } else if (event.key.keysym.sym == sdl.SDLK_f) {
+                    self.render_flow_field = !self.render_flow_field;
                 } else if (event.key.keysym.sym == sdl.SDLK_F2) {
                     try self.game_context.writeMapToDisk(self.allocator);
                 } else if (event.key.keysym.sym == sdl.SDLK_F5) {
@@ -243,10 +257,15 @@ const ProgramContext = struct {
                 }
             }
         }
-        self.render_loop.sendExtraData(
+        try self.render_loop.sendExtraData(
             self.screen_dimensions,
             self.edit_mode_state,
             self.game_context.playerIsOnFlowFieldObstacleTile(),
+            if (self.render_flow_field)
+                self.game_context.getMutablePlayerFlowField().*
+            else
+                null,
+            self.flow_field_font_size,
         );
 
         return true;

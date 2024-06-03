@@ -17,6 +17,7 @@ faster when built with optimizations: `zig build run -Doptimize=ReleaseFast`.
 * **space + arrow keys** - Strafe
 * **right ctrl + arrow keys** - Rotate slowly
 * **t** - Toggle top-down view
+* **f** - Toggle flow-field (path-finding info, zoom with mousewheel)
 * **F2** - Save map to disk
 * **F5** - Reload map from disk
 * **left mouse button** - Start/stop placing object

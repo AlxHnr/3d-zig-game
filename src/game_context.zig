@@ -227,6 +227,10 @@ pub fn getMutableObjectIdGenerator(self: *Context) *ObjectIdGenerator {
     return &self.shared_context.object_id_generator;
 }
 
+pub fn getMutablePlayerFlowField(self: *Context) *FlowField {
+    return &self.main_character_flow_field;
+}
+
 pub fn playerIsOnFlowFieldObstacleTile(self: Context) bool {
     return self.map.geometry.getObstacleTile(
         self.main_character.character.moving_circle.getPosition(),

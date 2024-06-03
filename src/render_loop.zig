@@ -3,6 +3,7 @@ const DialogController = @import("dialog.zig").Controller;
 const EditModeState = @import("edit_mode.zig").State;
 const EnemySnapshot = @import("enemy.zig").RenderSnapshot;
 const Fix32 = @import("math.zig").Fix32;
+const FlowField = @import("flow_field.zig");
 const GemSnapshot = @import("gem.zig").RenderSnapshot;
 const GeometryRenderer = @import("map/geometry.zig").Renderer;
 const GeometrySnapshot = @import("map/geometry.zig").RenderSnapshot;
@@ -39,6 +40,9 @@ extra_data: struct {
     screen_dimensions_changed: bool,
     edit_mode_state: EditModeState,
     player_is_on_obstacle_tile: bool,
+    /// Set if the flow field info should be rendered.
+    flow_field_font_size: ?u16,
+    printable_flow_field_snapshot: FlowField.PrintableSnapshot,
 },
 
 /// Value between 0 and 1.
@@ -63,6 +67,8 @@ pub fn create(
             .screen_dimensions_changed = false,
             .edit_mode_state = edit_mode_state,
             .player_is_on_obstacle_tile = false,
+            .flow_field_font_size = null,
+            .printable_flow_field_snapshot = FlowField.PrintableSnapshot.create(allocator),
         },
         .interpolation_interval_used_in_latest_frame = std.atomic.Value(Fix32Int)
             .init(fp(0).internal),
@@ -70,6 +76,7 @@ pub fn create(
 }
 
 pub fn destroy(self: *Loop) void {
+    self.extra_data.printable_flow_field_snapshot.destroy();
     self.secondary.destroy();
     self.current.destroy();
 }
@@ -106,6 +113,9 @@ pub fn run(
 
     var prerendered_enemy_names = try PrerenderedEnemyNames.create(self.allocator, spritesheet);
     defer prerendered_enemy_names.destroy(self.allocator);
+
+    var flow_field_text_buffer = std.ArrayList(u8).init(self.allocator);
+    defer flow_field_text_buffer.deinit();
 
     while (self.keep_running.load(.unordered)) {
         performance_measurements.begin(.frame_total);
@@ -153,6 +163,12 @@ pub fn run(
         const extra_data = blk: {
             self.extra_data.mutex.lock();
             defer self.extra_data.mutex.unlock();
+
+            if (self.extra_data.flow_field_font_size != null) {
+                try self.extra_data.printable_flow_field_snapshot.formatIntoBuffer(
+                    &flow_field_text_buffer,
+                );
+            }
 
             const copy = self.extra_data;
             self.extra_data.screen_dimensions_changed = false;
@@ -219,6 +235,16 @@ pub fn run(
             &billboard_buffer,
             extra_data.player_is_on_obstacle_tile,
         );
+        if (extra_data.flow_field_font_size) |font_size| {
+            try renderFlowField(
+                &sprite_renderer,
+                extra_data.screen_dimensions,
+                spritesheet,
+                &billboard_buffer,
+                flow_field_text_buffer.items,
+                font_size,
+            );
+        }
         performance_measurements.end(.hud);
         performance_measurements.end(.frame_total);
 
@@ -251,9 +277,20 @@ pub fn sendExtraData(
     screen_dimensions: ScreenDimensions,
     edit_mode_state: EditModeState,
     player_is_on_obstacle_tile: bool,
-) void {
+    /// Null if the flow field should not be rendered.
+    player_flow_field: ?FlowField,
+    /// Ignored if previous value is null.
+    flow_field_font_size: u16,
+) !void {
     self.extra_data.mutex.lock();
     defer self.extra_data.mutex.unlock();
+
+    if (player_flow_field) |flow_field| {
+        try flow_field.updatePrintableSnapshot(&self.extra_data.printable_flow_field_snapshot);
+        self.extra_data.flow_field_font_size = flow_field_font_size;
+    } else {
+        self.extra_data.flow_field_font_size = null;
+    }
 
     if (self.extra_data.screen_dimensions.width != screen_dimensions.width or
         self.extra_data.screen_dimensions.height != screen_dimensions.height)
@@ -332,6 +369,46 @@ fn swapSnapshots(self: *Loop) void {
         std.mem.swap(Snapshots, &self.current, &self.secondary);
         self.secondary_is_populated = false;
     }
+}
+
+fn renderFlowField(
+    renderer: *rendering.SpriteRenderer,
+    screen_dimensions: ScreenDimensions,
+    spritesheet: textures.SpriteSheetTexture,
+    sprite_buffer: *std.ArrayList(rendering.SpriteData),
+    text_block: []const u8,
+    font_size: u16,
+) !void {
+    const segments = [_]text_rendering.TextSegment{ui.Highlight.normal(text_block)};
+    const dimensions = text_rendering.getTextBlockDimensions(&segments, fp(font_size), spritesheet);
+    const background = spritesheet.getSpriteTexcoords(.white_block);
+    const screen_center = .{
+        .x = fp(screen_dimensions.width).div(fp(2)),
+        .y = fp(screen_dimensions.height).div(fp(2)),
+    };
+
+    try sprite_buffer.resize(text_rendering.getSpriteCount(&segments) + 1); // Background sprite.
+    sprite_buffer.items[0] = .{
+        .position = .{
+            .x = screen_center.x.convertTo(f32),
+            .y = screen_center.y.convertTo(f32),
+            .z = 0,
+        },
+        .size = .{ .w = dimensions.width.convertTo(f32), .h = dimensions.height.convertTo(f32) },
+        .source_rect = .{ .x = background.x, .y = background.y, .w = background.w, .h = background.h },
+        .tint = .{ .r = 0, .g = 0, .b = 0 },
+    };
+    text_rendering.populateSpriteData(
+        &segments,
+        screen_center.x.sub(dimensions.width.div(fp(2))),
+        screen_center.y.sub(dimensions.height.div(fp(2))),
+        font_size,
+        spritesheet,
+        sprite_buffer.items[1..],
+    );
+
+    renderer.uploadSprites(sprite_buffer.items);
+    renderer.render(screen_dimensions, spritesheet.id);
 }
 
 fn renderHud(
