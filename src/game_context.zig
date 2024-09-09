@@ -75,7 +75,7 @@ pub fn create(
     );
     errdefer map.destroy();
 
-    for (0..10000) |_| {
+    for (0..2000) |_| {
         const position = math.FlatVector{
             .x = fp(shared_context.rng.random().float(f32)).mul(fp(100)).neg().sub(fp(50)),
             .z = fp(shared_context.rng.random().float(f32)).mul(fp(500)),
