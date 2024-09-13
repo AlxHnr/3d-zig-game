@@ -1,4 +1,5 @@
 const AttackingEnemyPosition = @import("enemy.zig").AttackingEnemyPosition;
+const CellIndex = @import("spatial_partitioning/cell_index.zig").Index;
 const Enemy = @import("enemy.zig").Enemy;
 const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
 const EnemyRenderSnapshot = @import("enemy.zig").RenderSnapshot;
@@ -12,6 +13,7 @@ const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig");
 const ThreadPool = @import("thread_pool.zig").Pool;
+const UnorderedCollection = @import("unordered_collection.zig").UnorderedCollection;
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const dialog = @import("dialog.zig");
@@ -553,4 +555,116 @@ const ThreadContext = struct {
         self.gems.removal_queue.clearRetainingCapacity();
         self.gems.render_snapshots.clearRetainingCapacity();
     }
+
+    fn CellItems(comptime T: type) type {
+        return struct {
+            index: CellIndex(1), // Argument Erases `cell_side_length` from CellIndex.
+            items: UnorderedCollection(T),
+
+            const Self = @This();
+
+            pub fn create(index: anytype, items: UnorderedCollection(T)) Self {
+                return .{
+                    .index = .{ .x = index.x, .z = index.z },
+                    .items = items,
+                };
+            }
+
+            fn lessThan(_: void, self: Self, other: Self) bool {
+                return self.index.compare(other.index) == .lt;
+            }
+        };
+    }
 };
+
+/// Merges computation results in a portably deterministic way, oblivious to core count and
+/// execution order. Returned object will get invalidated by updates to the specified
+/// fields/collections.
+fn mergeThreadResults(
+    self: Context,
+    comptime toplevel_field: []const u8,
+    comptime collection_field: []const u8,
+    comptime Item: type,
+) !MergedThreadResults(Item) {
+    return MergedThreadResults(Item).create(
+        self.allocator,
+        self.thread_contexts,
+        toplevel_field,
+        collection_field,
+    );
+}
+
+fn MergedThreadResults(comptime Item: type) type {
+    return struct {
+        /// Does not own the referenced cell items.
+        merged_cells: std.ArrayList(CellItems),
+
+        const Self = @This();
+        const CellItems = ThreadContext.CellItems(Item);
+
+        /// Merges thread computation results in a portably deterministic way, oblivious to core
+        /// count and execution order. Returned object will get invalidated by updates to the
+        /// specified fields/collections.
+        fn create(
+            allocator: std.mem.Allocator,
+            thread_contexts: []const *const ThreadContext,
+            comptime toplevel_field: []const u8,
+            comptime collection_field: []const u8,
+        ) !Self {
+            var cell_count: usize = 0;
+            for (thread_contexts) |context| {
+                const collection = @field(@field(context, toplevel_field), collection_field);
+                cell_count += collection.count();
+            }
+
+            var merged_cells = try std.ArrayList(CellItems).initCapacity(allocator, cell_count);
+            errdefer merged_cells.deinit();
+
+            for (thread_contexts) |context| {
+                const collection = @field(@field(context, toplevel_field), collection_field);
+                var iterator = collection.constIterator();
+                while (iterator.next()) |cell_items| {
+                    merged_cells.appendAssumeCapacity(cell_items.*);
+                }
+            }
+
+            std.mem.sort(CellItems, merged_cells.items, {}, CellItems.lessThan);
+
+            return .{ .merged_cells = merged_cells };
+        }
+
+        fn destroy(self: *Self) void {
+            self.merged_cells.deinit();
+        }
+
+        /// Returned iterator will be invalidated by updates to the referenced fields/collections.
+        fn constIterator(self: *const Self) ConstIterator {
+            return .{
+                .merged_results = self,
+                .cell_group_iterator = null,
+                .index = 0,
+            };
+        }
+
+        const ConstIterator = struct {
+            merged_results: *const Self,
+            cell_group_iterator: ?UnorderedCollection(Item).ConstIterator,
+            index: usize,
+
+            fn next(self: *ConstIterator) ?Item {
+                if (self.cell_group_iterator) |*cell_group_iterator| {
+                    if (cell_group_iterator.next()) |item| {
+                        return item.*;
+                    }
+                }
+                if (self.index == self.merged_results.merged_cells.items.len) {
+                    return null;
+                }
+                self.cell_group_iterator =
+                    self.merged_results.merged_cells.items[self.index].items.constIterator();
+                self.index += 1;
+                return self.next();
+            }
+        };
+    };
+}
