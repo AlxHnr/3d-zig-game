@@ -1,10 +1,12 @@
 const AttackingEnemyPosition = @import("enemy.zig").AttackingEnemyPosition;
 const CellIndex = @import("spatial_partitioning/cell_index.zig").Index;
 const Enemy = @import("enemy.zig").Enemy;
+const EnemyObjectHandle = SharedContext.EnemyCollection.ObjectHandle;
 const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
 const EnemyRenderSnapshot = @import("enemy.zig").RenderSnapshot;
 const FlowField = @import("flow_field.zig");
 const Gem = @import("gem.zig");
+const GemObjectHandle = SharedContext.GemCollection.ObjectHandle;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
@@ -532,9 +534,6 @@ const ThreadContext = struct {
         removal_queue: std.ArrayList(*GemObjectHandle),
         render_snapshots: std.ArrayList(Gem.RenderSnapshot),
     },
-
-    const EnemyObjectHandle = SharedContext.EnemyCollection.ObjectHandle;
-    const GemObjectHandle = SharedContext.GemCollection.ObjectHandle;
 
     fn create(allocator: std.mem.Allocator) !ThreadContext {
         const enemy_allocator = try allocator.create(std.heap.ArenaAllocator);
