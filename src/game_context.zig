@@ -100,7 +100,7 @@ pub fn create(
     errdefer allocator.free(thread_contexts);
     var contexts_created: usize = 0;
     errdefer for (0..contexts_created) |index| {
-        thread_contexts[index].destroy();
+        thread_contexts[index].destroy(allocator);
         allocator.destroy(thread_contexts[index]);
     };
     for (thread_contexts) |*context| {
@@ -140,7 +140,7 @@ pub fn create(
 
 pub fn destroy(self: *Context) void {
     for (self.thread_contexts) |context| {
-        context.destroy();
+        context.destroy(self.allocator);
         self.allocator.destroy(context);
     }
     self.allocator.free(self.thread_contexts);
@@ -345,12 +345,19 @@ fn updateSpatialGridsThread(
         for (context.enemies.removal_queue.items) |object_handle| {
             self.shared_context.enemy_collection.remove(object_handle);
         }
-        for (context.enemies.insertion_queue.items) |enemy| {
-            _ = try self.shared_context.enemy_collection.insert(
-                enemy,
-                enemy.character.moving_circle.getPosition(),
-            );
-        }
+    }
+
+    var merged_insertion_queue = try self.mergeThreadResults("enemies", "insertion_queue", Enemy);
+    defer merged_insertion_queue.destroy();
+    var insertion_iterator = merged_insertion_queue.constIterator();
+    while (insertion_iterator.next()) |enemy| {
+        _ = try self.shared_context.enemy_collection.insert(
+            enemy,
+            enemy.character.moving_circle.getPosition(),
+        );
+    }
+
+    for (self.thread_contexts) |context| {
         for (context.enemies.attacking_positions.items) |attacking_enemy| {
             try attacking_enemy_positions_at_previous_tick.insertIntoArea(
                 attacking_enemy,
@@ -425,6 +432,9 @@ fn processEnemyCellGroup(
     };
 
     var enemy_iterator = cell_group.cell.iterator();
+    var cell_insertion_list = UnorderedCollection(Enemy).create(
+        thread_context.enemies.arena_allocator.allocator(),
+    );
     while (enemy_iterator.next()) |enemy_ptr| {
         const old_cell_index = self.shared_context.enemy_collection.getCellIndex(
             enemy_ptr.character.moving_circle.getPosition(),
@@ -442,7 +452,7 @@ fn processEnemyCellGroup(
             try thread_context.enemies.removal_queue.append(
                 self.shared_context.enemy_collection.getObjectHandle(enemy_ptr),
             );
-            try thread_context.enemies.insertion_queue.append(enemy_ptr.*);
+            try cell_insertion_list.append(enemy_ptr.*);
         }
         if (enemy_ptr.state == .attacking) {
             try thread_context.enemies.attacking_positions.append(
@@ -450,6 +460,12 @@ fn processEnemyCellGroup(
             );
         }
         try thread_context.enemies.render_snapshots.append(enemy_ptr.makeRenderSnapshot());
+    }
+
+    if (cell_insertion_list.count() > 0) {
+        const cell_items = ThreadContext.CellItems(Enemy)
+            .create(cell_group.cell_index, cell_insertion_list);
+        try thread_context.enemies.insertion_queue.append(cell_items);
     }
 }
 
@@ -505,7 +521,8 @@ fn populateRenderSnapshotsThread(
 const ThreadContext = struct {
     performance_measurements: PerformanceMeasurements,
     enemies: struct {
-        insertion_queue: std.ArrayList(Enemy),
+        arena_allocator: *std.heap.ArenaAllocator,
+        insertion_queue: UnorderedCollection(CellItems(Enemy)),
         removal_queue: std.ArrayList(*EnemyObjectHandle),
         attacking_positions: std.ArrayList(AttackingEnemyPosition),
         render_snapshots: std.ArrayList(EnemyRenderSnapshot),
@@ -520,10 +537,16 @@ const ThreadContext = struct {
     const GemObjectHandle = SharedContext.GemCollection.ObjectHandle;
 
     fn create(allocator: std.mem.Allocator) !ThreadContext {
+        const enemy_allocator = try allocator.create(std.heap.ArenaAllocator);
+        errdefer allocator.destroy(enemy_allocator);
+        enemy_allocator.* = std.heap.ArenaAllocator.init(allocator);
+
         return .{
             .performance_measurements = try PerformanceMeasurements.create(),
             .enemies = .{
-                .insertion_queue = std.ArrayList(Enemy).init(allocator),
+                .arena_allocator = enemy_allocator,
+                .insertion_queue = UnorderedCollection(CellItems(Enemy))
+                    .create(enemy_allocator.allocator()),
                 .removal_queue = std.ArrayList(*EnemyObjectHandle).init(allocator),
                 .attacking_positions = std.ArrayList(AttackingEnemyPosition).init(allocator),
                 .render_snapshots = std.ArrayList(EnemyRenderSnapshot).init(allocator),
@@ -536,18 +559,21 @@ const ThreadContext = struct {
         };
     }
 
-    fn destroy(self: *ThreadContext) void {
+    fn destroy(self: *ThreadContext, allocator: std.mem.Allocator) void {
         self.gems.render_snapshots.deinit();
         self.gems.removal_queue.deinit();
         self.enemies.render_snapshots.deinit();
         self.enemies.attacking_positions.deinit();
         self.enemies.removal_queue.deinit();
-        self.enemies.insertion_queue.deinit();
+        self.enemies.arena_allocator.deinit();
+        allocator.destroy(self.enemies.arena_allocator);
     }
 
     fn reset(self: *ThreadContext) void {
         self.performance_measurements.updateAverageAndReset();
-        self.enemies.insertion_queue.clearRetainingCapacity();
+        _ = self.enemies.arena_allocator.reset(.retain_capacity);
+        self.enemies.insertion_queue = UnorderedCollection(CellItems(Enemy))
+            .create(self.enemies.arena_allocator.allocator());
         self.enemies.removal_queue.clearRetainingCapacity();
         self.enemies.attacking_positions.clearRetainingCapacity();
         self.enemies.render_snapshots.clearRetainingCapacity();
