@@ -406,8 +406,8 @@ fn processEnemyCellGroup(
         // Deterministic and portably reproducible seed which is oblivious to core count
         // and thread execution order.
         var seed = std.hash.Wyhash.init(self.tick_counter);
-        seed.update(std.mem.asBytes(&cell_group.cell_index.x));
-        seed.update(std.mem.asBytes(&cell_group.cell_index.z));
+        seed.update(std.mem.asBytes(&std.mem.nativeToLittle(i16, cell_group.cell_index.x)));
+        seed.update(std.mem.asBytes(&std.mem.nativeToLittle(i16, cell_group.cell_index.z)));
         break :blk std.rand.Xoroshiro128.init(seed.final());
     };
     const tick_context = .{
