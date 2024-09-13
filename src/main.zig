@@ -101,7 +101,7 @@ const ProgramContext = struct {
             render_loop,
             dialog_controller,
         );
-        errdefer game_context.destroy(allocator);
+        errdefer game_context.destroy();
 
         try sdl.makeGLContextCurrent(null, null);
         var render_thread = try std.Thread.spawn(
@@ -136,7 +136,7 @@ const ProgramContext = struct {
         self.allocator.destroy(self.render_loop);
         self.dialog_controller.destroy();
         self.allocator.destroy(self.dialog_controller);
-        self.game_context.destroy(self.allocator);
+        self.game_context.destroy();
         sdl.SDL_GL_DeleteContext(self.gl_context);
         sdl.SDL_DestroyWindow(self.window);
     }
@@ -243,9 +243,9 @@ const ProgramContext = struct {
                 } else if (event.key.keysym.sym == sdl.SDLK_f) {
                     self.render_flow_field = !self.render_flow_field;
                 } else if (event.key.keysym.sym == sdl.SDLK_F2) {
-                    try self.game_context.writeMapToDisk(self.allocator);
+                    try self.game_context.writeMapToDisk();
                 } else if (event.key.keysym.sym == sdl.SDLK_F5) {
-                    try self.game_context.reloadMapFromDisk(self.allocator);
+                    try self.game_context.reloadMapFromDisk();
                 } else if (event.key.keysym.sym == sdl.SDLK_DELETE) {
                     try self.edit_mode_state.cycleMode(self.game_context.getMutableMap());
                 } else if (keyToInputButton(event.key.keysym.sym)) |keycode| {

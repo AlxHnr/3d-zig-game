@@ -25,6 +25,8 @@ const textures = @import("textures.zig");
 
 const Context = @This();
 
+allocator: std.mem.Allocator,
+
 tick_counter: u32,
 main_character: game_unit.Player,
 main_character_flow_field: FlowField,
@@ -108,6 +110,8 @@ pub fn create(
     }
 
     return .{
+        .allocator = allocator,
+
         .tick_counter = 0,
         .main_character = game_unit.Player.create(
             fp(0),
@@ -132,19 +136,19 @@ pub fn create(
     };
 }
 
-pub fn destroy(self: *Context, allocator: std.mem.Allocator) void {
+pub fn destroy(self: *Context) void {
     for (self.thread_contexts) |context| {
         context.destroy();
-        allocator.destroy(context);
+        self.allocator.destroy(context);
     }
-    allocator.free(self.thread_contexts);
-    self.thread_pool.destroy(allocator);
+    self.allocator.free(self.thread_contexts);
+    self.thread_pool.destroy(self.allocator);
     self.tick_lifetime_allocator.deinit();
     self.spritesheet.destroy();
     self.shared_context.destroy();
     self.map.destroy();
-    allocator.free(self.map_file_path);
-    self.main_character_flow_field.destroy(allocator);
+    self.allocator.free(self.map_file_path);
+    self.main_character_flow_field.destroy(self.allocator);
 }
 
 pub fn markButtonAsPressed(self: *Context, button: game_unit.InputButton) void {
@@ -237,9 +241,9 @@ pub fn playerIsOnFlowFieldObstacleTile(self: Context) bool {
     ).isObstacle();
 }
 
-pub fn reloadMapFromDisk(self: *Context, allocator: std.mem.Allocator) !void {
+pub fn reloadMapFromDisk(self: *Context) !void {
     const map = try loadMap(
-        allocator,
+        self.allocator,
         &self.shared_context.object_id_generator,
         self.spritesheet,
         self.map_file_path,
@@ -248,9 +252,9 @@ pub fn reloadMapFromDisk(self: *Context, allocator: std.mem.Allocator) !void {
     self.map = map;
 }
 
-pub fn writeMapToDisk(self: Context, allocator: std.mem.Allocator) !void {
-    var data = try self.map.toSerializableData(allocator);
-    defer Map.freeSerializableData(allocator, &data);
+pub fn writeMapToDisk(self: Context) !void {
+    var data = try self.map.toSerializableData(self.allocator);
+    defer Map.freeSerializableData(self.allocator, &data);
 
     var file = try std.fs.cwd().createFile(self.map_file_path, .{});
     defer file.close();
