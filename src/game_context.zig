@@ -373,10 +373,12 @@ fn updateSpatialGridsThread(
         );
     }
 
-    for (self.thread_contexts) |context| {
-        for (context.gems.removal_queue.items) |object_handle| {
-            self.shared_context.gem_collection.remove(object_handle);
-        }
+    var merged_gem_removal_queue =
+        try self.mergeThreadResults("gems", "removal_queue", *GemObjectHandle);
+    defer merged_gem_removal_queue.destroy();
+    var gem_removal_iterator = merged_gem_removal_queue.constIterator();
+    while (gem_removal_iterator.next()) |object_handle| {
+        self.shared_context.gem_collection.remove(object_handle);
     }
 }
 
@@ -502,6 +504,7 @@ fn processGemThread(self: *Context, thread_id: usize) !void {
         .map = &self.map,
         .main_character = &self.main_character.character,
     };
+    const arena_allocator = thread_context.gems.arena_allocator.allocator();
 
     var gems_collected: u64 = 0;
     var iterator = self.shared_context.gem_collection.cellGroupIteratorAdvanced(
@@ -510,16 +513,23 @@ fn processGemThread(self: *Context, thread_id: usize) !void {
     );
     while (iterator.next()) |cell_group| {
         var gem_iterator = cell_group.cell.iterator();
+        var removal_list = UnorderedCollection(*GemObjectHandle).create(arena_allocator);
         while (gem_iterator.next()) |gem_ptr| {
             switch (gem_ptr.processElapsedTick(tick_context)) {
                 .none => {},
                 .picked_up_by_player => gems_collected += 1,
-                .disappeared => try thread_context.gems.removal_queue.append(
+                .disappeared => try removal_list.append(
                     self.shared_context.gem_collection.getObjectHandle(gem_ptr),
                 ),
             }
             try thread_context.gems.render_snapshots.append(gem_ptr.makeRenderSnapshot());
         }
+        try appendUnorderedResultsIfNeeded(
+            *GemObjectHandle,
+            removal_list,
+            &thread_context.gems.removal_queue,
+            cell_group,
+        );
     }
     thread_context.gems.amount_collected = gems_collected;
 }
@@ -552,8 +562,9 @@ const ThreadContext = struct {
         render_snapshots: std.ArrayList(EnemyRenderSnapshot),
     },
     gems: struct {
+        arena_allocator: *std.heap.ArenaAllocator,
         amount_collected: u64,
-        removal_queue: std.ArrayList(*GemObjectHandle),
+        removal_queue: UnorderedCollection(CellItems(*GemObjectHandle)),
         render_snapshots: std.ArrayList(Gem.RenderSnapshot),
     },
 
@@ -561,6 +572,10 @@ const ThreadContext = struct {
         const enemy_allocator = try allocator.create(std.heap.ArenaAllocator);
         errdefer allocator.destroy(enemy_allocator);
         enemy_allocator.* = std.heap.ArenaAllocator.init(allocator);
+
+        const gem_allocator = try allocator.create(std.heap.ArenaAllocator);
+        errdefer allocator.destroy(gem_allocator);
+        gem_allocator.* = std.heap.ArenaAllocator.init(allocator);
 
         return .{
             .performance_measurements = try PerformanceMeasurements.create(),
@@ -575,8 +590,10 @@ const ThreadContext = struct {
                 .render_snapshots = std.ArrayList(EnemyRenderSnapshot).init(allocator),
             },
             .gems = .{
+                .arena_allocator = gem_allocator,
                 .amount_collected = 0,
-                .removal_queue = std.ArrayList(*GemObjectHandle).init(allocator),
+                .removal_queue = UnorderedCollection(CellItems(*GemObjectHandle))
+                    .create(gem_allocator.allocator()),
                 .render_snapshots = std.ArrayList(Gem.RenderSnapshot).init(allocator),
             },
         };
@@ -584,7 +601,8 @@ const ThreadContext = struct {
 
     fn destroy(self: *ThreadContext, allocator: std.mem.Allocator) void {
         self.gems.render_snapshots.deinit();
-        self.gems.removal_queue.deinit();
+        self.gems.arena_allocator.deinit();
+        allocator.destroy(self.gems.arena_allocator);
         self.enemies.render_snapshots.deinit();
         self.enemies.arena_allocator.deinit();
         allocator.destroy(self.enemies.arena_allocator);
@@ -601,7 +619,8 @@ const ThreadContext = struct {
             .create(self.enemies.arena_allocator.allocator());
         self.enemies.render_snapshots.clearRetainingCapacity();
         self.gems.amount_collected = 0;
-        self.gems.removal_queue.clearRetainingCapacity();
+        self.gems.removal_queue = UnorderedCollection(CellItems(*GemObjectHandle))
+            .create(self.gems.arena_allocator.allocator());
         self.gems.render_snapshots.clearRetainingCapacity();
     }
 
