@@ -343,10 +343,12 @@ fn updateSpatialGridsThread(
     performance_measurements.begin(.spatial_grids);
     defer performance_measurements.end(.spatial_grids);
 
-    for (self.thread_contexts) |context| {
-        for (context.enemies.removal_queue.items) |object_handle| {
-            self.shared_context.enemy_collection.remove(object_handle);
-        }
+    var merged_removal_queue =
+        try self.mergeThreadResults("enemies", "removal_queue", *EnemyObjectHandle);
+    defer merged_removal_queue.destroy();
+    var removal_iterator = merged_removal_queue.constIterator();
+    while (removal_iterator.next()) |object_handle| {
+        self.shared_context.enemy_collection.remove(object_handle);
     }
 
     var merged_insertion_queue = try self.mergeThreadResults("enemies", "insertion_queue", Enemy);
@@ -359,14 +361,19 @@ fn updateSpatialGridsThread(
         );
     }
 
+    var merged_attacking_positions =
+        try self.mergeThreadResults("enemies", "attacking_positions", AttackingEnemyPosition);
+    defer merged_attacking_positions.destroy();
+    var attacking_positions = merged_attacking_positions.constIterator();
+    while (attacking_positions.next()) |attacking_enemy| {
+        try attacking_enemy_positions_at_previous_tick.insertIntoArea(
+            attacking_enemy,
+            Enemy.makeSpacingBoundaries(attacking_enemy.position)
+                .getOuterBoundingBoxInGameCoordinates(),
+        );
+    }
+
     for (self.thread_contexts) |context| {
-        for (context.enemies.attacking_positions.items) |attacking_enemy| {
-            try attacking_enemy_positions_at_previous_tick.insertIntoArea(
-                attacking_enemy,
-                Enemy.makeSpacingBoundaries(attacking_enemy.position)
-                    .getOuterBoundingBoxInGameCoordinates(),
-            );
-        }
         for (context.gems.removal_queue.items) |object_handle| {
             self.shared_context.gem_collection.remove(object_handle);
         }
@@ -380,11 +387,14 @@ fn recomputeFlowFieldThread(
     performance_measurements.begin(.flow_field);
     defer performance_measurements.end(.flow_field);
 
-    for (self.thread_contexts) |context| {
-        for (context.enemies.attacking_positions.items) |attacking_enemy| {
-            self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
-        }
+    var merged_attacking_positions =
+        try self.mergeThreadResults("enemies", "attacking_positions", AttackingEnemyPosition);
+    defer merged_attacking_positions.destroy();
+    var attacking_positionstor = merged_attacking_positions.constIterator();
+    while (attacking_positionstor.next()) |attacking_enemy| {
+        self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
     }
+
     try self.main_character_flow_field.recompute(
         self.main_character.character.moving_circle.getPosition(),
         self.map,
@@ -434,9 +444,10 @@ fn processEnemyCellGroup(
     };
 
     var enemy_iterator = cell_group.cell.iterator();
-    var cell_insertion_list = UnorderedCollection(Enemy).create(
-        thread_context.enemies.arena_allocator.allocator(),
-    );
+    const arena_allocator = thread_context.enemies.arena_allocator.allocator();
+    var cell_insertion_list = UnorderedCollection(Enemy).create(arena_allocator);
+    var cell_removal_list = UnorderedCollection(*EnemyObjectHandle).create(arena_allocator);
+    var cell_attacking_list = UnorderedCollection(AttackingEnemyPosition).create(arena_allocator);
     while (enemy_iterator.next()) |enemy_ptr| {
         const old_cell_index = self.shared_context.enemy_collection.getCellIndex(
             enemy_ptr.character.moving_circle.getPosition(),
@@ -447,28 +458,39 @@ fn processEnemyCellGroup(
         );
 
         if (enemy_ptr.state == .dead) {
-            try thread_context.enemies.removal_queue.append(
+            try cell_removal_list.append(
                 self.shared_context.enemy_collection.getObjectHandle(enemy_ptr),
             );
         } else if (new_cell_index.compare(old_cell_index) != .eq) {
-            try thread_context.enemies.removal_queue.append(
+            try cell_removal_list.append(
                 self.shared_context.enemy_collection.getObjectHandle(enemy_ptr),
             );
             try cell_insertion_list.append(enemy_ptr.*);
         }
         if (enemy_ptr.state == .attacking) {
-            try thread_context.enemies.attacking_positions.append(
-                enemy_ptr.makeAttackingEnemyPosition(),
-            );
+            try cell_attacking_list.append(enemy_ptr.makeAttackingEnemyPosition());
         }
         try thread_context.enemies.render_snapshots.append(enemy_ptr.makeRenderSnapshot());
     }
 
-    if (cell_insertion_list.count() > 0) {
-        const cell_items = ThreadContext.CellItems(Enemy)
-            .create(cell_group.cell_index, cell_insertion_list);
-        try thread_context.enemies.insertion_queue.append(cell_items);
-    }
+    try appendUnorderedResultsIfNeeded(
+        *EnemyObjectHandle,
+        cell_removal_list,
+        &thread_context.enemies.removal_queue,
+        cell_group,
+    );
+    try appendUnorderedResultsIfNeeded(
+        Enemy,
+        cell_insertion_list,
+        &thread_context.enemies.insertion_queue,
+        cell_group,
+    );
+    try appendUnorderedResultsIfNeeded(
+        AttackingEnemyPosition,
+        cell_attacking_list,
+        &thread_context.enemies.attacking_positions,
+        cell_group,
+    );
 }
 
 fn processGemThread(self: *Context, thread_id: usize) !void {
@@ -525,8 +547,8 @@ const ThreadContext = struct {
     enemies: struct {
         arena_allocator: *std.heap.ArenaAllocator,
         insertion_queue: UnorderedCollection(CellItems(Enemy)),
-        removal_queue: std.ArrayList(*EnemyObjectHandle),
-        attacking_positions: std.ArrayList(AttackingEnemyPosition),
+        removal_queue: UnorderedCollection(CellItems(*EnemyObjectHandle)),
+        attacking_positions: UnorderedCollection(CellItems(AttackingEnemyPosition)),
         render_snapshots: std.ArrayList(EnemyRenderSnapshot),
     },
     gems: struct {
@@ -546,8 +568,10 @@ const ThreadContext = struct {
                 .arena_allocator = enemy_allocator,
                 .insertion_queue = UnorderedCollection(CellItems(Enemy))
                     .create(enemy_allocator.allocator()),
-                .removal_queue = std.ArrayList(*EnemyObjectHandle).init(allocator),
-                .attacking_positions = std.ArrayList(AttackingEnemyPosition).init(allocator),
+                .removal_queue = UnorderedCollection(CellItems(*EnemyObjectHandle))
+                    .create(enemy_allocator.allocator()),
+                .attacking_positions = UnorderedCollection(CellItems(AttackingEnemyPosition))
+                    .create(enemy_allocator.allocator()),
                 .render_snapshots = std.ArrayList(EnemyRenderSnapshot).init(allocator),
             },
             .gems = .{
@@ -562,8 +586,6 @@ const ThreadContext = struct {
         self.gems.render_snapshots.deinit();
         self.gems.removal_queue.deinit();
         self.enemies.render_snapshots.deinit();
-        self.enemies.attacking_positions.deinit();
-        self.enemies.removal_queue.deinit();
         self.enemies.arena_allocator.deinit();
         allocator.destroy(self.enemies.arena_allocator);
     }
@@ -573,8 +595,10 @@ const ThreadContext = struct {
         _ = self.enemies.arena_allocator.reset(.retain_capacity);
         self.enemies.insertion_queue = UnorderedCollection(CellItems(Enemy))
             .create(self.enemies.arena_allocator.allocator());
-        self.enemies.removal_queue.clearRetainingCapacity();
-        self.enemies.attacking_positions.clearRetainingCapacity();
+        self.enemies.removal_queue = UnorderedCollection(CellItems(*EnemyObjectHandle))
+            .create(self.enemies.arena_allocator.allocator());
+        self.enemies.attacking_positions = UnorderedCollection(CellItems(AttackingEnemyPosition))
+            .create(self.enemies.arena_allocator.allocator());
         self.enemies.render_snapshots.clearRetainingCapacity();
         self.gems.amount_collected = 0;
         self.gems.removal_queue.clearRetainingCapacity();
@@ -692,4 +716,16 @@ fn MergedThreadResults(comptime Item: type) type {
             }
         };
     };
+}
+
+fn appendUnorderedResultsIfNeeded(
+    comptime Item: type,
+    cell_list: anytype,
+    target_list: anytype,
+    cell_group: anytype,
+) !void {
+    if (cell_list.count() > 0) {
+        const cell_items = ThreadContext.CellItems(Item).create(cell_group.cell_index, cell_list);
+        try target_list.append(cell_items);
+    }
 }
