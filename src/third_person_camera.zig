@@ -147,7 +147,7 @@ pub fn getPosition(self: Camera) math.Vector3d {
 
 /// Add a Y offset to the specified target so it is rendered in the bottom part of the screen.
 fn add3dHeight(target_position: math.FlatVector) math.Vector3d {
-    return target_position.toVector3d().add(math.Vector3d.y_axis.multiplyScalar(fp(3)));
+    return target_position.addY(fp(3));
 }
 
 /// Takes an optional distance limit to prevent walls from covering the cameras target object.

@@ -913,7 +913,7 @@ const Wall = struct {
             .model_matrix = math.Matrix.identity
                 .scale(.{ .x = length, .y = height, .z = render_thickness })
                 .rotate(math.Vector3d.y_axis, rotation_angle)
-                .translate(center.toVector3d().add(math.Vector3d.y_axis.multiplyScalar(height.div(fp(2))))),
+                .translate(center.addY(height.div(fp(2)))),
             .boundaries = collision.Rectangle.create(start_corners[0], start_corners[1], length),
             .corner_positions = .{
                 start_corners[0],

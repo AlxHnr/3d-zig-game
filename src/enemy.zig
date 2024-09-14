@@ -155,10 +155,8 @@ pub const RenderSnapshot = struct {
             out.items.len += cached_text.len;
 
             @memcpy(out_slice, cached_text);
-            const position = state.values.position.toVector3d().add(
-                math.Vector3d.y_axis.multiplyScalar(
-                    state.values.height.mul(fp(offset_to_player_height_factor)),
-                ),
+            const position = state.values.position.addY(
+                state.values.height.mul(fp(offset_to_player_height_factor)),
             );
             const x = position.x.convertTo(f32);
             const y = position.y.convertTo(f32);

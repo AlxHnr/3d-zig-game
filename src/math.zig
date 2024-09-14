@@ -29,7 +29,11 @@ pub const FlatVector = struct {
     pub const zero = FlatVector{ .x = fp(0), .z = fp(0) };
 
     pub fn toVector3d(self: FlatVector) Vector3d {
-        return .{ .x = self.x, .y = fp(0), .z = self.z };
+        return self.addY(fp(0));
+    }
+
+    pub fn addY(self: FlatVector, y: Fix32) Vector3d {
+        return .{ .x = self.x, .y = y, .z = self.z };
     }
 
     pub fn equal(self: FlatVector, other: FlatVector) bool {
