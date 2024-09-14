@@ -76,18 +76,13 @@ pub const RenderSnapshot = struct {
         interval_between_previous_and_current_tick: math.Fix32,
     ) SpriteData {
         const source = spritesheet.getSpriteTexcoords(.gem);
-        const sprite_aspect_ratio = spritesheet.getSpriteAspectRatio(.gem).convertTo(f32);
+        const sprite_aspect_ratio = spritesheet.getSpriteAspectRatio(.gem);
         const state = self.interpolate(interval_between_previous_and_current_tick);
-        const height = 1.5;
-        var result = SpriteData{
-            .position = .{
-                .x = self.position.x.convertTo(f32),
-                .y = height / 2.0,
-                .z = self.position.z.convertTo(f32),
-            },
-            .size = .{ .w = height / sprite_aspect_ratio, .h = height },
-            .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
-        };
+        const height = fp(1.5);
+        var result = SpriteData
+            .create(self.position.addY(height.div(fp(2))))
+            .withSize(height.div(sprite_aspect_ratio), height)
+            .withSourceRect(source.x, source.y, source.w, source.h);
         switch (state) {
             .spawning => |spawning| interpolateJumpAnimation(
                 &result,
@@ -171,11 +166,10 @@ pub const RenderSnapshot = struct {
         const jump_height = 1.5;
         to_update.size.w *= scale;
         to_update.size.h *= scale;
-        to_update.position = .{
-            .x = start_position.x.lerp(end_position.x, progress).convertTo(f32),
-            .y = to_update.position.y + (1 - t * t) * jump_height,
-            .z = start_position.z.lerp(end_position.z, progress).convertTo(f32),
-        };
+        to_update.* = to_update.withPosition(
+            start_position.lerp(end_position, progress)
+                .addY(fp(to_update.position.y + (1 - t * t) * jump_height)),
+        );
     }
 };
 

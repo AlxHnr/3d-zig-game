@@ -120,9 +120,9 @@ pub const RenderSnapshot = struct {
     state_at_previous_tick: State,
 
     const enemy_name_font_scale = 1;
-    const health_bar_scale = 1;
-    const health_bar_height = health_bar_scale * 6;
-    const offset_to_player_height_factor = 1.2;
+    const health_bar_scale = fp(1);
+    const health_bar_height = health_bar_scale.mul(fp(6));
+    const offset_to_player_height_factor = fp(1.2);
 
     pub fn appendBillboardData(
         self: RenderSnapshot,
@@ -156,13 +156,10 @@ pub const RenderSnapshot = struct {
 
             @memcpy(out_slice, cached_text);
             const position = state.values.position.addY(
-                state.values.height.mul(fp(offset_to_player_height_factor)),
+                state.values.height.mul(offset_to_player_height_factor),
             );
-            const x = position.x.convertTo(f32);
-            const y = position.y.convertTo(f32);
-            const z = position.z.convertTo(f32);
             for (out_slice) |*billboard_data| {
-                billboard_data.position = .{ .x = x, .y = y, .z = z };
+                billboard_data.* = billboard_data.withPosition(position);
             }
         }
     }
@@ -226,21 +223,15 @@ pub const RenderSnapshot = struct {
             @as(f32, @floatFromInt(state.values.health.current)) /
             @as(f32, @floatFromInt(state.values.health.max));
         const source = spritesheet.getSpriteTexcoords(.white_block);
-        const billboard_data = .{
-            .position = .{
-                .x = state.values.position.x.convertTo(f32),
-                .y = state.values.height.convertTo(f32) * offset_to_player_height_factor,
-                .z = state.values.position.z.convertTo(f32),
-            },
-            .size = .{
-                .w = health_bar_scale *
-                    // This factor has been determined by trial and error.
-                    std.math.log1p(@as(f32, @floatFromInt(state.values.health.max))) * 8,
-                .h = health_bar_height,
-            },
-            .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
-            .preserve_exact_pixel_size = 1,
-        };
+        // This factor has been determined by trial and error.
+        const health_bar_factor =
+            fp(std.math.log1p(@as(f32, @floatFromInt(state.values.health.max))) * 8);
+        const y_offset = state.values.height.mul(offset_to_player_height_factor);
+        const billboard_data = rendering.SpriteData
+            .create(state.values.position.addY(y_offset))
+            .withSize(health_bar_scale.mul(health_bar_factor), health_bar_height)
+            .withSourceRect(source.x, source.y, source.w, source.h)
+            .withPreserveExactPixelSize(true);
 
         const full_health = Color.fromRgb8(21, 213, 21);
         const empty_health = Color.fromRgb8(213, 21, 21);
@@ -290,7 +281,7 @@ pub const PrerenderedNames = struct {
                 text_segment,
                 .{ .x = fp(0), .y = fp(0), .z = fp(0) },
                 0,
-                RenderSnapshot.health_bar_height * 2,
+                RenderSnapshot.health_bar_height.mul(fp(2)).convertTo(i16),
                 spritesheet.getFontSizeMultiple(RenderSnapshot.enemy_name_font_scale),
                 spritesheet,
                 billboard_data,

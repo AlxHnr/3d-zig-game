@@ -1127,26 +1127,17 @@ const BillboardObject = struct {
             .position = position,
             .radius = width.div(fp(2)),
         };
-        const half_height = boundaries.radius
-            .mul(spritesheet.getSpriteAspectRatio(sprite_id)).convertTo(f32);
+        const half_height = boundaries.radius.mul(spritesheet.getSpriteAspectRatio(sprite_id));
         const tint = getDefaultTint(object_type);
         return .{
             .object_id = object_id,
             .object_type = object_type,
             .boundaries = boundaries,
-            .sprite_data = .{
-                .position = .{
-                    .x = boundaries.position.x.convertTo(f32),
-                    .y = half_height,
-                    .z = boundaries.position.z.convertTo(f32),
-                },
-                .size = .{
-                    .w = boundaries.radius.convertTo(f32) * 2,
-                    .h = half_height * 2,
-                },
-                .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
-                .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
-            },
+            .sprite_data = rendering.SpriteData
+                .create(boundaries.position.addY(half_height))
+                .withSize(boundaries.radius.mul(fp(2)), half_height.mul(fp(2)))
+                .withSourceRect(source.x, source.y, source.w, source.h)
+                .withTint(tint.r, tint.g, tint.b),
         };
     }
 

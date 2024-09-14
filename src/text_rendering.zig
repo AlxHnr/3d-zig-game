@@ -371,24 +371,12 @@ fn populateSpriteDataRaw(
                 offset.y = offset.y.add(offset_increment.y);
             } else {
                 const source = spritesheet.getFontCharacterTexcoords(codepoint);
-                out[index] = .{
-                    .position = .{
-                        .x = position.x.convertTo(f32),
-                        .y = position.y.convertTo(f32),
-                        .z = position.z.convertTo(f32),
-                    },
-                    .size = .{
-                        .w = character_size.convertTo(f32),
-                        .h = character_size.convertTo(f32),
-                    },
-                    .offset_from_origin = .{
-                        .x = offset.x.convertTo(f32),
-                        .y = offset.y.convertTo(f32),
-                    },
-                    .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
-                    .tint = .{ .r = segment.color.r, .g = segment.color.g, .b = segment.color.b },
-                    .preserve_exact_pixel_size = if (preserve_exact_pixel_size) 1 else 0,
-                };
+                out[index] = SpriteData.create(position)
+                    .withSize(character_size, character_size)
+                    .withOffsetFromOrigin(offset.x, offset.y)
+                    .withSourceRect(source.x, source.y, source.w, source.h)
+                    .withTint(segment.color.r, segment.color.g, segment.color.b)
+                    .withPreserveExactPixelSize(preserve_exact_pixel_size);
                 offset.x = offset.x.add(offset_increment.x);
                 index = index + 1;
             }

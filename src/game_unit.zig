@@ -285,13 +285,7 @@ pub fn makeSpriteData(
     spritesheet: SpriteSheetTexture,
 ) SpriteData {
     const source = spritesheet.getSpriteTexcoords(sprite);
-    return .{
-        .position = .{
-            .x = position.x.convertTo(f32),
-            .y = height.convertTo(f32) / 2,
-            .z = position.z.convertTo(f32),
-        },
-        .size = .{ .w = radius.convertTo(f32) * 2, .h = height.convertTo(f32) },
-        .source_rect = .{ .x = source.x, .y = source.y, .w = source.w, .h = source.h },
-    };
+    return SpriteData.create(position.addY(height.div(fp(2))))
+        .withSize(radius.mul(fp(2)), height)
+        .withSourceRect(source.x, source.y, source.w, source.h);
 }

@@ -475,6 +475,66 @@ pub const SpriteData = extern struct {
     /// 1 if the billboard should have a fixed pixel size independently from its distance to the
     /// camera. Only relevant for `BillboardRenderer`.
     preserve_exact_pixel_size: f32 = 0,
+
+    pub fn create(position: math.Vector3d) SpriteData {
+        return std.mem.zeroes(SpriteData)
+            .withPosition(position)
+            .withZRotation(fp(0))
+            .withTint(1, 1, 1);
+    }
+
+    pub fn withPosition(self: SpriteData, position: math.Vector3d) SpriteData {
+        var copy = self;
+        copy.position.x = position.x.convertTo(f32);
+        copy.position.y = position.y.convertTo(f32);
+        copy.position.z = position.z.convertTo(f32);
+        return copy;
+    }
+
+    pub fn withSize(self: SpriteData, w: math.Fix32, h: math.Fix32) SpriteData {
+        var copy = self;
+        copy.size.w = w.convertTo(f32);
+        copy.size.h = h.convertTo(f32);
+        return copy;
+    }
+
+    pub fn withOffsetFromOrigin(self: SpriteData, x: math.Fix32, y: math.Fix32) SpriteData {
+        var copy = self;
+        copy.offset_from_origin.x = x.convertTo(f32);
+        copy.offset_from_origin.y = y.convertTo(f32);
+        return copy;
+    }
+
+    pub fn withZRotation(self: SpriteData, angle: math.Fix32) SpriteData {
+        var copy = self;
+        const radians = angle.convertTo(f32);
+        copy.z_rotation.sine = std.math.sin(radians);
+        copy.z_rotation.cosine = std.math.cos(radians);
+        return copy;
+    }
+
+    pub fn withSourceRect(self: SpriteData, x: f32, y: f32, w: f32, h: f32) SpriteData {
+        var copy = self;
+        copy.source_rect.x = x;
+        copy.source_rect.y = y;
+        copy.source_rect.w = w;
+        copy.source_rect.h = h;
+        return copy;
+    }
+
+    pub fn withTint(self: SpriteData, r: f32, g: f32, b: f32) SpriteData {
+        var copy = self;
+        copy.tint.r = r;
+        copy.tint.g = g;
+        copy.tint.b = b;
+        return copy;
+    }
+
+    pub fn withPreserveExactPixelSize(self: SpriteData, preserve: bool) SpriteData {
+        var copy = self;
+        copy.preserve_exact_pixel_size = @floatFromInt(@intFromBool(preserve));
+        return copy;
+    }
 };
 
 fn createAndBindVao() c_uint {
