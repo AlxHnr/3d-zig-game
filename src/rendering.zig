@@ -371,8 +371,8 @@ pub const BillboardRenderer = struct {
             assert(@offsetOf(SpriteData, "z_rotation") == 28);
             assert(@offsetOf(SpriteData, "source_rect") == 36);
             assert(@offsetOf(SpriteData, "tint") == 52);
-            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 56);
-            assert(@sizeOf(SpriteData) == 60);
+            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 55);
+            assert(@sizeOf(SpriteData) == 56);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -468,10 +468,10 @@ pub const SpriteData = extern struct {
     source_rect: extern struct { x: f32, y: f32, w: f32, h: f32 },
     /// Color values from 0 to 1. Defaults to white (no tint).
     tint: extern struct { r: u8, g: u8, b: u8 } = .{ .r = 255, .g = 255, .b = 255 },
-    /// 0 if the billboard should shrink with increasing camera distance.
-    /// 1 if the billboard should have a fixed pixel size independently from its distance to the
+    /// False if the billboard should shrink with increasing camera distance.
+    /// True if the billboard should have a fixed pixel size independently from its distance to the
     /// camera. Only relevant for `BillboardRenderer`.
-    preserve_exact_pixel_size: f32 = 0,
+    preserve_exact_pixel_size: bool = false,
 
     pub fn create(position: math.Vector3d) SpriteData {
         return std.mem.zeroes(SpriteData)
@@ -529,7 +529,7 @@ pub const SpriteData = extern struct {
 
     pub fn withPreserveExactPixelSize(self: SpriteData, preserve: bool) SpriteData {
         var copy = self;
-        copy.preserve_exact_pixel_size = @floatFromInt(@intFromBool(preserve));
+        copy.preserve_exact_pixel_size = preserve;
         return copy;
     }
 };
@@ -597,7 +597,7 @@ fn setupVertexAttribute(
     const type_info = @typeInfo(std.meta.FieldType(ComponentType, field));
     const component_count = switch (type_info) {
         .Struct => type_info.Struct.fields.len,
-        .Float => 1,
+        .Float, .Int, .Bool => 1,
         else => @compileError("unsupported type :" ++ @typeName(@Type(type_info))),
     };
     comptime {
@@ -606,8 +606,7 @@ fn setupVertexAttribute(
 
     const component_type = switch (type_info) {
         .Struct => type_info.Struct.fields[0].type,
-        .Float => @Type(type_info),
-        else => @compileError("unsupported type :" ++ @typeName(@Type(type_info))),
+        else => @Type(type_info),
     };
     setupVertexAttributeRaw(
         attribute_location,
@@ -628,6 +627,7 @@ fn setupVertexAttributeRaw(
     all_components_size: c_int,
 ) void {
     const gl_type = switch (@typeInfo(component_type)) {
+        .Bool => gl.UNSIGNED_BYTE,
         .Float => gl.FLOAT,
         .Int => |int| switch (int.bits) {
             8 => gl.UNSIGNED_BYTE,
