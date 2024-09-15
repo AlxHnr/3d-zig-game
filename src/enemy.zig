@@ -222,7 +222,7 @@ pub const RenderSnapshot = struct {
         const health_percent =
             @as(f32, @floatFromInt(state.values.health.current)) /
             @as(f32, @floatFromInt(state.values.health.max));
-        const source = spritesheet.getSpriteTexcoords(.white_block);
+        const source = spritesheet.getSpriteSourceRectangle(.white_block);
         // This factor has been determined by trial and error.
         const health_bar_factor =
             fp(std.math.log1p(@as(f32, @floatFromInt(state.values.health.max))) * 8);
@@ -230,7 +230,7 @@ pub const RenderSnapshot = struct {
         const billboard_data = rendering.SpriteData
             .create(state.values.position.addY(y_offset))
             .withSize(health_bar_scale.mul(health_bar_factor), health_bar_height)
-            .withSourceRect(source.x, source.y, source.w, source.h)
+            .withSourceRect(source)
             .withPreserveExactPixelSize(true);
 
         const full_health = Color.fromRgb8(21, 213, 21);

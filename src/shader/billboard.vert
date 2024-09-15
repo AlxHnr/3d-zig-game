@@ -8,7 +8,8 @@ in vec3 billboard_center_position;
 in vec2 size; // Width and height of the billboard.
 in vec2 offset_from_origin;
 in float z_rotation; // Angle in radians for rotating the billboard around its Z axis.
-in vec4 source_rect; // Values from 0 to 1, where (0, 0) is the top left of the texture.
+in vec4 source_rect; // X, y, w and h values specified in pixels on the spritesheet, with (0, 0)
+                     // being the top-left corner.
 in vec3 tint;
 // 0 if the billboard should shrink with increasing camera distance.
 // 1 if the billboard should have a fixed pixel size independently from its distance to the camera.

@@ -8,6 +8,10 @@ const meshes = @import("meshes.zig");
 const std = @import("std");
 
 pub const ScreenDimensions = extern struct { w: u16, h: u16 };
+
+/// Textures start at the top left corner of the sprite at (0, 0).
+pub const TextureSourceRectangle = extern struct { x: u16, y: u16, w: u16, h: u16 };
+
 pub const WallRenderer = struct {
     vao_id: c_uint,
     vertex_vbo_id: c_uint,
@@ -370,9 +374,9 @@ pub const BillboardRenderer = struct {
             assert(@offsetOf(SpriteData, "offset_from_origin") == 20);
             assert(@offsetOf(SpriteData, "z_rotation") == 28);
             assert(@offsetOf(SpriteData, "source_rect") == 32);
-            assert(@offsetOf(SpriteData, "tint") == 48);
-            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 51);
-            assert(@sizeOf(SpriteData) == 52);
+            assert(@offsetOf(SpriteData, "tint") == 40);
+            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 43);
+            assert(@sizeOf(SpriteData) == 44);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -460,8 +464,8 @@ pub const SpriteData = extern struct {
     /// Angle in radians for rotating the sprite around its Z axis.
     z_rotation: f32,
     /// Specifies the part of the currently bound texture which should be stretched onto the
-    /// billboard. Values range from 0 to 1, where (0, 0) is the top left corner of the texture.
-    source_rect: extern struct { x: f32, y: f32, w: f32, h: f32 },
+    /// billboard. (0, 0) is the top left corner of the texture.
+    source_rect: TextureSourceRectangle,
     /// Color values from 0 to 1. White means no tint.
     tint: extern struct { r: u8, g: u8, b: u8 },
     /// False if the billboard should shrink with increasing camera distance.
@@ -503,12 +507,9 @@ pub const SpriteData = extern struct {
         return copy;
     }
 
-    pub fn withSourceRect(self: SpriteData, x: f32, y: f32, w: f32, h: f32) SpriteData {
+    pub fn withSourceRect(self: SpriteData, source: TextureSourceRectangle) SpriteData {
         var copy = self;
-        copy.source_rect.x = x;
-        copy.source_rect.y = y;
-        copy.source_rect.w = w;
-        copy.source_rect.h = h;
+        copy.source_rect = source;
         return copy;
     }
 
@@ -623,7 +624,8 @@ fn setupVertexAttributeRaw(
         .Bool => gl.UNSIGNED_BYTE,
         .Float => gl.FLOAT,
         .Int => |int| switch (int.bits) {
-            8 => gl.UNSIGNED_BYTE,
+            8 => if (int.signedness == .signed) gl.BYTE else gl.UNSIGNED_BYTE,
+            16 => if (int.signedness == .signed) gl.SHORT else gl.UNSIGNED_SHORT,
             else => |bits| @compileError("unsupported integer size: " ++ bits),
         },
         else => @compileError("unsupported type: " ++ @typeName(component_type)),

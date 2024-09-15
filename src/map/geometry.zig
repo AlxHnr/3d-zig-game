@@ -1122,7 +1122,7 @@ const BillboardObject = struct {
         const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (object_type) {
             .small_bush => .small_bush,
         };
-        const source = spritesheet.getSpriteTexcoords(sprite_id);
+        const source = spritesheet.getSpriteSourceRectangle(sprite_id);
         const boundaries = .{
             .position = position,
             .radius = width.div(fp(2)),
@@ -1136,7 +1136,7 @@ const BillboardObject = struct {
             .sprite_data = rendering.SpriteData
                 .create(boundaries.position.addY(half_height))
                 .withSize(boundaries.radius.mul(fp(2)), half_height.mul(fp(2)))
-                .withSourceRect(source.x, source.y, source.w, source.h)
+                .withSourceRect(source)
                 .withTint(tint.r, tint.g, tint.b),
         };
     }

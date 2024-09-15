@@ -7,7 +7,8 @@ uniform sampler2D texture_sampler;
 out vec4 final_color;
 
 void main() {
-    vec4 texel_color = texture(texture_sampler, fragment_texcoords);
+    vec2 texcoords = fragment_texcoords / textureSize(texture_sampler, 0);
+    vec4 texel_color = texture(texture_sampler, texcoords);
     if (texel_color.a < 0.01) {
         discard;
     }

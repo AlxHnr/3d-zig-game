@@ -4,6 +4,7 @@ const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const fp = math.Fix32.fp;
 const math = @import("math.zig");
+const rendering = @import("rendering.zig");
 const text_rendering = @import("text_rendering.zig");
 
 /// Highlight groups for text inside ui.Box.
@@ -117,7 +118,7 @@ pub const Text = struct {
 };
 
 pub const Sprite = struct {
-    texcoords: SpriteSheetTexture.TextureCoordinates,
+    texcoords: rendering.TextureSourceRectangle,
     dimensions: ScreenDimensions,
 
     pub fn create(
@@ -126,9 +127,9 @@ pub const Sprite = struct {
         /// 1 means the original size in pixels.
         sprite_scale: u16,
     ) Sprite {
-        const dimensions = spritesheet.getSpriteDimensionsInPixels(sprite);
+        const dimensions = spritesheet.getSpriteSourceRectangle(sprite);
         return .{
-            .texcoords = spritesheet.getSpriteTexcoords(sprite),
+            .texcoords = spritesheet.getSpriteSourceRectangle(sprite),
             .dimensions = .{
                 .width = dimensions.width * sprite_scale,
                 .height = dimensions.height * sprite_scale,
@@ -159,7 +160,7 @@ pub const Sprite = struct {
         };
         out[0] = SpriteData.create(position)
             .withSize(fp(self.dimensions.w), fp(self.dimensions.h))
-            .withSourceRect(self.texcoords.x, self.texcoords.y, self.texcoords.w, self.texcoords.h);
+            .withSourceRect(self.texcoords);
     }
 };
 
@@ -356,7 +357,7 @@ pub const Box = struct {
 
     /// Returned object will keep a reference to the given pointers.
     pub fn wrap(widget_to_wrap: *const Widget, spritesheet: *const SpriteSheetTexture) Box {
-        const dimensions = spritesheet.getSpriteDimensionsInPixels(.dialog_box_top_left);
+        const dimensions = spritesheet.getSpriteSourceRectangle(.dialog_box_top_left);
         return .{
             .wrapped_widget = widget_to_wrap,
             .spritesheet = spritesheet,
@@ -469,7 +470,7 @@ pub const Box = struct {
             width: math.Fix32,
             height: math.Fix32,
         ) void {
-            const sprite_texcoords = self.spritesheet.getSpriteTexcoords(corner);
+            const sprite_texcoords = self.spritesheet.getSpriteSourceRectangle(corner);
             const position = .{
                 .x = self.top_left_corner.x.add(offset_from_top_left_x).add(width.div(fp(2))),
                 .y = self.top_left_corner.y.add(offset_from_top_left_y).add(height.div(fp(2))),
@@ -478,12 +479,7 @@ pub const Box = struct {
             self.out[getIndex(corner)] = SpriteData
                 .create(position)
                 .withSize(width, height)
-                .withSourceRect(
-                sprite_texcoords.x,
-                sprite_texcoords.y,
-                sprite_texcoords.w,
-                sprite_texcoords.h,
-            );
+                .withSourceRect(sprite_texcoords);
         }
 
         fn getIndex(corner: SpriteSheetTexture.SpriteId) usize {

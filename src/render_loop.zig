@@ -381,7 +381,7 @@ fn renderFlowField(
 ) !void {
     const segments = [_]text_rendering.TextSegment{ui.Highlight.normal(text_block)};
     const dimensions = text_rendering.getTextBlockDimensions(&segments, fp(font_size), spritesheet);
-    const background = spritesheet.getSpriteTexcoords(.white_block);
+    const background = spritesheet.getSpriteSourceRectangle(.white_block);
     const screen_center = .{
         .x = fp(screen_dimensions.w).div(fp(2)),
         .y = fp(screen_dimensions.h).div(fp(2)),
@@ -392,7 +392,7 @@ fn renderFlowField(
     sprite_buffer.items[0] = rendering.SpriteData
         .create(screen_center)
         .withSize(dimensions.width, dimensions.height)
-        .withSourceRect(background.x, background.y, background.w, background.h)
+        .withSourceRect(background)
         .withTint(0, 0, 0);
     text_rendering.populateSpriteData(
         &segments,

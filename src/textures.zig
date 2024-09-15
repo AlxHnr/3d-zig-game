@@ -2,9 +2,9 @@
 
 const Error = @import("error.zig").Error;
 const Fix32 = @import("math.zig").Fix32;
-const ScreenDimensions = @import("rendering.zig").ScreenDimensions;
 const fp = Fix32.fp;
 const gl = @import("gl");
+const rendering = @import("rendering.zig");
 const sdl = @import("sdl.zig");
 const std = @import("std");
 
@@ -174,19 +174,11 @@ pub const SpriteSheetTexture = struct {
         yellow_floating_eye,
     };
 
-    /// Values range from 0 to 1, where (0, 0) is the top left of the sprite sheet.
-    pub const TextureCoordinates = struct { x: f32, y: f32, w: f32, h: f32 };
-
-    pub fn getSpriteTexcoords(_: SpriteSheetTexture, sprite_id: SpriteId) TextureCoordinates {
-        return sprite_texcoord_map.get(sprite_id);
-    }
-
-    pub fn getSpriteDimensionsInPixels(
+    pub fn getSpriteSourceRectangle(
         _: SpriteSheetTexture,
         sprite_id: SpriteId,
-    ) ScreenDimensions {
-        const source = sprite_source_pixel_map[@intFromEnum(sprite_id)];
-        return .{ .w = source.w, .h = source.h };
+    ) rendering.TextureSourceRectangle {
+        return sprite_source_pixel_map[@intFromEnum(sprite_id)];
     }
 
     /// Returns the aspect ratio (height / width) of the specified sprite.
@@ -196,8 +188,11 @@ pub const SpriteSheetTexture = struct {
 
     /// Returns a question mark if the given codepoint is not supported or does not represent a
     /// printable character. All font characters have an aspect ratio of 1.
-    pub fn getFontCharacterTexcoords(_: SpriteSheetTexture, codepoint: u21) TextureCoordinates {
-        return font_texcoord_map[getCharacterIndex(codepoint)];
+    pub fn getFontCharacterSourceRectangle(
+        _: SpriteSheetTexture,
+        codepoint: u21,
+    ) rendering.TextureSourceRectangle {
+        return font_source_pixel_map[getCharacterIndex(codepoint)];
     }
 
     /// Gap between consecutive characters in a sentence.
@@ -223,12 +218,9 @@ pub const SpriteSheetTexture = struct {
     const custom_character_count = 8; // Extra arrows in spritesheet.
     const font_character_side_length = 8;
 
-    /// Source pixel coordinates with (0, 0) at the top left corner.
-    const TextureSourceRectangle = struct { x: u16, y: u16, w: u16, h: u16 };
-
     const sprite_source_pixel_map = std.enums.directEnumArray(
         SpriteId,
-        TextureSourceRectangle,
+        rendering.TextureSourceRectangle,
         @typeInfo(SpriteId).Enum.fields.len,
         .{
             .black_magician_with_book = .{ .x = 72, .y = 112, .w = 23, .h = 32 },
@@ -262,7 +254,8 @@ pub const SpriteSheetTexture = struct {
         const w = font_character_side_length;
         const h = font_character_side_length;
 
-        var result: [font_character_count + custom_character_count]TextureSourceRectangle = undefined;
+        var result: [font_character_count + custom_character_count]rendering.TextureSourceRectangle =
+            undefined;
         for (result[0..font_character_count], 0..) |_, index| {
             result[index] = .{
                 .x = @as(u16, @mod(index, 32) * 16),
@@ -280,24 +273,6 @@ pub const SpriteSheetTexture = struct {
         result[getCharacterIndex(forceDecodeUtf8("↓"))] = .{ .x = 448, .y = 48, .w = w, .h = h };
         result[getCharacterIndex(forceDecodeUtf8("↙"))] = .{ .x = 464, .y = 48, .w = w, .h = h };
 
-        break :blk result;
-    };
-
-    /// Maps sprite ids to OpenGL texture coordinates ranging from 0 to 1, where (0, 0) is the top
-    /// left of the sprite sheet.
-    const sprite_texcoord_map = blk: {
-        var result: std.EnumArray(SpriteId, TextureCoordinates) = undefined;
-        for (std.enums.values(SpriteId), 0..) |key, index| {
-            result.set(key, toTexcoords(sprite_source_pixel_map[index]));
-        }
-        break :blk result;
-    };
-
-    const font_texcoord_map = blk: {
-        var result: [font_source_pixel_map.len]TextureCoordinates = undefined;
-        for (result, 0..) |_, index| {
-            result[index] = toTexcoords(font_source_pixel_map[index]);
-        }
         break :blk result;
     };
 
@@ -328,15 +303,6 @@ pub const SpriteSheetTexture = struct {
             forceDecodeUtf8("↓") => font_character_count + 6,
             forceDecodeUtf8("↙") => font_character_count + 7,
             else => getCharacterIndex('?'),
-        };
-    }
-
-    fn toTexcoords(source: TextureSourceRectangle) TextureCoordinates {
-        return .{
-            .x = @as(f32, source.x) / texture_width,
-            .y = @as(f32, source.y) / texture_height,
-            .w = @as(f32, source.w) / texture_width,
-            .h = @as(f32, source.h) / texture_height,
         };
     }
 
