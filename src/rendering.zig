@@ -52,15 +52,12 @@ pub const WallRenderer = struct {
 
         const wall_data_vbo_id = createAndBindEmptyVbo();
         setupMapGeometryPropertyAttributes(
+            WallData,
             loc_model_matrix,
             loc_texture_layer_id,
             loc_tint,
-            @sizeOf(WallData),
         );
-        setupVertexAttribute(loc_texture_repeat_dimensions, 3, @offsetOf(
-            WallData,
-            "texture_repeat_dimensions",
-        ), @sizeOf(WallData));
+        setupVertexAttribute(loc_texture_repeat_dimensions, WallData, .texture_repeat_dimensions);
         comptime {
             assert(@offsetOf(WallData, "properties") == 0);
             assert(@offsetOf(WallData, "texture_repeat_dimensions") == 80);
@@ -167,19 +164,17 @@ pub const FloorRenderer = struct {
 
         const floor_data_vbo_id = createAndBindEmptyVbo();
         setupMapGeometryPropertyAttributes(
+            FloorData,
             loc_model_matrix,
             loc_texture_layer_id,
             loc_tint,
-            @sizeOf(FloorData),
         );
-        setupVertexAttribute(loc_affected_by_animation_cycle, 1, @offsetOf(
+        setupVertexAttribute(
+            loc_affected_by_animation_cycle,
             FloorData,
-            "affected_by_animation_cycle",
-        ), @sizeOf(FloorData));
-        setupVertexAttribute(loc_texture_repeat_dimensions, 2, @offsetOf(
-            FloorData,
-            "texture_repeat_dimensions",
-        ), @sizeOf(FloorData));
+            .affected_by_animation_cycle,
+        );
+        setupVertexAttribute(loc_texture_repeat_dimensions, FloorData, .texture_repeat_dimensions);
         comptime {
             assert(@offsetOf(FloorData, "properties") == 0);
             assert(@offsetOf(FloorData, "affected_by_animation_cycle") == 80);
@@ -346,27 +341,17 @@ pub const BillboardRenderer = struct {
         const vao_id = createAndBindVao();
         const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_position, loc_texture_coords);
         const sprite_data_vbo_id = createAndBindEmptyVbo();
-        setupVertexAttribute(loc_billboard_center_position, 3, @offsetOf(
+        setupVertexAttribute(loc_billboard_center_position, SpriteData, .position);
+        setupVertexAttribute(loc_size, SpriteData, .size);
+        setupVertexAttribute(loc_offset_from_origin, SpriteData, .offset_from_origin);
+        setupVertexAttribute(loc_z_rotation, SpriteData, .z_rotation);
+        setupVertexAttribute(loc_source_rect, SpriteData, .source_rect);
+        setupVertexAttribute(loc_tint, SpriteData, .tint);
+        setupVertexAttribute(
+            loc_preserve_exact_pixel_size,
             SpriteData,
-            "position",
-        ), @sizeOf(SpriteData));
-        setupVertexAttribute(loc_size, 2, @offsetOf(SpriteData, "size"), @sizeOf(SpriteData));
-        setupVertexAttribute(loc_offset_from_origin, 2, @offsetOf(
-            SpriteData,
-            "offset_from_origin",
-        ), @sizeOf(SpriteData));
-        setupVertexAttribute(loc_z_rotation, 2, @offsetOf(
-            SpriteData,
-            "z_rotation",
-        ), @sizeOf(SpriteData));
-        setupVertexAttribute(loc_source_rect, 4, @offsetOf(SpriteData, "source_rect"), @sizeOf(
-            SpriteData,
-        ));
-        setupVertexAttribute(loc_tint, 3, @offsetOf(SpriteData, "tint"), @sizeOf(SpriteData));
-        setupVertexAttribute(loc_preserve_exact_pixel_size, 1, @offsetOf(
-            SpriteData,
-            "preserve_exact_pixel_size",
-        ), @sizeOf(SpriteData));
+            .preserve_exact_pixel_size,
+        );
         comptime {
             assert(@offsetOf(SpriteData, "position") == 0);
             assert(@offsetOf(SpriteData, "size") == 12);
@@ -593,6 +578,25 @@ fn updateVbo(
 
 fn setupVertexAttribute(
     attribute_location: c_uint,
+    comptime ComponentType: type,
+    comptime field: std.meta.FieldEnum(ComponentType),
+) void {
+    const type_info = @typeInfo(std.meta.FieldType(ComponentType, field));
+    const component_count = switch (type_info) {
+        .Struct => type_info.Struct.fields.len,
+        .Float => 1,
+        else => @compileError("unsupported type :" ++ @typeName(@Type(type_info))),
+    };
+    setupVertexAttributeRaw(
+        attribute_location,
+        component_count,
+        @offsetOf(ComponentType, @tagName(field)),
+        @sizeOf(ComponentType),
+    );
+}
+
+fn setupVertexAttributeRaw(
+    attribute_location: c_uint,
     component_count: c_int,
     offset_to_first_component: usize,
     all_components_size: c_int,
@@ -611,21 +615,23 @@ fn setupVertexAttribute(
 
 /// Configures MapGeometryAttributes as vertex attributes at offset 0.
 fn setupMapGeometryPropertyAttributes(
+    comptime ComponentType: type,
     loc_model_matrix: c_uint,
     loc_texture_layer_id: c_uint,
     loc_tint: c_uint,
-    stride: c_int,
 ) void {
+    const stride = @sizeOf(ComponentType);
+
     // Matrices (mat4) are specified in groups of 4 floats.
-    setupVertexAttribute(loc_model_matrix + 0, 4, 0, stride);
-    setupVertexAttribute(loc_model_matrix + 1, 4, @sizeOf([4]f32), stride);
-    setupVertexAttribute(loc_model_matrix + 2, 4, @sizeOf([8]f32), stride);
-    setupVertexAttribute(loc_model_matrix + 3, 4, @sizeOf([12]f32), stride);
-    setupVertexAttribute(loc_texture_layer_id, 1, @offsetOf(
+    setupVertexAttributeRaw(loc_model_matrix + 0, 4, 0, stride);
+    setupVertexAttributeRaw(loc_model_matrix + 1, 4, @sizeOf([4]f32), stride);
+    setupVertexAttributeRaw(loc_model_matrix + 2, 4, @sizeOf([8]f32), stride);
+    setupVertexAttributeRaw(loc_model_matrix + 3, 4, @sizeOf([12]f32), stride);
+    setupVertexAttributeRaw(loc_texture_layer_id, 1, @offsetOf(
         MapGeometryAttributes,
         "texture_layer_id",
     ), stride);
-    setupVertexAttribute(loc_tint, 3, @offsetOf(MapGeometryAttributes, "tint"), stride);
+    setupVertexAttributeRaw(loc_tint, 3, @offsetOf(MapGeometryAttributes, "tint"), stride);
     comptime {
         assert(@offsetOf(MapGeometryAttributes, "model_matrix") == 0);
         assert(@offsetOf(MapGeometryAttributes, "texture_layer_id") == 64);
