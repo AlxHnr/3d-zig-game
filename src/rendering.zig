@@ -456,22 +456,18 @@ pub const SpriteData = extern struct {
     size: extern struct { w: f32, h: f32 },
     /// Will be applied after scaling but before Z rotation. Can be used to preserve character
     /// order when rendering text.
-    offset_from_origin: extern struct { x: f32, y: f32 } = .{ .x = 0, .y = 0 },
-    /// Precomputed angle at which the billboard should be rotated around the Z axis. Defaults
-    /// to no rotation.
-    z_rotation: extern struct { sine: f32, cosine: f32 } = .{
-        .sine = std.math.sin(@as(f32, 0)),
-        .cosine = std.math.cos(@as(f32, 0)),
-    },
+    offset_from_origin: extern struct { x: f32, y: f32 },
+    /// Precomputed angle at which the billboard should be rotated around the Z axis.
+    z_rotation: extern struct { sine: f32, cosine: f32 },
     /// Specifies the part of the currently bound texture which should be stretched onto the
     /// billboard. Values range from 0 to 1, where (0, 0) is the top left corner of the texture.
     source_rect: extern struct { x: f32, y: f32, w: f32, h: f32 },
-    /// Color values from 0 to 1. Defaults to white (no tint).
-    tint: extern struct { r: u8, g: u8, b: u8 } = .{ .r = 255, .g = 255, .b = 255 },
+    /// Color values from 0 to 1. White means no tint.
+    tint: extern struct { r: u8, g: u8, b: u8 },
     /// False if the billboard should shrink with increasing camera distance.
     /// True if the billboard should have a fixed pixel size independently from its distance to the
     /// camera. Only relevant for `BillboardRenderer`.
-    preserve_exact_pixel_size: bool = false,
+    preserve_exact_pixel_size: bool,
 
     pub fn create(position: math.Vector3d) SpriteData {
         return std.mem.zeroes(SpriteData)

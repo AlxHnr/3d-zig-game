@@ -152,23 +152,14 @@ pub const Sprite = struct {
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []SpriteData,
     ) void {
-        out[0] = .{
-            .position = .{
-                .x = @as(f32, @floatFromInt(screen_position_x + self.dimensions.width / 2)),
-                .y = @as(f32, @floatFromInt(screen_position_y + self.dimensions.height / 2)),
-                .z = 0,
-            },
-            .size = .{
-                .w = @as(f32, @floatFromInt(self.dimensions.width)),
-                .h = @as(f32, @floatFromInt(self.dimensions.height)),
-            },
-            .source_rect = .{
-                .x = self.texcoords.x,
-                .y = self.texcoords.y,
-                .w = self.texcoords.w,
-                .h = self.texcoords.h,
-            },
+        const position = .{
+            .x = fp(screen_position_x + self.dimensions.width / 2),
+            .y = fp(screen_position_y + self.dimensions.height / 2),
+            .z = fp(0),
         };
+        out[0] = SpriteData.create(position)
+            .withSize(fp(self.dimensions.width), fp(self.dimensions.height))
+            .withSourceRect(self.texcoords.x, self.texcoords.y, self.texcoords.w, self.texcoords.h);
     }
 };
 
@@ -407,12 +398,12 @@ pub const Box = struct {
     ) void {
         const content_u16 = self.wrapped_widget.getDimensionsInPixels();
         const content = .{
-            .w = @as(f32, @floatFromInt(content_u16.width)),
-            .h = @as(f32, @floatFromInt(content_u16.height)),
+            .w = fp(content_u16.width),
+            .h = fp(content_u16.height),
         };
         const sprite = .{
-            .w = self.scaled_sprite.width.convertTo(f32),
-            .h = self.scaled_sprite.height.convertTo(f32),
+            .w = self.scaled_sprite.width,
+            .h = self.scaled_sprite.height,
         };
 
         const helper = SpriteDataHelper.create(
@@ -423,44 +414,44 @@ pub const Box = struct {
             sprite.h,
             out,
         );
-        helper.insert(.dialog_box_top_left, 0, 0, sprite.w, sprite.h);
-        helper.insert(.dialog_box_top_center, sprite.w, 0, content.w, sprite.h);
-        helper.insert(.dialog_box_top_right, sprite.w + content.w, 0, sprite.w, sprite.h);
-        helper.insert(.dialog_box_center_left, 0, sprite.h, sprite.w, content.h);
-        helper.insert(.dialog_box_center_left, 0, sprite.h, sprite.w, content.h);
+        helper.insert(.dialog_box_top_left, fp(0), fp(0), sprite.w, sprite.h);
+        helper.insert(.dialog_box_top_center, sprite.w, fp(0), content.w, sprite.h);
+        helper.insert(.dialog_box_top_right, sprite.w.add(content.w), fp(0), sprite.w, sprite.h);
+        helper.insert(.dialog_box_center_left, fp(0), sprite.h, sprite.w, content.h);
+        helper.insert(.dialog_box_center_left, fp(0), sprite.h, sprite.w, content.h);
         helper.insert(.dialog_box_center_center, sprite.w, sprite.h, content.w, content.h);
-        helper.insert(.dialog_box_center_right, sprite.w + content.w, sprite.h, sprite.w, content.h);
-        helper.insert(.dialog_box_bottom_left, 0, sprite.h + content.h, sprite.w, sprite.h);
-        helper.insert(.dialog_box_bottom_center, sprite.w, sprite.h + content.h, content.w, sprite.h);
-        helper.insert(.dialog_box_bottom_right, sprite.w + content.w, sprite.h + content.h, sprite.w, sprite.h);
+        helper.insert(.dialog_box_center_right, sprite.w.add(content.w), sprite.h, sprite.w, content.h);
+        helper.insert(.dialog_box_bottom_left, fp(0), sprite.h.add(content.h), sprite.w, sprite.h);
+        helper.insert(.dialog_box_bottom_center, sprite.w, sprite.h.add(content.h), content.w, sprite.h);
+        helper.insert(.dialog_box_bottom_right, sprite.w.add(content.w), sprite.h.add(content.h), sprite.w, sprite.h);
 
         self.wrapped_widget.populateSpriteData(
-            screen_position_x + @as(u16, @intFromFloat(sprite.w)),
-            screen_position_y + @as(u16, @intFromFloat(sprite.h)),
+            screen_position_x + sprite.w.convertTo(u16),
+            screen_position_y + sprite.h.convertTo(u16),
             out[dialog_sprite_count..],
         );
     }
 
     const SpriteDataHelper = struct {
         spritesheet: *const SpriteSheetTexture,
-        top_left_corner: struct { x: f32, y: f32 },
+        top_left_corner: struct { x: math.Fix32, y: math.Fix32 },
         /// Dimensions. Assumed to be the same for all dialog box sprites.
-        scaled_sprite: struct { width: f32, height: f32 },
+        scaled_sprite: struct { width: math.Fix32, height: math.Fix32 },
         out: []SpriteData,
 
         fn create(
             spritesheet: *const SpriteSheetTexture,
             screen_position_x: u16,
             screen_position_y: u16,
-            scaled_sprite_width: f32,
-            scaled_sprite_height: f32,
+            scaled_sprite_width: math.Fix32,
+            scaled_sprite_height: math.Fix32,
             out: []SpriteData,
         ) SpriteDataHelper {
             return .{
                 .spritesheet = spritesheet,
                 .top_left_corner = .{
-                    .x = @as(f32, @floatFromInt(screen_position_x)),
-                    .y = @as(f32, @floatFromInt(screen_position_y)),
+                    .x = fp(screen_position_x),
+                    .y = fp(screen_position_y),
                 },
                 .scaled_sprite = .{
                     .width = scaled_sprite_width,
@@ -473,26 +464,26 @@ pub const Box = struct {
         fn insert(
             self: SpriteDataHelper,
             corner: SpriteSheetTexture.SpriteId,
-            offset_from_top_left_x: f32,
-            offset_from_top_left_y: f32,
-            width: f32,
-            height: f32,
+            offset_from_top_left_x: math.Fix32,
+            offset_from_top_left_y: math.Fix32,
+            width: math.Fix32,
+            height: math.Fix32,
         ) void {
             const sprite_texcoords = self.spritesheet.getSpriteTexcoords(corner);
-            self.out[getIndex(corner)] = .{
-                .position = .{
-                    .x = self.top_left_corner.x + offset_from_top_left_x + width / 2,
-                    .y = self.top_left_corner.y + offset_from_top_left_y + height / 2,
-                    .z = 0,
-                },
-                .size = .{ .w = width, .h = height },
-                .source_rect = .{
-                    .x = sprite_texcoords.x,
-                    .y = sprite_texcoords.y,
-                    .w = sprite_texcoords.w,
-                    .h = sprite_texcoords.h,
-                },
+            const position = .{
+                .x = self.top_left_corner.x.add(offset_from_top_left_x).add(width.div(fp(2))),
+                .y = self.top_left_corner.y.add(offset_from_top_left_y).add(height.div(fp(2))),
+                .z = fp(0),
             };
+            self.out[getIndex(corner)] = SpriteData
+                .create(position)
+                .withSize(width, height)
+                .withSourceRect(
+                sprite_texcoords.x,
+                sprite_texcoords.y,
+                sprite_texcoords.w,
+                sprite_texcoords.h,
+            );
         }
 
         fn getIndex(corner: SpriteSheetTexture.SpriteId) usize {

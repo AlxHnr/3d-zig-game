@@ -385,19 +385,15 @@ fn renderFlowField(
     const screen_center = .{
         .x = fp(screen_dimensions.width).div(fp(2)),
         .y = fp(screen_dimensions.height).div(fp(2)),
+        .z = fp(0),
     };
 
     try sprite_buffer.resize(text_rendering.getSpriteCount(&segments) + 1); // Background sprite.
-    sprite_buffer.items[0] = .{
-        .position = .{
-            .x = screen_center.x.convertTo(f32),
-            .y = screen_center.y.convertTo(f32),
-            .z = 0,
-        },
-        .size = .{ .w = dimensions.width.convertTo(f32), .h = dimensions.height.convertTo(f32) },
-        .source_rect = .{ .x = background.x, .y = background.y, .w = background.w, .h = background.h },
-        .tint = .{ .r = 0, .g = 0, .b = 0 },
-    };
+    sprite_buffer.items[0] = rendering.SpriteData
+        .create(screen_center)
+        .withSize(dimensions.width, dimensions.height)
+        .withSourceRect(background.x, background.y, background.w, background.h)
+        .withTint(0, 0, 0);
     text_rendering.populateSpriteData(
         &segments,
         screen_center.x.sub(dimensions.width.div(fp(2))),
