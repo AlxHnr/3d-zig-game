@@ -51,7 +51,7 @@ pub const Controller = struct {
 
     pub fn render(
         self: *Controller,
-        screen_dimensions: util.ScreenDimensions,
+        screen_dimensions: rendering.ScreenDimensions,
         interval_between_previous_and_current_tick: math.Fix32,
     ) !void {
         self.mutex.lock();
@@ -187,7 +187,7 @@ const Dialog = union(enum) {
 
     pub fn populateSpriteData(
         self: Dialog,
-        screen_dimensions: util.ScreenDimensions,
+        screen_dimensions: rendering.ScreenDimensions,
         interval_between_previous_and_current_tick: math.Fix32,
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
@@ -270,7 +270,7 @@ const Prompt = struct {
 
     pub fn populateSpriteData(
         self: Prompt,
-        screen_dimensions: util.ScreenDimensions,
+        screen_dimensions: rendering.ScreenDimensions,
         interval_between_previous_and_current_tick: math.Fix32,
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
@@ -413,7 +413,7 @@ const ChoiceBox = struct {
 
     pub fn populateSpriteData(
         self: ChoiceBox,
-        screen_dimensions: util.ScreenDimensions,
+        screen_dimensions: rendering.ScreenDimensions,
         interval_between_previous_and_current_tick: math.Fix32,
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
@@ -530,8 +530,8 @@ const ChoiceBox = struct {
                 out_text_block_wrapper_list[index] = .{
                     .spacing = ui.Spacing.wrapFixedPixels(
                         text_blocks[index].minimum_size_widget,
-                        box_frame_dimensions.width / 2,
-                        box_frame_dimensions.height / 2,
+                        box_frame_dimensions.w / 2,
+                        box_frame_dimensions.h / 2,
                     ),
                 };
             }
@@ -593,7 +593,7 @@ const SlideInAnimationBox = struct {
 
     pub fn populateSpriteData(
         self: SlideInAnimationBox,
-        screen_dimensions: util.ScreenDimensions,
+        screen_dimensions: rendering.ScreenDimensions,
         interval_between_previous_and_current_tick: math.Fix32,
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []rendering.SpriteData,
@@ -609,9 +609,9 @@ const SlideInAnimationBox = struct {
         };
         const dimensions = self.widget.getDimensionsInPixels();
         self.widget.populateSpriteData(
-            screen_dimensions.width / 2 - dimensions.width / 2,
-            screen_dimensions.height -
-                fp(dimensions.height).mul(window_open_interval).convertTo(u16),
+            screen_dimensions.w / 2 - dimensions.w / 2,
+            screen_dimensions.h -
+                fp(dimensions.h).mul(window_open_interval).convertTo(u16),
             out,
         );
     }

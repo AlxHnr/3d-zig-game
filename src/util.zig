@@ -3,12 +3,6 @@
 const std = @import("std");
 const math = @import("math.zig");
 
-/// Size in pixels.
-pub const ScreenDimensions = struct {
-    width: u16,
-    height: u16,
-};
-
 /// Contains rgb values from 0 to 1.
 pub const Color = struct {
     r: f32,

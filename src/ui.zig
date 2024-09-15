@@ -1,5 +1,5 @@
 const Color = @import("util.zig").Color;
-const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const ScreenDimensions = @import("rendering.zig").ScreenDimensions;
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const fp = math.Fix32.fp;
@@ -88,8 +88,8 @@ pub const Text = struct {
             self.spritesheet.*,
         );
         return .{
-            .width = dimensions.width.convertTo(u16),
-            .height = dimensions.height.convertTo(u16),
+            .w = dimensions.width.convertTo(u16),
+            .h = dimensions.height.convertTo(u16),
         };
     }
 
@@ -153,12 +153,12 @@ pub const Sprite = struct {
         out: []SpriteData,
     ) void {
         const position = .{
-            .x = fp(screen_position_x + self.dimensions.width / 2),
-            .y = fp(screen_position_y + self.dimensions.height / 2),
+            .x = fp(screen_position_x + self.dimensions.w / 2),
+            .y = fp(screen_position_y + self.dimensions.h / 2),
             .z = fp(0),
         };
         out[0] = SpriteData.create(position)
-            .withSize(fp(self.dimensions.width), fp(self.dimensions.height))
+            .withSize(fp(self.dimensions.w), fp(self.dimensions.h))
             .withSourceRect(self.texcoords.x, self.texcoords.y, self.texcoords.w, self.texcoords.h);
     }
 };
@@ -176,18 +176,18 @@ pub const Split = struct {
     }
 
     pub fn getDimensionsInPixels(self: Split) ScreenDimensions {
-        var result = ScreenDimensions{ .width = 0, .height = 0 };
+        var result = ScreenDimensions{ .w = 0, .h = 0 };
         for (self.wrapped_widgets) |widget| {
             const dimensions = widget.getDimensionsInPixels();
 
             switch (self.split_type) {
                 .horizontal => {
-                    result.width = @max(result.width, dimensions.width);
-                    result.height += dimensions.height;
+                    result.w = @max(result.w, dimensions.w);
+                    result.h += dimensions.h;
                 },
                 .vertical => {
-                    result.width += dimensions.width;
-                    result.height = @max(result.height, dimensions.height);
+                    result.w += dimensions.w;
+                    result.h = @max(result.h, dimensions.h);
                 },
             }
         }
@@ -222,8 +222,8 @@ pub const Split = struct {
 
             const dimensions = widget.getDimensionsInPixels();
             switch (self.split_type) {
-                .horizontal => screen_y += dimensions.height,
-                .vertical => screen_x += dimensions.width,
+                .horizontal => screen_y += dimensions.h,
+                .vertical => screen_x += dimensions.w,
             }
         }
     }
@@ -249,8 +249,8 @@ pub const MinimumSize = struct {
     pub fn getDimensionsInPixels(self: MinimumSize) ScreenDimensions {
         const dimensions = self.wrapped_widget.getDimensionsInPixels();
         return .{
-            .width = @max(self.minimum.width, dimensions.width),
-            .height = @max(self.minimum.height, dimensions.height),
+            .w = @max(self.minimum.w, dimensions.w),
+            .h = @max(self.minimum.h, dimensions.h),
         };
     }
 
@@ -309,9 +309,9 @@ pub const Spacing = struct {
     pub fn getDimensionsInPixels(self: Spacing) ScreenDimensions {
         const content = self.wrapped_widget.getDimensionsInPixels();
         return .{
-            .width = fp(content.width).mul(self.percentual.horizontal.mul(fp(2)).add(fp(1)))
+            .w = fp(content.w).mul(self.percentual.horizontal.mul(fp(2)).add(fp(1)))
                 .convertTo(u16) + self.fixed_pixels.horizontal * 2,
-            .height = fp(content.height).mul(self.percentual.vertical.mul(fp(2)).add(fp(1)))
+            .h = fp(content.h).mul(self.percentual.vertical.mul(fp(2)).add(fp(1)))
                 .convertTo(u16) + self.fixed_pixels.vertical * 2,
         };
     }
@@ -330,9 +330,9 @@ pub const Spacing = struct {
     ) void {
         const content = self.wrapped_widget.getDimensionsInPixels();
         const offset = .{
-            .x = fp(content.width).mul(self.percentual.horizontal)
+            .x = fp(content.w).mul(self.percentual.horizontal)
                 .convertTo(u16) + self.fixed_pixels.horizontal,
-            .y = fp(content.height).mul(self.percentual.vertical)
+            .y = fp(content.h).mul(self.percentual.vertical)
                 .convertTo(u16) + self.fixed_pixels.vertical,
         };
         self.wrapped_widget.populateSpriteData(
@@ -361,8 +361,8 @@ pub const Box = struct {
             .wrapped_widget = widget_to_wrap,
             .spritesheet = spritesheet,
             .scaled_sprite = .{
-                .width = fp(dimensions.width).mul(fp(dialog_sprite_scale)),
-                .height = fp(dimensions.height).mul(fp(dialog_sprite_scale)),
+                .width = fp(dimensions.w).mul(fp(dialog_sprite_scale)),
+                .height = fp(dimensions.h).mul(fp(dialog_sprite_scale)),
             },
         };
     }
@@ -371,16 +371,16 @@ pub const Box = struct {
         const content = self.wrapped_widget.getDimensionsInPixels();
         const frame_dimensions = self.getFrameDimensionsWithoutContent();
         return .{
-            .width = content.width + frame_dimensions.width,
-            .height = content.height + frame_dimensions.height,
+            .w = content.w + frame_dimensions.w,
+            .h = content.h + frame_dimensions.h,
         };
     }
 
     /// Get the boxes frame size in pixels.
     pub fn getFrameDimensionsWithoutContent(self: Box) ScreenDimensions {
         return .{
-            .width = self.scaled_sprite.width.convertTo(u16) * 2,
-            .height = self.scaled_sprite.height.convertTo(u16) * 2,
+            .w = self.scaled_sprite.width.convertTo(u16) * 2,
+            .h = self.scaled_sprite.height.convertTo(u16) * 2,
         };
     }
 
@@ -398,8 +398,8 @@ pub const Box = struct {
     ) void {
         const content_u16 = self.wrapped_widget.getDimensionsInPixels();
         const content = .{
-            .w = fp(content_u16.width),
-            .h = fp(content_u16.height),
+            .w = fp(content_u16.w),
+            .h = fp(content_u16.h),
         };
         const sprite = .{
             .w = self.scaled_sprite.width,

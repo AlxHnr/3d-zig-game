@@ -313,7 +313,7 @@ pub const Renderer = struct {
     pub fn render(
         self: Renderer,
         vp_matrix: math.Matrix,
-        screen_dimensions: util.ScreenDimensions,
+        screen_dimensions: rendering.ScreenDimensions,
         camera_direction_to_target: math.Vector3d,
         tileable_textures: textures.TileableArrayTexture,
         spritesheet: textures.SpriteSheetTexture,

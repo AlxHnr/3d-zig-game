@@ -1,4 +1,3 @@
-const ScreenDimensions = @import("util.zig").ScreenDimensions;
 const Shader = @import("shader.zig").Shader;
 const animation = @import("animation.zig");
 const assert = std.debug.assert;
@@ -8,6 +7,7 @@ const math = @import("math.zig");
 const meshes = @import("meshes.zig");
 const std = @import("std");
 
+pub const ScreenDimensions = extern struct { w: u16, h: u16 };
 pub const WallRenderer = struct {
     vao_id: c_uint,
     vertex_vbo_id: c_uint,
@@ -304,8 +304,8 @@ pub const SpriteRenderer = struct {
         texture_id: c_uint,
     ) void {
         const screen_to_ndc_matrix = .{ .rows = .{
-            .{ 2 / @as(f32, @floatFromInt(screen_dimensions.width)), 0, 0, -1 },
-            .{ 0, -2 / @as(f32, @floatFromInt(screen_dimensions.height)), 0, 1 },
+            .{ 2 / @as(f32, @floatFromInt(screen_dimensions.w)), 0, 0, -1 },
+            .{ 0, -2 / @as(f32, @floatFromInt(screen_dimensions.h)), 0, 1 },
             .{ 0, 0, 0, 0 },
             .{ 0, 0, 0, 1 },
         } };
@@ -425,8 +425,8 @@ pub const BillboardRenderer = struct {
             camera_rotation_to_z_axis.cos().convertTo(f32),
         };
         const screen_dimensions_f32 = [2]f32{
-            @as(f32, @floatFromInt(screen_dimensions.width)),
-            @as(f32, @floatFromInt(screen_dimensions.height)),
+            @as(f32, @floatFromInt(screen_dimensions.w)),
+            @as(f32, @floatFromInt(screen_dimensions.h)),
         };
 
         self.shader.enable();

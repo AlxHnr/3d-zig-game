@@ -10,7 +10,7 @@ const GeometrySnapshot = @import("map/geometry.zig").RenderSnapshot;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
 const Player = @import("game_unit.zig").Player;
 const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
-const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const ScreenDimensions = rendering.ScreenDimensions;
 const fp = @import("math.zig").Fix32.fp;
 const gl = @import("gl");
 const rendering = @import("rendering.zig");
@@ -179,8 +179,8 @@ pub fn run(
             gl.viewport(
                 0,
                 0,
-                extra_data.screen_dimensions.width,
-                extra_data.screen_dimensions.height,
+                extra_data.screen_dimensions.w,
+                extra_data.screen_dimensions.h,
             );
         }
 
@@ -292,8 +292,8 @@ pub fn sendExtraData(
         self.extra_data.flow_field_font_size = null;
     }
 
-    if (self.extra_data.screen_dimensions.width != screen_dimensions.width or
-        self.extra_data.screen_dimensions.height != screen_dimensions.height)
+    if (self.extra_data.screen_dimensions.w != screen_dimensions.w or
+        self.extra_data.screen_dimensions.h != screen_dimensions.h)
     {
         self.extra_data.screen_dimensions_changed = true;
     }
@@ -383,8 +383,8 @@ fn renderFlowField(
     const dimensions = text_rendering.getTextBlockDimensions(&segments, fp(font_size), spritesheet);
     const background = spritesheet.getSpriteTexcoords(.white_block);
     const screen_center = .{
-        .x = fp(screen_dimensions.width).div(fp(2)),
-        .y = fp(screen_dimensions.height).div(fp(2)),
+        .x = fp(screen_dimensions.w).div(fp(2)),
+        .y = fp(screen_dimensions.h).div(fp(2)),
         .z = fp(0),
     };
 
@@ -431,7 +431,7 @@ fn renderHud(
     try sprite_buffer.resize(widget.getSpriteCount());
     widget.populateSpriteData(
         0,
-        screen_dimensions.height - widget.getDimensionsInPixels().height,
+        screen_dimensions.h - widget.getDimensionsInPixels().h,
         sprite_buffer.items,
     );
     renderer.uploadSprites(sprite_buffer.items);

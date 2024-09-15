@@ -1,5 +1,5 @@
 //! Camera which smoothly follows an object and auto-rotates across the Y axis.
-const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const ScreenDimensions = @import("rendering.zig").ScreenDimensions;
 const collision = @import("collision.zig");
 const fp = math.Fix32.fp;
 const math = @import("math.zig");
@@ -89,8 +89,8 @@ pub fn get3DRay(
     max_distance_from_target: ?math.Fix64,
 ) collision.Ray3d {
     const clip_ray = .{
-        .x = fp(mouse_x).div(fp(screen_dimensions.width)).mul(fp(2)).sub(fp(1)),
-        .y = fp(1).sub(fp(mouse_y).div(fp(screen_dimensions.height)).mul(fp(2))),
+        .x = fp(mouse_x).div(fp(screen_dimensions.w)).mul(fp(2)).sub(fp(1)),
+        .y = fp(1).sub(fp(mouse_y).div(fp(screen_dimensions.h)).mul(fp(2))),
         .z = fp(0),
     };
     const view_ray = getProjectionMatrix(screen_dimensions).invert().multiplyVector4d(.{
@@ -193,9 +193,9 @@ fn getAdjustedCameraPosition(self: Camera, max_distance_from_target: ?math.Fix64
 
 fn getProjectionMatrix(screen_dimensions: ScreenDimensions) math.Matrix {
     const field_of_view = std.math.degreesToRadians(45);
-    const ratio = @as(f32, @floatFromInt(screen_dimensions.width)) / @as(
+    const ratio = @as(f32, @floatFromInt(screen_dimensions.w)) / @as(
         f32,
-        @floatFromInt(screen_dimensions.height),
+        @floatFromInt(screen_dimensions.h),
     );
     const near = 0.01;
     const far = 3000.0;

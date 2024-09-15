@@ -2,7 +2,7 @@
 
 const Error = @import("error.zig").Error;
 const Fix32 = @import("math.zig").Fix32;
-const ScreenDimensions = @import("util.zig").ScreenDimensions;
+const ScreenDimensions = @import("rendering.zig").ScreenDimensions;
 const fp = Fix32.fp;
 const gl = @import("gl");
 const sdl = @import("sdl.zig");
@@ -186,7 +186,7 @@ pub const SpriteSheetTexture = struct {
         sprite_id: SpriteId,
     ) ScreenDimensions {
         const source = sprite_source_pixel_map[@intFromEnum(sprite_id)];
-        return .{ .width = source.w, .height = source.h };
+        return .{ .w = source.w, .h = source.h };
     }
 
     /// Returns the aspect ratio (height / width) of the specified sprite.

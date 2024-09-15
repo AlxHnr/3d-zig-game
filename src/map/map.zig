@@ -1,6 +1,6 @@
 const Geometry = @import("geometry.zig");
 const ObjectIdGenerator = @import("../util.zig").ObjectIdGenerator;
-const ScreenDimensions = @import("../util.zig").ScreenDimensions;
+const ScreenDimensions = @import("../rendering.zig").ScreenDimensions;
 const math = @import("../math.zig");
 const std = @import("std");
 const textures = @import("../textures.zig");

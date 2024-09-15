@@ -17,7 +17,7 @@ const text_rendering = @import("text_rendering.zig");
 const util = @import("util.zig");
 
 const ProgramContext = struct {
-    screen_dimensions: util.ScreenDimensions,
+    screen_dimensions: rendering.ScreenDimensions,
     window: *sdl.SDL_Window,
     gl_context: sdl.SDL_GLContext,
     allocator: std.mem.Allocator,
@@ -82,7 +82,7 @@ const ProgramContext = struct {
         gl.enable(gl.STENCIL_TEST);
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
-        const screen_dimensions = .{ .width = screen_width, .height = screen_height };
+        const screen_dimensions = .{ .w = screen_width, .h = screen_height };
         const edit_mode_state = edit_mode.State.create();
 
         var dialog_controller = try allocator.create(DialogController);
@@ -198,8 +198,8 @@ const ProgramContext = struct {
                 event.window.event == sdl.SDL_WINDOWEVENT_RESIZED)
             {
                 self.screen_dimensions = .{
-                    .width = @intCast(event.window.data1),
-                    .height = @intCast(event.window.data2),
+                    .w = @intCast(event.window.data1),
+                    .h = @intCast(event.window.data2),
                 };
             } else if (event.type == sdl.SDL_MOUSEBUTTONDOWN) {
                 if (event.button.button == sdl.SDL_BUTTON_LEFT) {
@@ -291,8 +291,8 @@ const ProgramContext = struct {
         var mouse_y: c_int = undefined;
         _ = sdl.SDL_GetMouseState(&mouse_x, &mouse_y);
         return .{
-            .x = @intCast(std.math.clamp(mouse_x, 0, self.screen_dimensions.width)),
-            .y = @intCast(std.math.clamp(mouse_y, 0, self.screen_dimensions.height)),
+            .x = @intCast(std.math.clamp(mouse_x, 0, self.screen_dimensions.w)),
+            .y = @intCast(std.math.clamp(mouse_y, 0, self.screen_dimensions.h)),
         };
     }
 
