@@ -7,7 +7,7 @@ in vec2 texture_coords;
 in vec3 billboard_center_position;
 in vec2 size; // Width and height of the billboard.
 in vec2 offset_from_origin;
-in vec2 z_rotation; // (sine, cosine) for rotating the billboard around the Z axis.
+in float z_rotation; // Angle in radians for rotating the billboard around its Z axis.
 in vec4 source_rect; // Values from 0 to 1, where (0, 0) is the top left of the texture.
 in vec3 tint;
 // 0 if the billboard should shrink with increasing camera distance.
@@ -29,8 +29,8 @@ void main() {
     scaled_position *= preserve_exact_pixel_size + 1;
 
     vec3 z_rotated_position = vec3(
-        scaled_position.x * z_rotation[1] + scaled_position.y * z_rotation[0],
-        -scaled_position.x * z_rotation[0] + scaled_position.y * z_rotation[1],
+        scaled_position.x * cos(z_rotation) + scaled_position.y * sin(z_rotation),
+        -scaled_position.x * sin(z_rotation) + scaled_position.y * cos(z_rotation),
         0
     );
     vec3 y_rotated_position = vec3(

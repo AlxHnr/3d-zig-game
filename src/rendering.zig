@@ -369,10 +369,10 @@ pub const BillboardRenderer = struct {
             assert(@offsetOf(SpriteData, "size") == 12);
             assert(@offsetOf(SpriteData, "offset_from_origin") == 20);
             assert(@offsetOf(SpriteData, "z_rotation") == 28);
-            assert(@offsetOf(SpriteData, "source_rect") == 36);
-            assert(@offsetOf(SpriteData, "tint") == 52);
-            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 55);
-            assert(@sizeOf(SpriteData) == 56);
+            assert(@offsetOf(SpriteData, "source_rect") == 32);
+            assert(@offsetOf(SpriteData, "tint") == 48);
+            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 51);
+            assert(@sizeOf(SpriteData) == 52);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -457,8 +457,8 @@ pub const SpriteData = extern struct {
     /// Will be applied after scaling but before Z rotation. Can be used to preserve character
     /// order when rendering text.
     offset_from_origin: extern struct { x: f32, y: f32 },
-    /// Precomputed angle at which the billboard should be rotated around the Z axis.
-    z_rotation: extern struct { sine: f32, cosine: f32 },
+    /// Angle in radians for rotating the sprite around its Z axis.
+    z_rotation: f32,
     /// Specifies the part of the currently bound texture which should be stretched onto the
     /// billboard. Values range from 0 to 1, where (0, 0) is the top left corner of the texture.
     source_rect: extern struct { x: f32, y: f32, w: f32, h: f32 },
@@ -472,7 +472,6 @@ pub const SpriteData = extern struct {
     pub fn create(position: math.Vector3d) SpriteData {
         return std.mem.zeroes(SpriteData)
             .withPosition(position)
-            .withZRotation(fp(0))
             .withTint(255, 255, 255);
     }
 
@@ -500,9 +499,7 @@ pub const SpriteData = extern struct {
 
     pub fn withZRotation(self: SpriteData, angle: math.Fix32) SpriteData {
         var copy = self;
-        const radians = angle.convertTo(f32);
-        copy.z_rotation.sine = std.math.sin(radians);
-        copy.z_rotation.cosine = std.math.cos(radians);
+        copy.z_rotation = angle.convertTo(f32);
         return copy;
     }
 
