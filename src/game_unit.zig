@@ -285,7 +285,5 @@ pub fn makeSpriteData(
     spritesheet: SpriteSheetTexture,
 ) SpriteData {
     const source = spritesheet.getSpriteSourceRectangle(sprite);
-    return SpriteData.create(position.addY(height.div(fp(2))))
-        .withSize(radius.mul(fp(2)), height)
-        .withSourceRect(source);
+    return SpriteData.create(position.addY(height.div(fp(2))), source, radius.mul(fp(2)), height);
 }

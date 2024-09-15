@@ -227,11 +227,12 @@ pub const RenderSnapshot = struct {
         const health_bar_factor =
             fp(std.math.log1p(@as(f32, @floatFromInt(state.values.health.max))) * 8);
         const y_offset = state.values.height.mul(offset_to_player_height_factor);
-        const billboard_data = rendering.SpriteData
-            .create(state.values.position.addY(y_offset))
-            .withSize(health_bar_scale.mul(health_bar_factor), health_bar_height)
-            .withSourceRect(source)
-            .withPreserveExactPixelSize(true);
+        const billboard_data = rendering.SpriteData.create(
+            state.values.position.addY(y_offset),
+            source,
+            health_bar_scale.mul(health_bar_factor),
+            health_bar_height,
+        ).withPreserveExactPixelSize(true);
 
         const full_health = Color.fromRgb8(21, 213, 21);
         const empty_health = Color.fromRgb8(213, 21, 21);

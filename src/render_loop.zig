@@ -390,9 +390,7 @@ fn renderFlowField(
 
     try sprite_buffer.resize(text_rendering.getSpriteCount(&segments) + 1); // Background sprite.
     sprite_buffer.items[0] = rendering.SpriteData
-        .create(screen_center)
-        .withSize(dimensions.width, dimensions.height)
-        .withSourceRect(background)
+        .create(screen_center, background, dimensions.width, dimensions.height)
         .withTint(0, 0, 0);
     text_rendering.populateSpriteData(
         &segments,

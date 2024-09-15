@@ -158,9 +158,8 @@ pub const Sprite = struct {
             .y = fp(screen_position_y + self.dimensions.h / 2),
             .z = fp(0),
         };
-        out[0] = SpriteData.create(position)
-            .withSize(fp(self.dimensions.w), fp(self.dimensions.h))
-            .withSourceRect(self.texcoords);
+        out[0] = SpriteData
+            .create(position, self.texcoords, fp(self.dimensions.w), fp(self.dimensions.h));
     }
 };
 
@@ -477,9 +476,7 @@ pub const Box = struct {
                 .z = fp(0),
             };
             self.out[getIndex(corner)] = SpriteData
-                .create(position)
-                .withSize(width, height)
-                .withSourceRect(sprite_texcoords);
+                .create(position, sprite_texcoords, width, height);
         }
 
         fn getIndex(corner: SpriteSheetTexture.SpriteId) usize {

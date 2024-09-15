@@ -79,10 +79,12 @@ pub const RenderSnapshot = struct {
         const sprite_aspect_ratio = spritesheet.getSpriteAspectRatio(.gem);
         const state = self.interpolate(interval_between_previous_and_current_tick);
         const height = fp(1.5);
-        var result = SpriteData
-            .create(self.position.addY(height.div(fp(2))))
-            .withSize(height.div(sprite_aspect_ratio), height)
-            .withSourceRect(source);
+        var result = SpriteData.create(
+            self.position.addY(height.div(fp(2))),
+            source,
+            height.div(sprite_aspect_ratio),
+            height,
+        );
         switch (state) {
             .spawning => |spawning| interpolateJumpAnimation(
                 &result,

@@ -473,9 +473,16 @@ pub const SpriteData = extern struct {
     /// camera. Only relevant for `BillboardRenderer`.
     preserve_exact_pixel_size: bool,
 
-    pub fn create(position: math.Vector3d) SpriteData {
+    pub fn create(
+        position: math.Vector3d,
+        source_rect: TextureSourceRectangle,
+        size_w: math.Fix32,
+        size_h: math.Fix32,
+    ) SpriteData {
         return std.mem.zeroes(SpriteData)
             .withPosition(position)
+            .withSourceRect(source_rect)
+            .withSize(size_w, size_h)
             .withTint(255, 255, 255);
     }
 

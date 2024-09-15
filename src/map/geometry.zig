@@ -1133,11 +1133,12 @@ const BillboardObject = struct {
             .object_id = object_id,
             .object_type = object_type,
             .boundaries = boundaries,
-            .sprite_data = rendering.SpriteData
-                .create(boundaries.position.addY(half_height))
-                .withSize(boundaries.radius.mul(fp(2)), half_height.mul(fp(2)))
-                .withSourceRect(source)
-                .withTint(tint.r, tint.g, tint.b),
+            .sprite_data = rendering.SpriteData.create(
+                boundaries.position.addY(half_height),
+                source,
+                boundaries.radius.mul(fp(2)),
+                half_height.mul(fp(2)),
+            ).withTint(tint.r, tint.g, tint.b),
         };
     }
 
