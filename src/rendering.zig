@@ -57,7 +57,12 @@ pub const WallRenderer = struct {
             loc_texture_layer_id,
             loc_tint,
         );
-        setupVertexAttribute(loc_texture_repeat_dimensions, WallData, .texture_repeat_dimensions);
+        setupVertexAttribute(
+            loc_texture_repeat_dimensions,
+            WallData,
+            .texture_repeat_dimensions,
+            false,
+        );
         comptime {
             assert(@offsetOf(WallData, "properties") == 0);
             assert(@offsetOf(WallData, "texture_repeat_dimensions") == 80);
@@ -173,8 +178,14 @@ pub const FloorRenderer = struct {
             loc_affected_by_animation_cycle,
             FloorData,
             .affected_by_animation_cycle,
+            false,
         );
-        setupVertexAttribute(loc_texture_repeat_dimensions, FloorData, .texture_repeat_dimensions);
+        setupVertexAttribute(
+            loc_texture_repeat_dimensions,
+            FloorData,
+            .texture_repeat_dimensions,
+            false,
+        );
         comptime {
             assert(@offsetOf(FloorData, "properties") == 0);
             assert(@offsetOf(FloorData, "affected_by_animation_cycle") == 80);
@@ -341,16 +352,17 @@ pub const BillboardRenderer = struct {
         const vao_id = createAndBindVao();
         const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_position, loc_texture_coords);
         const sprite_data_vbo_id = createAndBindEmptyVbo();
-        setupVertexAttribute(loc_billboard_center_position, SpriteData, .position);
-        setupVertexAttribute(loc_size, SpriteData, .size);
-        setupVertexAttribute(loc_offset_from_origin, SpriteData, .offset_from_origin);
-        setupVertexAttribute(loc_z_rotation, SpriteData, .z_rotation);
-        setupVertexAttribute(loc_source_rect, SpriteData, .source_rect);
-        setupVertexAttribute(loc_tint, SpriteData, .tint);
+        setupVertexAttribute(loc_billboard_center_position, SpriteData, .position, false);
+        setupVertexAttribute(loc_size, SpriteData, .size, false);
+        setupVertexAttribute(loc_offset_from_origin, SpriteData, .offset_from_origin, false);
+        setupVertexAttribute(loc_z_rotation, SpriteData, .z_rotation, false);
+        setupVertexAttribute(loc_source_rect, SpriteData, .source_rect, false);
+        setupVertexAttribute(loc_tint, SpriteData, .tint, true);
         setupVertexAttribute(
             loc_preserve_exact_pixel_size,
             SpriteData,
             .preserve_exact_pixel_size,
+            false,
         );
         comptime {
             assert(@offsetOf(SpriteData, "position") == 0);
@@ -359,8 +371,8 @@ pub const BillboardRenderer = struct {
             assert(@offsetOf(SpriteData, "z_rotation") == 28);
             assert(@offsetOf(SpriteData, "source_rect") == 36);
             assert(@offsetOf(SpriteData, "tint") == 52);
-            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 64);
-            assert(@sizeOf(SpriteData) == 68);
+            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 56);
+            assert(@sizeOf(SpriteData) == 60);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -455,7 +467,7 @@ pub const SpriteData = extern struct {
     /// billboard. Values range from 0 to 1, where (0, 0) is the top left corner of the texture.
     source_rect: extern struct { x: f32, y: f32, w: f32, h: f32 },
     /// Color values from 0 to 1. Defaults to white (no tint).
-    tint: extern struct { r: f32, g: f32, b: f32 } = .{ .r = 1, .g = 1, .b = 1 },
+    tint: extern struct { r: u8, g: u8, b: u8 } = .{ .r = 255, .g = 255, .b = 255 },
     /// 0 if the billboard should shrink with increasing camera distance.
     /// 1 if the billboard should have a fixed pixel size independently from its distance to the
     /// camera. Only relevant for `BillboardRenderer`.
@@ -465,7 +477,7 @@ pub const SpriteData = extern struct {
         return std.mem.zeroes(SpriteData)
             .withPosition(position)
             .withZRotation(fp(0))
-            .withTint(1, 1, 1);
+            .withTint(255, 255, 255);
     }
 
     pub fn withPosition(self: SpriteData, position: math.Vector3d) SpriteData {
@@ -509,9 +521,9 @@ pub const SpriteData = extern struct {
 
     pub fn withTint(self: SpriteData, r: f32, g: f32, b: f32) SpriteData {
         var copy = self;
-        copy.tint.r = r;
-        copy.tint.g = g;
-        copy.tint.b = b;
+        copy.tint.r = @intFromFloat(@min(r * 255, 255));
+        copy.tint.g = @intFromFloat(@min(g * 255, 255));
+        copy.tint.b = @intFromFloat(@min(b * 255, 255));
         return copy;
     }
 
@@ -580,6 +592,7 @@ fn setupVertexAttribute(
     attribute_location: c_uint,
     comptime ComponentType: type,
     comptime field: std.meta.FieldEnum(ComponentType),
+    normalize: bool,
 ) void {
     const type_info = @typeInfo(std.meta.FieldType(ComponentType, field));
     const component_count = switch (type_info) {
@@ -587,26 +600,48 @@ fn setupVertexAttribute(
         .Float => 1,
         else => @compileError("unsupported type :" ++ @typeName(@Type(type_info))),
     };
+    comptime {
+        std.debug.assert(component_count > 0);
+    }
+
+    const component_type = switch (type_info) {
+        .Struct => type_info.Struct.fields[0].type,
+        .Float => @Type(type_info),
+        else => @compileError("unsupported type :" ++ @typeName(@Type(type_info))),
+    };
     setupVertexAttributeRaw(
         attribute_location,
+        component_type,
         component_count,
         @offsetOf(ComponentType, @tagName(field)),
+        normalize,
         @sizeOf(ComponentType),
     );
 }
 
 fn setupVertexAttributeRaw(
     attribute_location: c_uint,
+    comptime component_type: type,
     component_count: c_int,
     offset_to_first_component: usize,
+    normalize: bool,
     all_components_size: c_int,
 ) void {
+    const gl_type = switch (@typeInfo(component_type)) {
+        .Float => gl.FLOAT,
+        .Int => |int| switch (int.bits) {
+            8 => gl.UNSIGNED_BYTE,
+            else => |bits| @compileError("unsupported integer size: " ++ bits),
+        },
+        else => @compileError("unsupported type: " ++ @typeName(component_type)),
+    };
+
     gl.enableVertexAttribArray(attribute_location);
     gl.vertexAttribPointer(
         attribute_location,
         component_count,
-        gl.FLOAT,
-        0,
+        gl_type,
+        @intFromBool(normalize),
         all_components_size,
         @ptrFromInt(offset_to_first_component),
     );
@@ -623,15 +658,18 @@ fn setupMapGeometryPropertyAttributes(
     const stride = @sizeOf(ComponentType);
 
     // Matrices (mat4) are specified in groups of 4 floats.
-    setupVertexAttributeRaw(loc_model_matrix + 0, 4, 0, stride);
-    setupVertexAttributeRaw(loc_model_matrix + 1, 4, @sizeOf([4]f32), stride);
-    setupVertexAttributeRaw(loc_model_matrix + 2, 4, @sizeOf([8]f32), stride);
-    setupVertexAttributeRaw(loc_model_matrix + 3, 4, @sizeOf([12]f32), stride);
-    setupVertexAttributeRaw(loc_texture_layer_id, 1, @offsetOf(
+    setupVertexAttributeRaw(loc_model_matrix + 0, f32, 4, 0, false, stride);
+    setupVertexAttributeRaw(loc_model_matrix + 1, f32, 4, @sizeOf([4]f32), false, stride);
+    setupVertexAttributeRaw(loc_model_matrix + 2, f32, 4, @sizeOf([8]f32), false, stride);
+    setupVertexAttributeRaw(loc_model_matrix + 3, f32, 4, @sizeOf([12]f32), false, stride);
+    setupVertexAttributeRaw(loc_texture_layer_id, f32, 1, @offsetOf(
         MapGeometryAttributes,
         "texture_layer_id",
-    ), stride);
-    setupVertexAttributeRaw(loc_tint, 3, @offsetOf(MapGeometryAttributes, "tint"), stride);
+    ), false, stride);
+    setupVertexAttributeRaw(loc_tint, f32, 3, @offsetOf(
+        MapGeometryAttributes,
+        "tint",
+    ), false, stride);
     comptime {
         assert(@offsetOf(MapGeometryAttributes, "model_matrix") == 0);
         assert(@offsetOf(MapGeometryAttributes, "texture_layer_id") == 64);

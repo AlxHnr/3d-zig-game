@@ -242,13 +242,13 @@ pub const RenderSnapshot = struct {
         left_half.* = billboard_data;
         left_half.size.w *= health_percent;
         left_half.offset_from_origin.x = -(billboard_data.size.w - left_half.size.w) / 2;
-        left_half.tint = .{ .r = current_health.r, .g = current_health.g, .b = current_health.b };
+        left_half.* = left_half.withTint(current_health.r, current_health.g, current_health.b);
 
         var right_half = &out[1];
         right_half.* = billboard_data;
         right_half.size.w *= 1 - health_percent;
         right_half.offset_from_origin.x = (billboard_data.size.w - right_half.size.w) / 2;
-        right_half.tint = .{ .r = background.r, .g = background.g, .b = background.b };
+        right_half.* = right_half.withTint(background.r, background.g, background.b);
     }
 };
 

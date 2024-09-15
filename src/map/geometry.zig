@@ -1143,16 +1143,14 @@ const BillboardObject = struct {
 
     fn getTint(self: BillboardObject) util.Color {
         return .{
-            .r = self.sprite_data.tint.r,
-            .g = self.sprite_data.tint.g,
-            .b = self.sprite_data.tint.b,
+            .r = @as(f32, @floatFromInt(self.sprite_data.tint.r)) / 255,
+            .g = @as(f32, @floatFromInt(self.sprite_data.tint.g)) / 255,
+            .b = @as(f32, @floatFromInt(self.sprite_data.tint.b)) / 255,
         };
     }
 
     fn setTint(self: *BillboardObject, tint: util.Color) void {
-        self.sprite_data.tint.r = tint.r;
-        self.sprite_data.tint.g = tint.g;
-        self.sprite_data.tint.b = tint.b;
+        self.sprite_data = self.sprite_data.withTint(tint.r, tint.g, tint.b);
     }
 
     fn cast3DRay(self: BillboardObject, ray: collision.Ray3d) ?collision.Ray3d.ImpactPoint {
