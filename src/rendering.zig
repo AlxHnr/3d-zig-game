@@ -12,6 +12,28 @@ pub const ScreenDimensions = extern struct { w: u16, h: u16 };
 /// Textures start at the top left corner of the sprite at (0, 0).
 pub const TextureSourceRectangle = extern struct { x: u16, y: u16, w: u16, h: u16 };
 
+/// Values from 0 to 255.
+pub const Color = extern struct {
+    r: u8,
+    g: u8,
+    b: u8,
+
+    /// Used as a neutral tint during color multiplication.
+    pub const white = Color{ .r = 255, .g = 255, .b = 255 };
+
+    pub fn create(r: u8, g: u8, b: u8) Color {
+        return .{ .r = r, .g = g, .b = b };
+    }
+
+    pub fn lerp(self: Color, other: Color, t: math.Fix32) Color {
+        return .{
+            .r = fp(self.r).lerp(fp(other.r), t).clamp(fp(0), fp(255)).convertTo(u8),
+            .g = fp(self.g).lerp(fp(other.g), t).clamp(fp(0), fp(255)).convertTo(u8),
+            .b = fp(self.b).lerp(fp(other.b), t).clamp(fp(0), fp(255)).convertTo(u8),
+        };
+    }
+};
+
 pub const WallRenderer = struct {
     vao_id: c_uint,
     vertex_vbo_id: c_uint,
@@ -69,8 +91,8 @@ pub const WallRenderer = struct {
         );
         comptime {
             assert(@offsetOf(WallData, "properties") == 0);
-            assert(@offsetOf(WallData, "texture_repeat_dimensions") == 80);
-            assert(@sizeOf(WallData) == 92);
+            assert(@offsetOf(WallData, "texture_repeat_dimensions") == 72);
+            assert(@sizeOf(WallData) == 84);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -192,9 +214,9 @@ pub const FloorRenderer = struct {
         );
         comptime {
             assert(@offsetOf(FloorData, "properties") == 0);
-            assert(@offsetOf(FloorData, "affected_by_animation_cycle") == 80);
-            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 84);
-            assert(@sizeOf(FloorData) == 92);
+            assert(@offsetOf(FloorData, "affected_by_animation_cycle") == 72);
+            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 76);
+            assert(@sizeOf(FloorData) == 84);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -268,8 +290,7 @@ pub const MapGeometryAttributes = extern struct {
     model_matrix: [16]f32,
     /// Index of the layer in the array texture passed to render(). Will be rounded.
     texture_layer_id: f32,
-    /// Color values from 0 to 1.
-    tint: extern struct { r: f32, g: f32, b: f32 },
+    tint: Color,
 };
 
 /// Renders 2d sprites in screen space where all sizes are specified in pixels. Screen space starts
@@ -466,8 +487,7 @@ pub const SpriteData = extern struct {
     /// Specifies the part of the currently bound texture which should be stretched onto the
     /// billboard. (0, 0) is the top left corner of the texture.
     source_rect: TextureSourceRectangle,
-    /// Color values from 0 to 1. White means no tint.
-    tint: extern struct { r: u8, g: u8, b: u8 },
+    tint: Color,
     /// False if the billboard should shrink with increasing camera distance.
     /// True if the billboard should have a fixed pixel size independently from its distance to the
     /// camera. Only relevant for `BillboardRenderer`.
@@ -483,7 +503,7 @@ pub const SpriteData = extern struct {
             .withPosition(position)
             .withSourceRect(source_rect)
             .withSize(size_w, size_h)
-            .withTint(255, 255, 255);
+            .withTint(Color.white);
     }
 
     pub fn withPosition(self: SpriteData, position: math.Vector3d) SpriteData {
@@ -520,11 +540,9 @@ pub const SpriteData = extern struct {
         return copy;
     }
 
-    pub fn withTint(self: SpriteData, r: f32, g: f32, b: f32) SpriteData {
+    pub fn withTint(self: SpriteData, tint: Color) SpriteData {
         var copy = self;
-        copy.tint.r = @intFromFloat(@min(r * 255, 255));
-        copy.tint.g = @intFromFloat(@min(g * 255, 255));
-        copy.tint.b = @intFromFloat(@min(b * 255, 255));
+        copy.tint = tint;
         return copy;
     }
 
@@ -668,15 +686,15 @@ fn setupMapGeometryPropertyAttributes(
         MapGeometryAttributes,
         "texture_layer_id",
     ), false, stride);
-    setupVertexAttributeRaw(loc_tint, f32, 3, @offsetOf(
+    setupVertexAttributeRaw(loc_tint, u8, 3, @offsetOf(
         MapGeometryAttributes,
         "tint",
-    ), false, stride);
+    ), true, stride);
     comptime {
         assert(@offsetOf(MapGeometryAttributes, "model_matrix") == 0);
         assert(@offsetOf(MapGeometryAttributes, "texture_layer_id") == 64);
         assert(@offsetOf(MapGeometryAttributes, "tint") == 68);
-        assert(@sizeOf(MapGeometryAttributes) == 80);
+        assert(@sizeOf(MapGeometryAttributes) == 72);
     }
 }
 

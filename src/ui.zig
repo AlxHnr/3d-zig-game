@@ -1,4 +1,4 @@
-const Color = @import("util.zig").Color;
+const Color = rendering.Color;
 const ScreenDimensions = @import("rendering.zig").ScreenDimensions;
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
@@ -10,16 +10,16 @@ const text_rendering = @import("text_rendering.zig");
 /// Highlight groups for text inside ui.Box.
 pub const Highlight = struct {
     pub fn normal(text: []const u8) text_rendering.TextSegment {
-        return .{ .color = Color.fromRgb8(193, 193, 193), .text = text };
+        return .{ .color = Color.create(193, 193, 193), .text = text };
     }
     pub fn npcName(text: []const u8) text_rendering.TextSegment {
-        return .{ .color = Color.fromRgb8(114, 173, 206), .text = text };
+        return .{ .color = Color.create(114, 173, 206), .text = text };
     }
     pub fn selectableChoice(text: []const u8) text_rendering.TextSegment {
-        return .{ .color = Color.fromRgb8(193, 193, 130), .text = text };
+        return .{ .color = Color.create(193, 193, 130), .text = text };
     }
     pub fn cancelChoice(text: []const u8) text_rendering.TextSegment {
-        return .{ .color = Color.fromRgb8(193, 100, 174), .text = text };
+        return .{ .color = Color.create(193, 100, 174), .text = text };
     }
 };
 

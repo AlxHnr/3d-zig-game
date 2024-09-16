@@ -1,3 +1,4 @@
+const Color = @import("rendering.zig").Color;
 const Map = @import("map/map.zig").Map;
 const MapGeometry = @import("map/geometry.zig");
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
@@ -70,7 +71,7 @@ pub const State = struct {
                 const ray_collision = cast3DRayToObjects(mouse_ray, map.*) orelse return;
                 try map.geometry.tintObject(
                     ray_collision.object_id,
-                    .{ .r = 1, .g = 0, .b = 0 },
+                    Color.create(255, 0, 0),
                 );
                 self.currently_edited_object = CurrentlyEditedObject{
                     .object_id = ray_collision.object_id,
@@ -192,7 +193,7 @@ pub const State = struct {
             ),
         };
         if (object_type.used_field != .billboard) {
-            try map.geometry.tintObject(object_id, .{ .r = 0, .g = 1, .b = 0 });
+            try map.geometry.tintObject(object_id, Color.create(0, 255, 0));
             self.currently_edited_object =
                 CurrentlyEditedObject{ .object_id = object_id, .start_position = position };
         }

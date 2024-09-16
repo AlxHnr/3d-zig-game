@@ -502,7 +502,7 @@ pub fn addBillboardObject(
     return billboard_id;
 }
 
-pub fn tintObject(self: *Geometry, object_id: u64, tint: util.Color) !void {
+pub fn tintObject(self: *Geometry, object_id: u64, tint: rendering.Color) !void {
     if (self.findWall(object_id)) |wall| {
         wall.tint = tint;
     } else if (self.findFloor(object_id)) |floor| {
@@ -799,7 +799,7 @@ const Floor = struct {
     floor_type: FloorType,
     model_matrix: math.Matrix,
     boundaries: collision.Rectangle,
-    tint: util.Color,
+    tint: rendering.Color,
 
     /// Values used to generate this floor.
     side_a_start: math.FlatVector,
@@ -845,9 +845,9 @@ const Floor = struct {
         };
     }
 
-    fn getDefaultTint(floor_type: FloorType) util.Color {
+    fn getDefaultTint(floor_type: FloorType) rendering.Color {
         return switch (floor_type) {
-            else => util.Color.white,
+            else => rendering.Color.white,
         };
     }
 
@@ -870,7 +870,7 @@ const Wall = struct {
     model_matrix: math.Matrix,
     boundaries: collision.Rectangle,
     corner_positions: [4]math.FlatVector,
-    tint: util.Color,
+    tint: rendering.Color,
 
     grid_handles: struct {
         all: ?*SpatialGrid.ObjectHandle,
@@ -1067,11 +1067,11 @@ const Wall = struct {
         };
     }
 
-    fn getDefaultTint(wall_type: WallType) util.Color {
+    fn getDefaultTint(wall_type: WallType) rendering.Color {
         return switch (wall_type) {
-            .castle_tower => util.Color.fromRgb8(248, 248, 248),
-            .giga_wall => util.Color.fromRgb8(170, 170, 170),
-            else => util.Color.white,
+            .castle_tower => rendering.Color.create(248, 248, 248),
+            .giga_wall => rendering.Color.create(170, 170, 170),
+            else => rendering.Color.white,
         };
     }
 
@@ -1138,11 +1138,11 @@ const BillboardObject = struct {
                 source,
                 boundaries.radius.mul(fp(2)),
                 half_height.mul(fp(2)),
-            ).withTint(tint.r, tint.g, tint.b),
+            ).withTint(tint),
         };
     }
 
-    fn getTint(self: BillboardObject) util.Color {
+    fn getTint(self: BillboardObject) rendering.Color {
         return .{
             .r = @as(f32, @floatFromInt(self.sprite_data.tint.r)) / 255,
             .g = @as(f32, @floatFromInt(self.sprite_data.tint.g)) / 255,
@@ -1150,8 +1150,8 @@ const BillboardObject = struct {
         };
     }
 
-    fn setTint(self: *BillboardObject, tint: util.Color) void {
-        self.sprite_data = self.sprite_data.withTint(tint.r, tint.g, tint.b);
+    fn setTint(self: *BillboardObject, tint: rendering.Color) void {
+        self.sprite_data = self.sprite_data.withTint(tint);
     }
 
     fn cast3DRay(self: BillboardObject, ray: collision.Ray3d) ?collision.Ray3d.ImpactPoint {
@@ -1167,9 +1167,9 @@ const BillboardObject = struct {
         });
     }
 
-    fn getDefaultTint(object_type: BillboardObjectType) util.Color {
+    fn getDefaultTint(object_type: BillboardObjectType) rendering.Color {
         return switch (object_type) {
-            else => util.Color.white,
+            else => rendering.Color.white,
         };
     }
 };
@@ -1177,7 +1177,7 @@ const BillboardObject = struct {
 fn makeRenderingAttributes(
     model_matrix: math.Matrix,
     layer_id: textures.TileableArrayTexture.LayerId,
-    tint: util.Color,
+    tint: rendering.Color,
 ) rendering.MapGeometryAttributes {
     return .{
         .model_matrix = model_matrix.toFloatArray(),

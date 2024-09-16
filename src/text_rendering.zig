@@ -2,7 +2,7 @@
 //! '\n' affect the formatting of the rendered text. All strings passed to these functions are
 //! assumed to contain valid UTF-8.
 
-const Color = @import("util.zig").Color;
+const Color = @import("rendering.zig").Color;
 const SpriteData = @import("rendering.zig").SpriteData;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const Vector3d = math.Vector3d;
@@ -373,7 +373,7 @@ fn populateSpriteDataRaw(
                 const source = spritesheet.getFontCharacterSourceRectangle(codepoint);
                 out[index] = SpriteData.create(position, source, character_size, character_size)
                     .withOffsetFromOrigin(offset.x, offset.y)
-                    .withTint(segment.color.r, segment.color.g, segment.color.b)
+                    .withTint(segment.color)
                     .withPreserveExactPixelSize(preserve_exact_pixel_size);
                 offset.x = offset.x.add(offset_increment.x);
                 index = index + 1;

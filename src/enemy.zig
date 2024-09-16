@@ -1,4 +1,4 @@
-const Color = @import("util.zig").Color;
+const Color = rendering.Color;
 const FlowField = @import("flow_field.zig");
 const GameCharacter = @import("game_unit.zig").GameCharacter;
 const Map = @import("map/map.zig").Map;
@@ -234,22 +234,22 @@ pub const RenderSnapshot = struct {
             health_bar_height,
         ).withPreserveExactPixelSize(true);
 
-        const full_health = Color.fromRgb8(21, 213, 21);
-        const empty_health = Color.fromRgb8(213, 21, 21);
-        const background = Color.fromRgb8(0, 0, 0);
-        const current_health = empty_health.lerp(full_health, health_percent);
+        const full_health = Color.create(21, 213, 21);
+        const empty_health = Color.create(213, 21, 21);
+        const background = Color.create(0, 0, 0);
+        const current_health = empty_health.lerp(full_health, fp(health_percent));
 
         var left_half = &out[0];
         left_half.* = billboard_data;
         left_half.size.w *= health_percent;
         left_half.offset_from_origin.x = -(billboard_data.size.w - left_half.size.w) / 2;
-        left_half.* = left_half.withTint(current_health.r, current_health.g, current_health.b);
+        left_half.* = left_half.withTint(current_health);
 
         var right_half = &out[1];
         right_half.* = billboard_data;
         right_half.size.w *= 1 - health_percent;
         right_half.offset_from_origin.x = (billboard_data.size.w - right_half.size.w) / 2;
-        right_half.* = right_half.withTint(background.r, background.g, background.b);
+        right_half.* = right_half.withTint(background);
     }
 };
 

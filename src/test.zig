@@ -3,6 +3,7 @@
 const UnorderedCollection = @import("unordered_collection.zig").UnorderedCollection;
 const collision = @import("collision.zig");
 const math = @import("math.zig");
+const rendering = @import("rendering.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 const util = @import("util.zig");
@@ -427,7 +428,7 @@ test "Matrix inversion" {
 }
 
 test "Text rendering: utility functions" {
-    const white = util.Color.white;
+    const white = rendering.Color.white;
     const Segment = text_rendering.TextSegment;
     const getCount = text_rendering.getSpriteCount;
     try expect(getCount(&[_]Segment{.{ .color = white, .text = "" }}) == 0);
@@ -460,15 +461,15 @@ fn isEqual(a: f32, b: f32) bool {
     return @abs(a - b) < epsilon;
 }
 
-fn colorIsEqual(a: util.Color, b: util.Color) bool {
-    return isEqual(a.r, b.r) and
-        isEqual(a.g, b.g) and
-        isEqual(a.b, b.b);
+fn colorIsEqual(a: rendering.Color, b: rendering.Color) bool {
+    return a.r == b.r and
+        a.g == b.g and
+        a.b == b.b;
 }
 
 fn expectSegmentColors(
     segments: []const text_rendering.TextSegment,
-    expected_colors: []const util.Color,
+    expected_colors: []const rendering.Color,
 ) !void {
     try expect(segments.len == expected_colors.len);
     for (segments, 0..) |segment, index| {
@@ -479,7 +480,7 @@ fn expectSegmentColors(
 test "Text rendering: reflow text segments" {
     const TextSegment = text_rendering.TextSegment;
     const reflow = text_rendering.reflowTextBlock;
-    const white = util.Color.white;
+    const white = rendering.Color.white;
 
     var reusable_buffer = text_rendering.ReusableBuffer.create(std.testing.allocator);
     defer reusable_buffer.destroy();
@@ -576,8 +577,8 @@ test "Text rendering: reflow text segments" {
 
     // Preserving colors.
     {
-        const green = util.Color.fromRgb8(0, 255, 0);
-        const red = util.Color.fromRgb8(255, 0, 0);
+        const green = rendering.Color.create(0, 255, 0);
+        const red = rendering.Color.create(255, 0, 0);
         const text_block = [_]TextSegment{
             .{ .color = white, .text = "This is a long" },
             .{ .color = green, .text = " example text" },
@@ -589,7 +590,7 @@ test "Text rendering: reflow text segments" {
             " ",      "example", "\n", "text", " ", "with", "\n",
             "words.",
         });
-        const expected_colors = [_]util.Color{
+        const expected_colors = [_]rendering.Color{
             white, white, white, white, white, white, white, green,
             green, green, green, red,   red,   red,   red,
         };
@@ -598,9 +599,9 @@ test "Text rendering: reflow text segments" {
 }
 
 test "Text rendering: truncate text segments" {
-    const white = util.Color.white;
-    const green = util.Color.fromRgb8(0, 255, 0);
-    const red = util.Color.fromRgb8(255, 0, 0);
+    const white = rendering.Color.white;
+    const green = rendering.Color.create(0, 255, 0);
+    const red = rendering.Color.create(255, 0, 0);
     const text_block = [_]text_rendering.TextSegment{
         .{ .color = white, .text = "This is a löñg" },
         .{ .color = green, .text = " example\ntext" },
@@ -620,7 +621,7 @@ test "Text rendering: truncate text segments" {
     {
         const segments = try text_rendering.truncateTextSegments(&reusable_buffer, &text_block, 20);
         try expectSegments(segments, &[_][]const u8{ "This is a löñg", " examp" });
-        try expectSegmentColors(segments, &[_]util.Color{ white, green });
+        try expectSegmentColors(segments, &[_]rendering.Color{ white, green });
     }
 
     // Length 32.
@@ -630,7 +631,7 @@ test "Text rendering: truncate text segments" {
             segments,
             &[_][]const u8{ "This is a löñg", " example\ntext", " with" },
         );
-        try expectSegmentColors(segments, &[_]util.Color{ white, green, red });
+        try expectSegmentColors(segments, &[_]rendering.Color{ white, green, red });
     }
 
     // Length 1000.
@@ -640,7 +641,7 @@ test "Text rendering: truncate text segments" {
             segments,
             &[_][]const u8{ "This is a löñg", " example\ntext", " with words." },
         );
-        try expectSegmentColors(segments, &[_]util.Color{ white, green, red });
+        try expectSegmentColors(segments, &[_]rendering.Color{ white, green, red });
     }
 }
 

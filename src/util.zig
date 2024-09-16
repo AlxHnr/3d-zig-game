@@ -3,32 +3,6 @@
 const std = @import("std");
 const math = @import("math.zig");
 
-/// Contains rgb values from 0 to 1.
-pub const Color = struct {
-    r: f32,
-    g: f32,
-    b: f32,
-
-    /// Used as a neutral tint during color multiplication.
-    pub const white = Color{ .r = 1, .g = 1, .b = 1 };
-
-    pub fn fromRgb8(r: u8, g: u8, b: u8) Color {
-        return .{
-            .r = @as(f32, @floatFromInt(r)) / 255,
-            .g = @as(f32, @floatFromInt(g)) / 255,
-            .b = @as(f32, @floatFromInt(b)) / 255,
-        };
-    }
-
-    pub fn lerp(self: Color, other: Color, t: f32) Color {
-        return .{
-            .r = math.lerpf32(self.r, other.r, t),
-            .g = math.lerpf32(self.g, other.g, t),
-            .b = math.lerpf32(self.b, other.b, t),
-        };
-    }
-};
-
 /// Generates unique ids for distinguishing all objects in the game.
 pub const ObjectIdGenerator = struct {
     id_counter: u64,
