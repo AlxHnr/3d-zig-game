@@ -9,7 +9,7 @@ const std = @import("std");
 
 pub const ScreenDimensions = extern struct { w: u16, h: u16 };
 
-/// Textures start at the top left corner of the sprite at (0, 0).
+/// Texture pixel coordinates, starting at the top left corner of the sprite at (0, 0).
 pub const TextureSourceRectangle = extern struct { x: u16, y: u16, w: u16, h: u16 };
 
 /// Values from 0 to 255.
@@ -485,7 +485,7 @@ pub const SpriteData = extern struct {
     /// Angle in radians for rotating the sprite around its Z axis.
     z_rotation: f32,
     /// Specifies the part of the currently bound texture which should be stretched onto the
-    /// billboard. (0, 0) is the top left corner of the texture.
+    /// billboard.
     source_rect: TextureSourceRectangle,
     tint: Color,
     /// False if the billboard should shrink with increasing camera distance.
