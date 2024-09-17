@@ -464,7 +464,8 @@ fn isEqual(a: f32, b: f32) bool {
 fn colorIsEqual(a: rendering.Color, b: rendering.Color) bool {
     return a.r == b.r and
         a.g == b.g and
-        a.b == b.b;
+        a.b == b.b and
+        a.a == b.a;
 }
 
 fn expectSegmentColors(
@@ -577,8 +578,8 @@ test "Text rendering: reflow text segments" {
 
     // Preserving colors.
     {
-        const green = rendering.Color.create(0, 255, 0);
-        const red = rendering.Color.create(255, 0, 0);
+        const green = rendering.Color.create(0, 255, 0, 255);
+        const red = rendering.Color.create(255, 0, 0, 255);
         const text_block = [_]TextSegment{
             .{ .color = white, .text = "This is a long" },
             .{ .color = green, .text = " example text" },
@@ -600,8 +601,8 @@ test "Text rendering: reflow text segments" {
 
 test "Text rendering: truncate text segments" {
     const white = rendering.Color.white;
-    const green = rendering.Color.create(0, 255, 0);
-    const red = rendering.Color.create(255, 0, 0);
+    const green = rendering.Color.create(0, 255, 0, 255);
+    const red = rendering.Color.create(255, 0, 0, 255);
     const text_block = [_]text_rendering.TextSegment{
         .{ .color = white, .text = "This is a löñg" },
         .{ .color = green, .text = " example\ntext" },

@@ -5,12 +5,12 @@ in mat4 model_matrix;
 in int texcoord_scale; // See TextureCoordScale in meshes.zig.
 in float texture_layer_id; // Index in the current array texture, will be rounded.
 in vec3 texture_repeat_dimensions; // How often the texture should repeat along each axis.
-in vec3 tint;
+in vec4 tint;
 uniform mat4 vp_matrix;
 
 out vec2 fragment_texcoords;
 out float fragment_texture_layer_id;
-out vec3 fragment_tint;
+out vec4 fragment_tint;
 
 vec2 getFragmentRepeat() {
   switch (texcoord_scale) {

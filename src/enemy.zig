@@ -234,9 +234,9 @@ pub const RenderSnapshot = struct {
             health_bar_height,
         ).withPreserveExactPixelSize(true);
 
-        const full_health = Color.create(21, 213, 21);
-        const empty_health = Color.create(213, 21, 21);
-        const background = Color.create(0, 0, 0);
+        const full_health = Color.create(21, 213, 21, 255);
+        const empty_health = Color.create(213, 21, 21, 255);
+        const background = Color.create(0, 0, 0, 255);
         const current_health = empty_health.lerp(full_health, fp(health_percent));
 
         var left_half = &out[0];

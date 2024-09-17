@@ -10,7 +10,7 @@ in vec2 offset_from_origin;
 in float z_rotation; // Angle in radians for rotating the billboard around its Z axis.
 in vec4 source_rect; // X, y, w and h values specified in pixels on the spritesheet, with (0, 0)
                      // being the top-left corner.
-in vec3 tint;
+in vec4 tint;
 // 0 if the billboard should shrink with increasing camera distance.
 // 1 if the billboard should have a fixed pixel size independently from its distance to the camera.
 in float preserve_exact_pixel_size;
@@ -21,7 +21,7 @@ uniform vec2 screen_dimensions; // Width/height in pixels.
 uniform mat4 vp_matrix;
 
 out vec2 fragment_texcoords;
-out vec3 fragment_tint;
+out vec4 fragment_tint;
 
 void main() {
     vec2 scaled_position = vertex_position * size + offset_from_origin;

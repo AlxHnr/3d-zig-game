@@ -17,12 +17,13 @@ pub const Color = extern struct {
     r: u8,
     g: u8,
     b: u8,
+    a: u8,
 
     /// Used as a neutral tint during color multiplication.
-    pub const white = Color{ .r = 255, .g = 255, .b = 255 };
+    pub const white = Color{ .r = 255, .g = 255, .b = 255, .a = 255 };
 
-    pub fn create(r: u8, g: u8, b: u8) Color {
-        return .{ .r = r, .g = g, .b = b };
+    pub fn create(r: u8, g: u8, b: u8, a: u8) Color {
+        return .{ .r = r, .g = g, .b = b, .a = a };
     }
 
     pub fn lerp(self: Color, other: Color, t: math.Fix32) Color {
@@ -30,6 +31,7 @@ pub const Color = extern struct {
             .r = fp(self.r).lerp(fp(other.r), t).clamp(fp(0), fp(255)).convertTo(u8),
             .g = fp(self.g).lerp(fp(other.g), t).clamp(fp(0), fp(255)).convertTo(u8),
             .b = fp(self.b).lerp(fp(other.b), t).clamp(fp(0), fp(255)).convertTo(u8),
+            .a = fp(self.a).lerp(fp(other.a), t).clamp(fp(0), fp(255)).convertTo(u8),
         };
     }
 };
@@ -396,8 +398,8 @@ pub const BillboardRenderer = struct {
             assert(@offsetOf(SpriteData, "z_rotation") == 28);
             assert(@offsetOf(SpriteData, "source_rect") == 32);
             assert(@offsetOf(SpriteData, "tint") == 40);
-            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 43);
-            assert(@sizeOf(SpriteData) == 44);
+            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 44);
+            assert(@sizeOf(SpriteData) == 48);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -686,7 +688,7 @@ fn setupMapGeometryPropertyAttributes(
         MapGeometryAttributes,
         "texture_layer_id",
     ), false, stride);
-    setupVertexAttributeRaw(loc_tint, u8, 3, @offsetOf(
+    setupVertexAttributeRaw(loc_tint, u8, 4, @offsetOf(
         MapGeometryAttributes,
         "tint",
     ), true, stride);

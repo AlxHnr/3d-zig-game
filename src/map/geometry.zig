@@ -1069,8 +1069,8 @@ const Wall = struct {
 
     fn getDefaultTint(wall_type: WallType) rendering.Color {
         return switch (wall_type) {
-            .castle_tower => rendering.Color.create(248, 248, 248),
-            .giga_wall => rendering.Color.create(170, 170, 170),
+            .castle_tower => rendering.Color.create(248, 248, 248, 255),
+            .giga_wall => rendering.Color.create(170, 170, 170, 255),
             else => rendering.Color.white,
         };
     }
@@ -1182,7 +1182,7 @@ fn makeRenderingAttributes(
     return .{
         .model_matrix = model_matrix.toFloatArray(),
         .texture_layer_id = @as(f32, @floatFromInt(@intFromEnum(layer_id))),
-        .tint = .{ .r = tint.r, .g = tint.g, .b = tint.b },
+        .tint = tint,
     };
 }
 

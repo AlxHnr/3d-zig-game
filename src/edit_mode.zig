@@ -71,7 +71,7 @@ pub const State = struct {
                 const ray_collision = cast3DRayToObjects(mouse_ray, map.*) orelse return;
                 try map.geometry.tintObject(
                     ray_collision.object_id,
-                    Color.create(255, 0, 0),
+                    Color.create(255, 0, 0, 255),
                 );
                 self.currently_edited_object = CurrentlyEditedObject{
                     .object_id = ray_collision.object_id,
@@ -193,7 +193,7 @@ pub const State = struct {
             ),
         };
         if (object_type.used_field != .billboard) {
-            try map.geometry.tintObject(object_id, Color.create(0, 255, 0));
+            try map.geometry.tintObject(object_id, Color.create(0, 255, 0, 255));
             self.currently_edited_object =
                 CurrentlyEditedObject{ .object_id = object_id, .start_position = position };
         }

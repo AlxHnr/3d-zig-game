@@ -2,7 +2,7 @@
 
 in vec2 fragment_texcoords;
 in float fragment_texture_layer_id;
-in vec3 fragment_tint;
+in vec4 fragment_tint;
 uniform sampler2DArray texture_sampler;
 
 out vec4 final_color;
@@ -13,5 +13,5 @@ void main() {
     if (texel_color.a < 0.01) {
         discard;
     }
-    final_color = texel_color * vec4(fragment_tint, 1);
+    final_color = texel_color * fragment_tint;
 }

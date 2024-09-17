@@ -391,7 +391,7 @@ fn renderFlowField(
     try sprite_buffer.resize(text_rendering.getSpriteCount(&segments) + 1); // Background sprite.
     sprite_buffer.items[0] = rendering.SpriteData
         .create(screen_center, background, dimensions.width, dimensions.height)
-        .withTint(Color.create(0, 0, 0));
+        .withTint(Color.create(0, 0, 0, 255));
     text_rendering.populateSpriteData(
         &segments,
         screen_center.x.sub(dimensions.width.div(fp(2))),
@@ -418,7 +418,7 @@ fn renderHud(
     defer allocator.free(segments);
     var buffer: [64]u8 = undefined;
     segments[0] = .{
-        .color = Color.create(0, 0, 0),
+        .color = Color.create(0, 0, 0, 255),
         .text = try std.fmt.bufPrint(&buffer, "Gems: {}\nHP: {}", .{ gem_count, player_health }),
     };
 
@@ -447,7 +447,7 @@ fn renderEditMode(
     var text_buffer: [64]u8 = undefined;
     const description = try state.describe(&text_buffer);
 
-    const text_color = Color.create(0, 0, 0);
+    const text_color = Color.create(0, 0, 0, 255);
     const segments = [_]text_rendering.TextSegment{
         .{ .color = text_color, .text = description[0] },
         .{ .color = text_color, .text = "\n" },
