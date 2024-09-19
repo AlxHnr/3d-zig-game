@@ -220,36 +220,40 @@ pub const RenderSnapshot = struct {
         out: []rendering.SpriteData,
     ) void {
         const health_percent =
-            @as(f32, @floatFromInt(state.values.health.current)) /
-            @as(f32, @floatFromInt(state.values.health.max));
+            fp(state.values.health.current).div(fp(state.values.health.max));
         const source = spritesheet.getSpriteSourceRectangle(.white_block);
         // This factor has been determined by trial and error.
         const health_bar_factor =
             fp(std.math.log1p(@as(f32, @floatFromInt(state.values.health.max))) * 8);
         const y_offset = state.values.height.mul(offset_to_player_height_factor);
-        const billboard_data = rendering.SpriteData.create(
-            state.values.position.addY(y_offset),
-            source,
-            health_bar_scale.mul(health_bar_factor),
-            health_bar_height,
-        ).withPreserveExactPixelSize(true);
-
+        const position = state.values.position.addY(y_offset);
+        const health_bar_w = health_bar_scale.mul(health_bar_factor);
         const full_health = Color.create(21, 213, 21, 255);
         const empty_health = Color.create(213, 21, 21, 255);
         const background = Color.create(0, 0, 0, 255);
-        const current_health = empty_health.lerp(full_health, fp(health_percent));
+        const current_health = empty_health.lerp(full_health, health_percent);
 
-        var left_half = &out[0];
-        left_half.* = billboard_data;
-        left_half.size.w *= health_percent;
-        left_half.offset_from_origin.x = -(billboard_data.size.w - left_half.size.w) / 2;
-        left_half.* = left_half.withTint(current_health);
+        const left_half = &out[0];
+        const left_health_bar_w = health_bar_w.mul(health_percent);
+        left_half.* = rendering.SpriteData.create(
+            position,
+            source,
+            left_health_bar_w,
+            health_bar_height,
+        ).withOffsetFromOrigin(health_bar_w.sub(left_health_bar_w).neg().div(fp(2)), fp(0))
+            .withTint(current_health)
+            .withPreserveExactPixelSize(true);
 
-        var right_half = &out[1];
-        right_half.* = billboard_data;
-        right_half.size.w *= 1 - health_percent;
-        right_half.offset_from_origin.x = (billboard_data.size.w - right_half.size.w) / 2;
-        right_half.* = right_half.withTint(background);
+        const right_half = &out[1];
+        const right_health_bar_w = health_bar_w.mul(fp(1).sub(health_percent));
+        right_half.* = rendering.SpriteData.create(
+            position,
+            source,
+            right_health_bar_w,
+            health_bar_height,
+        ).withOffsetFromOrigin(health_bar_w.sub(right_health_bar_w).div(fp(2)), fp(0))
+            .withTint(background)
+            .withPreserveExactPixelSize(true);
     }
 };
 

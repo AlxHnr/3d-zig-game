@@ -92,6 +92,7 @@ pub const RenderSnapshot = struct {
                 self.position,
                 spawning.progress,
                 false,
+                sprite_aspect_ratio,
             ),
             .waiting => {},
             .pickup => |pickup| interpolateJumpAnimation(
@@ -100,10 +101,10 @@ pub const RenderSnapshot = struct {
                 pickup.target_position,
                 pickup.progress,
                 true,
+                sprite_aspect_ratio,
             ),
             .disappeared => {
-                result.size.w = 0;
-                result.size.h = 0;
+                result = result.withSize(fp(0), fp(0));
             },
         }
         return result;
@@ -161,17 +162,17 @@ pub const RenderSnapshot = struct {
         end_position: math.FlatVector,
         progress: math.Fix32,
         invert_scale: bool,
+        sprite_aspect_ratio: math.Fix32,
     ) void {
+        const scale = if (invert_scale) fp(1).sub(progress) else progress;
         const progressf32 = progress.convertTo(f32);
-        const scale = if (invert_scale) 1 - progressf32 else progressf32;
         const t = (progressf32 - 0.5) * 2;
         const jump_height = 1.5;
-        to_update.size.w *= scale;
-        to_update.size.h *= scale;
-        to_update.* = to_update.withPosition(
-            start_position.lerp(end_position, progress)
-                .addY(fp(to_update.position.y + (1 - t * t) * jump_height)),
-        );
+        const height = fp(1.5);
+        to_update.* = to_update
+            .withSize(scale.mul(height.div(sprite_aspect_ratio)), height.mul(scale))
+            .withPosition(start_position.lerp(end_position, progress)
+            .addY(fp((1 - t * t) * jump_height)));
     }
 };
 

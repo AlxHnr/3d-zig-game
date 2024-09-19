@@ -1,7 +1,6 @@
 #version 330
 
-in vec2 position;
-in vec2 texture_coords;
+in vec4 vertex_data;
 in float texture_layer_id; // Index in the current array texture, will be rounded.
 in float affected_by_animation_cycle; // 1 when the floor should cycle trough animations.
 in mat4 model_matrix;
@@ -15,8 +14,8 @@ out float fragment_texture_layer_id;
 out vec4 fragment_tint;
 
 void main() {
-  gl_Position = vp_matrix * model_matrix * vec4(position, 0, 1);
-  fragment_texcoords = texture_coords * texture_repeat_dimensions;
+  gl_Position = vp_matrix * model_matrix * vec4(vertex_data.xy, 0, 1);
+  fragment_texcoords = vertex_data.pq * texture_repeat_dimensions;
   fragment_texture_layer_id =
     texture_layer_id + current_animation_frame * affected_by_animation_cycle;
   fragment_tint = tint;

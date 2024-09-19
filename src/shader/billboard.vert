@@ -2,17 +2,17 @@
 
 #version 330
 
-in vec2 vertex_position;
-in vec2 texture_coords;
-in vec3 billboard_center_position;
-in vec2 size; // Width and height of the billboard.
+in vec4 vertex_data; // x, y, u, v
+
+in vec3 position; // Center of the billboard.
+in vec2 size; // w, h
+// (x, y, w, h) values specified in pixels. (0, 0) is the top-left corner of the spritesheet.
+in uvec4 source_rect;
+// Offsets will be applied after scaling but before Z rotation. Can be used to preserve
+// character order when rendering text.
 in vec2 offset_from_origin;
-in float z_rotation; // Angle in radians for rotating the billboard around its Z axis.
-in vec4 source_rect; // X, y, w and h values specified in pixels on the spritesheet, with (0, 0)
-                     // being the top-left corner.
 in vec4 tint;
-// 0 if the billboard should shrink with increasing camera distance.
-// 1 if the billboard should have a fixed pixel size independently from its distance to the camera.
+
 in float preserve_exact_pixel_size;
 
 // (sine, cosine) for rotating towards the camera around the Y axis.
@@ -23,8 +23,10 @@ uniform mat4 vp_matrix;
 out vec2 fragment_texcoords;
 out vec4 fragment_tint;
 
+#define z_rotation 0
+
 void main() {
-    vec2 scaled_position = vertex_position * size + offset_from_origin;
+    vec2 scaled_position = vertex_data.xy * size + offset_from_origin;
 
     // Sizes specified in pixels must be multiplied by 2 when they exist in 3d game space.
     scaled_position *= preserve_exact_pixel_size + 1;
@@ -43,10 +45,10 @@ void main() {
     vec2 offset_on_screen =
       mix(vec2(0, 0), z_rotated_position.xy, preserve_exact_pixel_size) / screen_dimensions;
 
-    gl_Position = vp_matrix * vec4(billboard_center_position + offset_from_position, 1);
+    gl_Position = vp_matrix * vec4(position + offset_from_position, 1);
     gl_Position /= mix(1, gl_Position.w, preserve_exact_pixel_size);
     gl_Position.xy += offset_on_screen;
 
-    fragment_texcoords = source_rect.xy + source_rect.zw * texture_coords;
+    fragment_texcoords = source_rect.xy + source_rect.zw * vertex_data.pq;
     fragment_tint = tint;
 }

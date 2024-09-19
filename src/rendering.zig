@@ -7,13 +7,13 @@ const math = @import("math.zig");
 const meshes = @import("meshes.zig");
 const std = @import("std");
 
-pub const ScreenDimensions = extern struct { w: u16, h: u16 };
+pub const ScreenDimensions = packed struct { w: u16, h: u16 };
 
 /// Texture pixel coordinates, starting at the top left corner of the sprite at (0, 0).
-pub const TextureSourceRectangle = extern struct { x: u16, y: u16, w: u16, h: u16 };
+pub const TextureSourceRectangle = packed struct { x: u16, y: u16, w: u16, h: u16 };
 
 /// Values from 0 to 255.
-pub const Color = extern struct {
+pub const Color = packed struct {
     r: u8,
     g: u8,
     b: u8,
@@ -55,16 +55,11 @@ pub const WallRenderer = struct {
         );
         errdefer shader.destroy();
         const loc_position = try shader.getAttributeLocation("position");
-        const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
         const loc_texcoord_scale = try shader.getAttributeLocation("texcoord_scale");
-        const loc_texture_layer_id = try shader.getAttributeLocation("texture_layer_id");
-        const loc_texture_repeat_dimensions = try shader.getAttributeLocation("texture_repeat_dimensions");
-        const loc_tint = try shader.getAttributeLocation("tint");
         const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
         const vao_id = createAndBindVao();
-
         const vertices = meshes.BottomlessCube.vertices;
         const vertex_vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
         gl.vertexAttribPointer(loc_position, 3, gl.FLOAT, 0, 0, null);
@@ -79,18 +74,8 @@ pub const WallRenderer = struct {
         gl.enableVertexAttribArray(loc_texcoord_scale);
 
         const wall_data_vbo_id = createAndBindEmptyVbo();
-        setupMapGeometryPropertyAttributes(
-            WallData,
-            loc_model_matrix,
-            loc_texture_layer_id,
-            loc_tint,
-        );
-        setupVertexAttribute(
-            loc_texture_repeat_dimensions,
-            WallData,
-            .texture_repeat_dimensions,
-            false,
-        );
+        try setupMapGeometryPropertyAttributes(shader, WallData);
+        try setupVertexAttributeBasic(shader, WallData, .texture_repeat_dimensions, .keep_type);
         comptime {
             assert(@offsetOf(WallData, "properties") == 0);
             assert(@offsetOf(WallData, "texture_repeat_dimensions") == 72);
@@ -101,7 +86,7 @@ pub const WallRenderer = struct {
         gl.bindVertexArray(0);
         setTextureSamplerId(shader, loc_texture_sampler);
 
-        return WallRenderer{
+        return .{
             .vao_id = vao_id,
             .vertex_vbo_id = vertex_vbo_id,
             .texture_coord_scales_vbo_id = texture_coord_scales_vbo_id,
@@ -178,42 +163,19 @@ pub const FloorRenderer = struct {
             @embedFile("./shader/map_geometry.frag"),
         );
         errdefer shader.destroy();
-        const loc_position = try shader.getAttributeLocation("position");
-        const loc_texture_coords = try shader.getAttributeLocation("texture_coords");
-        const loc_texture_layer_id = try shader.getAttributeLocation("texture_layer_id");
-        const loc_affected_by_animation_cycle =
-            try shader.getAttributeLocation("affected_by_animation_cycle");
-        const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
-        const loc_texture_repeat_dimensions =
-            try shader.getAttributeLocation("texture_repeat_dimensions");
-        const loc_tint = try shader.getAttributeLocation("tint");
+        const loc_vertex_data = try shader.getAttributeLocation("vertex_data");
         const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
         const loc_current_animation_frame =
             try shader.getUniformLocation("current_animation_frame");
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
         const vao_id = createAndBindVao();
-        const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_position, loc_texture_coords);
+        const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_data);
 
         const floor_data_vbo_id = createAndBindEmptyVbo();
-        setupMapGeometryPropertyAttributes(
-            FloorData,
-            loc_model_matrix,
-            loc_texture_layer_id,
-            loc_tint,
-        );
-        setupVertexAttribute(
-            loc_affected_by_animation_cycle,
-            FloorData,
-            .affected_by_animation_cycle,
-            false,
-        );
-        setupVertexAttribute(
-            loc_texture_repeat_dimensions,
-            FloorData,
-            .texture_repeat_dimensions,
-            false,
-        );
+        try setupMapGeometryPropertyAttributes(shader, FloorData);
+        try setupVertexAttributeBasic(shader, FloorData, .affected_by_animation_cycle, .keep_type);
+        try setupVertexAttributeBasic(shader, FloorData, .texture_repeat_dimensions, .keep_type);
         comptime {
             assert(@offsetOf(FloorData, "properties") == 0);
             assert(@offsetOf(FloorData, "affected_by_animation_cycle") == 72);
@@ -359,17 +321,7 @@ pub const BillboardRenderer = struct {
             @embedFile("./shader/billboard.frag"),
         );
         errdefer shader.destroy();
-        const loc_vertex_position = try shader.getAttributeLocation("vertex_position");
-        const loc_texture_coords = try shader.getAttributeLocation("texture_coords");
-        const loc_billboard_center_position =
-            try shader.getAttributeLocation("billboard_center_position");
-        const loc_size = try shader.getAttributeLocation("size");
-        const loc_offset_from_origin = try shader.getAttributeLocation("offset_from_origin");
-        const loc_z_rotation = try shader.getAttributeLocation("z_rotation");
-        const loc_source_rect = try shader.getAttributeLocation("source_rect");
-        const loc_tint = try shader.getAttributeLocation("tint");
-        const loc_preserve_exact_pixel_size =
-            try shader.getAttributeLocation("preserve_exact_pixel_size");
+        const loc_vertex_data = try shader.getAttributeLocation("vertex_data");
         const loc_y_rotation_towards_camera =
             try shader.getUniformLocation("y_rotation_towards_camera");
         const loc_screen_dimensions = try shader.getUniformLocation("screen_dimensions");
@@ -377,36 +329,29 @@ pub const BillboardRenderer = struct {
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
         const vao_id = createAndBindVao();
-        const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_position, loc_texture_coords);
+        const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_data);
+
         const sprite_data_vbo_id = createAndBindEmptyVbo();
-        setupVertexAttribute(loc_billboard_center_position, SpriteData, .position, false);
-        setupVertexAttribute(loc_size, SpriteData, .size, false);
-        setupVertexAttribute(loc_offset_from_origin, SpriteData, .offset_from_origin, false);
-        setupVertexAttribute(loc_z_rotation, SpriteData, .z_rotation, false);
-        setupVertexAttribute(loc_source_rect, SpriteData, .source_rect, false);
-        setupVertexAttribute(loc_tint, SpriteData, .tint, true);
-        setupVertexAttribute(
-            loc_preserve_exact_pixel_size,
+        try setupVertexAttributeBasic(shader, SpriteData, .position, .keep_type);
+        try setupVertexAttributeBasic(shader, SpriteData, .size, .keep_type);
+        try setupVertexAttributeBasic(shader, SpriteData, .source_rect, .keep_type);
+        try setupVertexAttributeBasic(shader, SpriteData, .offset_from_origin, .keep_type);
+        try setupVertexAttributeBasic(shader, SpriteData, .tint, .convert_to_normalized_float);
+        try setupVertexAttributeBasic(
+            shader,
             SpriteData,
             .preserve_exact_pixel_size,
-            false,
+            .convert_to_float,
         );
         comptime {
-            assert(@offsetOf(SpriteData, "position") == 0);
-            assert(@offsetOf(SpriteData, "size") == 12);
-            assert(@offsetOf(SpriteData, "offset_from_origin") == 20);
-            assert(@offsetOf(SpriteData, "z_rotation") == 28);
-            assert(@offsetOf(SpriteData, "source_rect") == 32);
-            assert(@offsetOf(SpriteData, "tint") == 40);
-            assert(@offsetOf(SpriteData, "preserve_exact_pixel_size") == 44);
-            assert(@sizeOf(SpriteData) == 48);
+            assert(@sizeOf(SpriteData) == 64);
         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
         gl.bindVertexArray(0);
         setTextureSamplerId(shader, loc_texture_sampler);
 
-        return BillboardRenderer{
+        return .{
             .vao_id = vao_id,
             .vertex_vbo_id = vertex_vbo_id,
             .sprite_data_vbo_id = sprite_data_vbo_id,
@@ -477,24 +422,29 @@ pub const BillboardRenderer = struct {
 ///   ignored.
 /// * For 3d billboards the x, y, z and w, h values are specified in game-units relative to the game
 ///   world.
-pub const SpriteData = extern struct {
+pub const SpriteData = packed struct {
     /// Center of the object.
-    position: extern struct { x: f32, y: f32, z: f32 },
-    size: extern struct { w: f32, h: f32 },
-    /// Will be applied after scaling but before Z rotation. Can be used to preserve character
-    /// order when rendering text.
-    offset_from_origin: extern struct { x: f32, y: f32 },
-    /// Angle in radians for rotating the sprite around its Z axis.
-    z_rotation: f32,
+    position: packed struct { x: f32, y: f32, z: f32 },
+    size: packed struct { w: f32, h: f32 },
     /// Specifies the part of the currently bound texture which should be stretched onto the
     /// billboard.
     source_rect: TextureSourceRectangle,
-    tint: Color,
-    /// False if the billboard should shrink with increasing camera distance.
-    /// True if the billboard should have a fixed pixel size independently from its distance to the
-    /// camera. Only relevant for `BillboardRenderer`.
-    preserve_exact_pixel_size: bool,
 
+    /// Offsets will be applied after scaling but before Z rotation. Can be used to preserve
+    /// letter ordering when rendering text sentences.
+    offset_from_origin: packed struct { x: f32, y: f32 },
+    tint: Color,
+
+    animation_start_tick: u32,
+    animation_offset_to_target_destination: packed struct { x: f32, y: f32, z: f32 },
+    animation_index: u8,
+
+    /// 0 if the billboard should shrink with increasing camera distance.
+    /// 1 if the billboard should have a fixed pixel size independently from its distance to the
+    /// camera. Only relevant for `BillboardRenderer`.
+    preserve_exact_pixel_size: u8,
+
+    /// Constructs an object with all mandatory fields initialized. All other fields are optional.
     pub fn create(
         position: math.Vector3d,
         source_rect: TextureSourceRectangle,
@@ -550,7 +500,7 @@ pub const SpriteData = extern struct {
 
     pub fn withPreserveExactPixelSize(self: SpriteData, preserve: bool) SpriteData {
         var copy = self;
-        copy.preserve_exact_pixel_size = preserve;
+        copy.preserve_exact_pixel_size = @intFromBool(preserve);
         return copy;
     }
 };
@@ -576,16 +526,12 @@ fn createAndBindVbo(data: *const anyopaque, size: isize) c_uint {
 }
 
 /// Returns a bound vbo containing StandingQuad.vertex_data.
-fn setupAndBindStandingQuadVbo(position_location: c_uint, texture_coords_location: c_uint) c_uint {
+fn setupAndBindStandingQuadVbo(loc_vertex_data: c_uint) c_uint {
     const vertices = meshes.StandingQuad.vertex_data;
     const vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
     const stride = @sizeOf([4]f32); // x, y, u, v.
-    gl.vertexAttribPointer(position_location, 2, gl.FLOAT, 0, stride, null); // x, y
-    gl.enableVertexAttribArray(position_location);
-    gl.vertexAttribPointer(texture_coords_location, 2, gl.FLOAT, 0, stride, @ptrFromInt(
-        @sizeOf([2]f32), // u, v
-    ));
-    gl.enableVertexAttribArray(texture_coords_location);
+    gl.vertexAttribPointer(loc_vertex_data, 4, gl.FLOAT, 0, stride, null); // x, y, u, v
+    gl.enableVertexAttribArray(loc_vertex_data);
     return vbo_id;
 }
 
@@ -609,89 +555,118 @@ fn updateVbo(
     gl.bindBuffer(gl.ARRAY_BUFFER, 0);
 }
 
-fn setupVertexAttribute(
-    attribute_location: c_uint,
-    comptime ComponentType: type,
-    comptime field: std.meta.FieldEnum(ComponentType),
-    normalize: bool,
+const AttributeConversionMode = enum { keep_type, convert_to_float, convert_to_normalized_float };
+
+fn setupVertexAttributeAdvanced(
+    location: c_uint,
+    comptime AttributeType: type,
+    offset_to_components: usize,
+    conversion_mode: AttributeConversionMode,
+    stride: usize,
 ) void {
-    const type_info = @typeInfo(std.meta.FieldType(ComponentType, field));
-    const component_count = switch (type_info) {
-        .Struct => type_info.Struct.fields.len,
-        .Float, .Int, .Bool => 1,
-        else => @compileError("unsupported type :" ++ @typeName(@Type(type_info))),
+    const component_count = switch (@typeInfo(AttributeType)) {
+        .Array => |Array| Array.len,
+        .Bool, .Float, .Int => 1,
+        .Struct => |Struct| Struct.fields.len,
+        else => @compileError("unsupported type :" ++ @typeName(AttributeType)),
     };
     comptime {
         std.debug.assert(component_count > 0);
     }
-
-    const component_type = switch (type_info) {
-        .Struct => type_info.Struct.fields[0].type,
-        else => @Type(type_info),
+    const component_type = switch (@typeInfo(AttributeType)) {
+        .Array => |Array| Array.child,
+        .Struct => |Struct| Struct.fields[0].type,
+        else => AttributeType,
     };
-    setupVertexAttributeRaw(
-        attribute_location,
-        component_type,
-        component_count,
-        @offsetOf(ComponentType, @tagName(field)),
-        normalize,
-        @sizeOf(ComponentType),
-    );
-}
-
-fn setupVertexAttributeRaw(
-    attribute_location: c_uint,
-    comptime component_type: type,
-    component_count: c_int,
-    offset_to_first_component: usize,
-    normalize: bool,
-    all_components_size: c_int,
-) void {
     const gl_type = switch (@typeInfo(component_type)) {
         .Bool => gl.UNSIGNED_BYTE,
         .Float => gl.FLOAT,
         .Int => |int| switch (int.bits) {
             8 => if (int.signedness == .signed) gl.BYTE else gl.UNSIGNED_BYTE,
             16 => if (int.signedness == .signed) gl.SHORT else gl.UNSIGNED_SHORT,
-            else => |bits| @compileError("unsupported integer size: " ++ bits),
+            32 => if (int.signedness == .signed) gl.INT else gl.UNSIGNED_INT,
+            else => |bits| @compileError(
+                std.fmt.comptimePrint("unsupported integer size: {}", .{bits}),
+            ),
         },
         else => @compileError("unsupported type: " ++ @typeName(component_type)),
     };
+    const float_conversion_is_optional = switch (@typeInfo(component_type)) {
+        .Bool, .Int => true,
+        else => false,
+    };
 
-    gl.enableVertexAttribArray(attribute_location);
-    gl.vertexAttribPointer(
-        attribute_location,
-        component_count,
-        gl_type,
-        @intFromBool(normalize),
-        all_components_size,
-        @ptrFromInt(offset_to_first_component),
+    gl.enableVertexAttribArray(location);
+    if (conversion_mode == .keep_type and float_conversion_is_optional) {
+        gl.vertexAttribIPointer(
+            location,
+            component_count,
+            gl_type,
+            @intCast(stride),
+            @ptrFromInt(offset_to_components),
+        );
+    } else {
+        gl.vertexAttribPointer(
+            location,
+            component_count,
+            gl_type,
+            @intFromBool(conversion_mode == .convert_to_normalized_float),
+            @intCast(stride),
+            @ptrFromInt(offset_to_components),
+        );
+    }
+    gl.vertexAttribDivisor(location, 1);
+}
+
+fn setupVertexAttributeBasic(
+    shader: Shader,
+    /// Contains all vertex attributes.
+    comptime VertexDataStruct: type,
+    comptime vertex_member_field: std.meta.FieldEnum(VertexDataStruct),
+    conversion_mode: AttributeConversionMode,
+) !void {
+    setupVertexAttributeAdvanced(
+        try shader.getAttributeLocation(@tagName(vertex_member_field)),
+        std.meta.FieldType(VertexDataStruct, vertex_member_field),
+        @offsetOf(VertexDataStruct, @tagName(vertex_member_field)),
+        conversion_mode,
+        @sizeOf(VertexDataStruct),
     );
-    gl.vertexAttribDivisor(attribute_location, 1);
 }
 
 /// Configures MapGeometryAttributes as vertex attributes at offset 0.
-fn setupMapGeometryPropertyAttributes(
-    comptime ComponentType: type,
-    loc_model_matrix: c_uint,
-    loc_texture_layer_id: c_uint,
-    loc_tint: c_uint,
-) void {
-    const stride = @sizeOf(ComponentType);
+fn setupMapGeometryPropertyAttributes(shader: Shader, comptime AttributeType: type) !void {
+    const stride = @sizeOf(AttributeType);
+    const PropertiesType = std.meta.FieldType(AttributeType, .properties);
+    const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
+    const offset_to_matrix =
+        @offsetOf(AttributeType, "properties") + @offsetOf(PropertiesType, "model_matrix");
 
     // Matrices (mat4) are specified in groups of 4 floats.
-    setupVertexAttributeRaw(loc_model_matrix + 0, f32, 4, 0, false, stride);
-    setupVertexAttributeRaw(loc_model_matrix + 1, f32, 4, @sizeOf([4]f32), false, stride);
-    setupVertexAttributeRaw(loc_model_matrix + 2, f32, 4, @sizeOf([8]f32), false, stride);
-    setupVertexAttributeRaw(loc_model_matrix + 3, f32, 4, @sizeOf([12]f32), false, stride);
-    setupVertexAttributeRaw(loc_texture_layer_id, f32, 1, @offsetOf(
-        MapGeometryAttributes,
-        "texture_layer_id",
-    ), false, stride);
-    setupVertexAttributeRaw(loc_tint, u8, 4, @offsetOf(
-        MapGeometryAttributes,
-        "tint",
-    ), true, stride);
+    for (0..4) |counter_usize| {
+        const counter: c_uint = @intCast(counter_usize);
+        setupVertexAttributeAdvanced(
+            loc_model_matrix + counter,
+            [4]f32,
+            offset_to_matrix + counter * @sizeOf([4]f32),
+            .keep_type,
+            stride,
+        );
+    }
+    setupVertexAttributeAdvanced(
+        try shader.getAttributeLocation("texture_layer_id"),
+        std.meta.FieldType(PropertiesType, .texture_layer_id),
+        @offsetOf(AttributeType, "properties") + @offsetOf(PropertiesType, "texture_layer_id"),
+        .keep_type,
+        stride,
+    );
+    setupVertexAttributeAdvanced(
+        try shader.getAttributeLocation("tint"),
+        std.meta.FieldType(PropertiesType, .tint),
+        @offsetOf(AttributeType, "properties") + @offsetOf(PropertiesType, "tint"),
+        .convert_to_normalized_float,
+        stride,
+    );
     comptime {
         assert(@offsetOf(MapGeometryAttributes, "model_matrix") == 0);
         assert(@offsetOf(MapGeometryAttributes, "texture_layer_id") == 64);
