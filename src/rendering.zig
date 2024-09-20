@@ -61,19 +61,21 @@ pub const WallRenderer = struct {
 
         const vao_id = createAndBindVao();
         const vertices = meshes.BottomlessCube.vertices;
-        const vertex_vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
+        const vertex_vbo_id =
+            createAndBindVbo(gl.ARRAY_BUFFER, &vertices, @sizeOf(@TypeOf(vertices)));
         gl.vertexAttribPointer(loc_position, 3, gl.FLOAT, 0, 0, null);
         gl.enableVertexAttribArray(loc_position);
 
         const texture_coord_scale = meshes.BottomlessCube.texture_coord_scale_values;
         const texture_coord_scales_vbo_id = createAndBindVbo(
+            gl.ARRAY_BUFFER,
             &texture_coord_scale,
             @sizeOf(@TypeOf(texture_coord_scale)),
         );
         gl.vertexAttribIPointer(loc_texcoord_scale, 1, gl.UNSIGNED_BYTE, 0, null);
         gl.enableVertexAttribArray(loc_texcoord_scale);
 
-        const wall_data_vbo_id = createAndBindEmptyVbo();
+        const wall_data_vbo_id = createAndBindEmptyVbo(gl.ARRAY_BUFFER);
         try setupMapGeometryPropertyAttributes(shader, WallData);
         try setupVertexAttributeBasic(shader, WallData, .texture_repeat_dimensions, .keep_type);
         comptime {
@@ -172,7 +174,7 @@ pub const FloorRenderer = struct {
         const vao_id = createAndBindVao();
         const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_data);
 
-        const floor_data_vbo_id = createAndBindEmptyVbo();
+        const floor_data_vbo_id = createAndBindEmptyVbo(gl.ARRAY_BUFFER);
         try setupMapGeometryPropertyAttributes(shader, FloorData);
         try setupVertexAttributeBasic(shader, FloorData, .affected_by_animation_cycle, .keep_type);
         try setupVertexAttributeBasic(shader, FloorData, .texture_repeat_dimensions, .keep_type);
@@ -329,9 +331,14 @@ pub const BillboardRenderer = struct {
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
         const vao_id = createAndBindVao();
+        errdefer gl.deleteVertexArrays(1, &vao_id);
+        defer gl.bindVertexArray(0);
         const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_data);
+        errdefer gl.deleteBuffers(1, &vertex_vbo_id);
+        defer gl.bindBuffer(gl.ARRAY_BUFFER, 0);
 
-        const sprite_data_vbo_id = createAndBindEmptyVbo();
+        const sprite_data_vbo_id = createAndBindEmptyVbo(gl.ARRAY_BUFFER);
+        errdefer gl.deleteBuffers(1, &sprite_data_vbo_id);
         try setupVertexAttributeBasic(shader, SpriteData, .position, .keep_type);
         try setupVertexAttributeBasic(shader, SpriteData, .size, .keep_type);
         try setupVertexAttributeBasic(shader, SpriteData, .source_rect, .keep_type);
@@ -347,8 +354,6 @@ pub const BillboardRenderer = struct {
             assert(@sizeOf(SpriteData) == 64);
         }
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, 0);
-        gl.bindVertexArray(0);
         setTextureSamplerId(shader, loc_texture_sampler);
 
         return .{
@@ -512,23 +517,23 @@ fn createAndBindVao() c_uint {
     return vao_id;
 }
 
-fn createAndBindEmptyVbo() c_uint {
+fn createAndBindEmptyVbo(buffer_type: gl.GLenum) c_uint {
     var id: c_uint = undefined;
     gl.genBuffers(1, &id);
-    gl.bindBuffer(gl.ARRAY_BUFFER, id);
+    gl.bindBuffer(buffer_type, id);
     return id;
 }
 
-fn createAndBindVbo(data: *const anyopaque, size: isize) c_uint {
-    const id = createAndBindEmptyVbo();
-    gl.bufferData(gl.ARRAY_BUFFER, size, data, gl.STATIC_DRAW);
+fn createAndBindVbo(buffer_type: gl.GLenum, data: *const anyopaque, size: isize) c_uint {
+    const id = createAndBindEmptyVbo(buffer_type);
+    gl.bufferData(buffer_type, size, data, gl.STATIC_DRAW);
     return id;
 }
 
 /// Returns a bound vbo containing StandingQuad.vertex_data.
 fn setupAndBindStandingQuadVbo(loc_vertex_data: c_uint) c_uint {
     const vertices = meshes.StandingQuad.vertex_data;
-    const vbo_id = createAndBindVbo(&vertices, @sizeOf(@TypeOf(vertices)));
+    const vbo_id = createAndBindVbo(gl.ARRAY_BUFFER, &vertices, @sizeOf(@TypeOf(vertices)));
     const stride = @sizeOf([4]f32); // x, y, u, v.
     gl.vertexAttribPointer(loc_vertex_data, 4, gl.FLOAT, 0, stride, null); // x, y, u, v
     gl.enableVertexAttribArray(loc_vertex_data);
