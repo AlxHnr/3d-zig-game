@@ -14,15 +14,11 @@ const dialog_text_scale = 2;
 pub const Controller = struct {
     allocator: std.mem.Allocator,
     mutex: std.Thread.Mutex,
-    renderer: rendering.SpriteRenderer,
     sprite_buffer: []rendering.SpriteData,
     spritesheet: *SpriteSheetTexture,
     dialog_stack: std.ArrayList(Dialog),
 
     pub fn create(allocator: std.mem.Allocator) !Controller {
-        var renderer = try rendering.SpriteRenderer.create();
-        errdefer renderer.destroy();
-
         var spritesheet = try allocator.create(SpriteSheetTexture);
         errdefer allocator.destroy(spritesheet);
         spritesheet.* = try SpriteSheetTexture.loadFromDisk();
@@ -31,7 +27,6 @@ pub const Controller = struct {
         return .{
             .allocator = allocator,
             .mutex = .{},
-            .renderer = renderer,
             .sprite_buffer = &.{},
             .spritesheet = spritesheet,
             .dialog_stack = std.ArrayList(Dialog).init(allocator),
@@ -46,11 +41,11 @@ pub const Controller = struct {
         self.spritesheet.destroy();
         self.allocator.destroy(self.spritesheet);
         self.allocator.free(self.sprite_buffer);
-        self.renderer.destroy();
     }
 
     pub fn render(
         self: *Controller,
+        renderer: *rendering.SpriteRenderer,
         screen_dimensions: rendering.ScreenDimensions,
         interval_between_previous_and_current_tick: math.Fix32,
     ) !void {
@@ -79,8 +74,8 @@ pub const Controller = struct {
                 self.sprite_buffer[start..end],
             );
         }
-        self.renderer.uploadSprites(self.sprite_buffer[0..end]);
-        self.renderer.render(screen_dimensions, self.spritesheet.id);
+        renderer.uploadSprites(self.sprite_buffer[0..end]);
+        renderer.render(screen_dimensions, self.spritesheet.id);
     }
 
     pub fn processElapsedTick(self: *Controller) void {
