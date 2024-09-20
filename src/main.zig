@@ -4,12 +4,12 @@ const GameContext = @import("game_context.zig");
 const InputButton = @import("game_unit.zig").InputButton;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
 const RenderLoop = @import("render_loop.zig");
+const ScreenDimensions = @import("rendering.zig").ScreenDimensions;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const edit_mode = @import("edit_mode.zig");
 const fp = math.Fix32.fp;
 const gl = @import("gl");
 const math = @import("math.zig");
-const rendering = @import("rendering.zig");
 const sdl = @import("sdl.zig");
 const simulation = @import("simulation.zig");
 const std = @import("std");
@@ -17,7 +17,7 @@ const text_rendering = @import("text_rendering.zig");
 const util = @import("util.zig");
 
 const ProgramContext = struct {
-    screen_dimensions: rendering.ScreenDimensions,
+    screen_dimensions: ScreenDimensions,
     window: *sdl.SDL_Window,
     gl_context: sdl.SDL_GLContext,
     allocator: std.mem.Allocator,
