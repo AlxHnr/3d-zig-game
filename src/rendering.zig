@@ -112,6 +112,7 @@ pub const WallRenderer = struct {
     /// The given walls will be rendered in the same order as in the given slice.
     pub fn uploadWalls(self: *WallRenderer, walls: []const WallData) void {
         updateVbo(
+            gl.ARRAY_BUFFER,
             self.wall_data_vbo_id,
             walls.ptr,
             walls.len * @sizeOf(WallData),
@@ -212,6 +213,7 @@ pub const FloorRenderer = struct {
     /// The given floors will be rendered in the same order as in the given slice.
     pub fn uploadFloors(self: *FloorRenderer, floors: []const FloorData) void {
         updateVbo(
+            gl.ARRAY_BUFFER,
             self.floor_data_vbo_id,
             floors.ptr,
             floors.len * @sizeOf(FloorData),
@@ -276,7 +278,14 @@ pub const SpriteRenderer = struct {
             vertex_data[index] *= -1;
         }
         var size: usize = @sizeOf(@TypeOf(vertex_data));
-        updateVbo(renderer.vertex_vbo_id, &vertex_data, size, &size, gl.STATIC_DRAW);
+        updateVbo(
+            gl.ARRAY_BUFFER,
+            renderer.vertex_vbo_id,
+            &vertex_data,
+            size,
+            &size,
+            gl.STATIC_DRAW,
+        );
 
         return .{ .renderer = renderer };
     }
@@ -407,6 +416,7 @@ pub const BillboardRenderer = struct {
     /// Billboards are rendered in the same order as specified.
     pub fn uploadBillboards(self: *BillboardRenderer, billboards: []const SpriteData) void {
         updateVbo(
+            gl.ARRAY_BUFFER,
             self.sprite_data_vbo_id,
             billboards.ptr,
             billboards.len * @sizeOf(SpriteData),
@@ -569,6 +579,7 @@ fn setupAndBindStandingQuadVbo(loc_vertex_data: c_uint) c_uint {
 }
 
 fn updateVbo(
+    buffer_type: gl.GLenum,
     vbo_id: c_uint,
     data: ?*const anyopaque,
     size: usize,
@@ -578,14 +589,14 @@ fn updateVbo(
 ) void {
     const signed_size = @as(isize, @intCast(size));
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, vbo_id);
+    gl.bindBuffer(buffer_type, vbo_id);
     if (size <= current_capacity.*) {
-        gl.bufferSubData(gl.ARRAY_BUFFER, 0, signed_size, data);
+        gl.bufferSubData(buffer_type, 0, signed_size, data);
     } else {
-        gl.bufferData(gl.ARRAY_BUFFER, signed_size, data, usage);
+        gl.bufferData(buffer_type, signed_size, data, usage);
         current_capacity.* = size;
     }
-    gl.bindBuffer(gl.ARRAY_BUFFER, 0);
+    gl.bindBuffer(buffer_type, 0);
 }
 
 const AttributeConversionMode = enum { keep_type, convert_to_float, convert_to_normalized_float };
