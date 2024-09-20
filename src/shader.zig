@@ -87,6 +87,19 @@ pub const Shader = struct {
         }
         return location;
     }
+
+    pub fn uniformBlockBinding(
+        self: Shader,
+        uniform_name: [:0]const u8,
+        binding_point: c_uint,
+    ) Error!void {
+        const block_index = gl.getUniformBlockIndex(self.program_id, uniform_name);
+        if (block_index == gl.INVALID_INDEX) {
+            std.log.err("failed to retrieve block index of uniform \"{s}\"", .{uniform_name});
+            return Error.FailedToRetrieveUniformBlockIndex;
+        }
+        gl.uniformBlockBinding(self.program_id, block_index, binding_point);
+    }
 };
 
 fn compileShader(allocator: std.mem.Allocator, shader_type: c_uint, source: [*:0]const u8) !c_uint {

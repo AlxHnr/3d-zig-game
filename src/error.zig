@@ -3,6 +3,7 @@ pub const Error = error{
     FailedToLoadTextureFile,
     FailedToCompileAndLinkShader,
     FailedToRetrieveShaderLocation,
+    FailedToRetrieveUniformBlockIndex,
     FailedToDeserializeMapGeometry,
     OutOfAvailableUboBindingPoints,
 };
