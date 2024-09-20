@@ -4,4 +4,5 @@ pub const Error = error{
     FailedToCompileAndLinkShader,
     FailedToRetrieveShaderLocation,
     FailedToDeserializeMapGeometry,
+    OutOfAvailableUboBindingPoints,
 };

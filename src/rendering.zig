@@ -1,4 +1,5 @@
 const Shader = @import("shader.zig").Shader;
+const UboBindingPointCounter = @import("ubo_binding_point_counter.zig");
 const animation = @import("animation.zig");
 const assert = std.debug.assert;
 const fp = math.Fix32.fp;
@@ -264,8 +265,8 @@ pub const MapGeometryAttributes = extern struct {
 pub const SpriteRenderer = struct {
     renderer: BillboardRenderer,
 
-    pub fn create() !SpriteRenderer {
-        var renderer = try BillboardRenderer.create();
+    pub fn create(binding_point_counter: *UboBindingPointCounter) !SpriteRenderer {
+        var renderer = try BillboardRenderer.create(binding_point_counter);
         errdefer renderer.destroy();
 
         // Invert the Y axis of the wrapped renderers quad mesh.
@@ -317,7 +318,9 @@ pub const BillboardRenderer = struct {
     screen_dimensions_location: c_int,
     vp_matrix_location: c_int,
 
-    pub fn create() !BillboardRenderer {
+    binding_point_counter: *UboBindingPointCounter,
+    /// The returned object will keep a reference to the given binding point counter.
+    pub fn create(binding_point_counter: *UboBindingPointCounter) !BillboardRenderer {
         var shader = try Shader.create(
             @embedFile("./shader/billboard.vert"),
             @embedFile("./shader/billboard.frag"),
@@ -366,6 +369,7 @@ pub const BillboardRenderer = struct {
             .y_rotation_location = loc_y_rotation_towards_camera,
             .screen_dimensions_location = loc_screen_dimensions,
             .vp_matrix_location = loc_vp_matrix,
+            .binding_point_counter = binding_point_counter,
         };
     }
 

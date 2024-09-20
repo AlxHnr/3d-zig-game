@@ -11,6 +11,7 @@ const PerformanceMeasurements = @import("performance_measurements.zig").Measurem
 const Player = @import("game_unit.zig").Player;
 const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
 const ScreenDimensions = rendering.ScreenDimensions;
+const UboBindingPointCounter = @import("ubo_binding_point_counter.zig");
 const fp = @import("math.zig").Fix32.fp;
 const gl = @import("gl");
 const rendering = @import("rendering.zig");
@@ -91,6 +92,7 @@ pub fn run(
     var timer = try simulation.TickTimer.start(simulation.tickrate);
     var performance_measurements = try PerformanceMeasurements.create();
     var frame_counter: usize = 0;
+    var binding_point_counter = UboBindingPointCounter.create();
     const refresh_rate = getRefreshRate() orelse 60;
 
     var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
@@ -99,13 +101,13 @@ pub fn run(
     var tileable_textures = try textures.TileableArrayTexture.loadFromDisk();
     defer tileable_textures.destroy();
 
-    var geometry_renderer = try GeometryRenderer.create();
+    var geometry_renderer = try GeometryRenderer.create(&binding_point_counter);
     defer geometry_renderer.destroy();
 
-    var billboard_renderer = try rendering.BillboardRenderer.create();
+    var billboard_renderer = try rendering.BillboardRenderer.create(&binding_point_counter);
     defer billboard_renderer.destroy();
 
-    var sprite_renderer = try rendering.SpriteRenderer.create();
+    var sprite_renderer = try rendering.SpriteRenderer.create(&binding_point_counter);
     defer sprite_renderer.destroy();
 
     var billboard_buffer = std.ArrayList(rendering.SpriteData).init(self.allocator);

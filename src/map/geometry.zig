@@ -1,5 +1,6 @@
 const Error = @import("../error.zig").Error;
 const ThirdPersonCamera = @import("../third_person_camera.zig");
+const UboBindingPointCounter = @import("../ubo_binding_point_counter.zig");
 const animation = @import("../animation.zig");
 const cell_line_iterator = @import("../spatial_partitioning/cell_line_iterator.zig").iterator;
 const collision = @import("../collision.zig");
@@ -278,12 +279,12 @@ pub const Renderer = struct {
     billboard_renderer: rendering.BillboardRenderer,
     render_data_upload_info: RenderDataUploadInfo,
 
-    pub fn create() !Renderer {
+    pub fn create(binding_point_counter: *UboBindingPointCounter) !Renderer {
         var wall_renderer = try rendering.WallRenderer.create();
         errdefer wall_renderer.destroy();
         var floor_renderer = try rendering.FloorRenderer.create();
         errdefer floor_renderer.destroy();
-        var billboard_renderer = try rendering.BillboardRenderer.create();
+        var billboard_renderer = try rendering.BillboardRenderer.create(binding_point_counter);
         errdefer billboard_renderer.destroy();
 
         return .{
