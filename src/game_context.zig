@@ -544,6 +544,7 @@ fn populateRenderSnapshotsThread(
     const snapshots = self.render_loop.getLockedSnapshotsForWriting();
     defer self.render_loop.releaseSnapshotsAfterWriting();
 
+    snapshots.previous_tick = self.tick_counter;
     snapshots.main_character = self.main_character;
     try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
     for (self.thread_contexts) |context| {

@@ -303,6 +303,8 @@ pub const SpriteRenderer = struct {
         self: SpriteRenderer,
         screen_dimensions: ScreenDimensions,
         texture_id: c_uint,
+        previous_tick: u32,
+        interval_between_previous_and_current_tick: math.Fix32,
     ) void {
         const screen_to_ndc_matrix = .{ .rows = .{
             .{ 2 / @as(f32, @floatFromInt(screen_dimensions.w)), 0, 0, -1 },
@@ -311,7 +313,14 @@ pub const SpriteRenderer = struct {
             .{ 0, 0, 0, 1 },
         } };
         const forward = .{ .x = fp(0), .y = fp(0), .z = fp(-1) };
-        self.renderer.render(screen_to_ndc_matrix, screen_dimensions, forward, texture_id);
+        self.renderer.render(
+            screen_to_ndc_matrix,
+            screen_dimensions,
+            forward,
+            texture_id,
+            previous_tick,
+            interval_between_previous_and_current_tick,
+        );
     }
 };
 
@@ -323,11 +332,15 @@ pub const BillboardRenderer = struct {
     sprites_uploaded_to_vbo: usize,
     sprite_capacity_in_vbo: usize,
     animation_data_vbo_id: c_uint,
+    animation_capacity_in_vbo: usize,
     keyframe_data_vbo_id: c_uint,
+    keyframe_capacity_in_vbo: usize,
     shader: Shader,
     y_rotation_location: c_int,
     screen_dimensions_location: c_int,
     vp_matrix_location: c_int,
+    previous_tick_location: c_int,
+    tick_inverval_location: c_int,
 
     binding_point_counter: *UboBindingPointCounter,
     animation_binding_point: usize,
@@ -345,6 +358,8 @@ pub const BillboardRenderer = struct {
             try shader.getUniformLocation("y_rotation_towards_camera");
         const loc_screen_dimensions = try shader.getUniformLocation("screen_dimensions");
         const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
+        const loc_previous_tick = try shader.getUniformLocation("previous_tick");
+        const loc_tick_interval = try shader.getUniformLocation("tick_interval");
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
         const vao_id = createAndBindVao();
@@ -391,11 +406,15 @@ pub const BillboardRenderer = struct {
             .sprites_uploaded_to_vbo = 0,
             .sprite_capacity_in_vbo = 0,
             .animation_data_vbo_id = animation_data_vbo_id,
+            .animation_capacity_in_vbo = 0,
             .keyframe_data_vbo_id = keyframe_data_vbo_id,
+            .keyframe_capacity_in_vbo = 0,
             .shader = shader,
             .y_rotation_location = loc_y_rotation_towards_camera,
             .screen_dimensions_location = loc_screen_dimensions,
             .vp_matrix_location = loc_vp_matrix,
+            .previous_tick_location = loc_previous_tick,
+            .tick_inverval_location = loc_tick_interval,
             .binding_point_counter = binding_point_counter,
             .animation_binding_point = animation_binding_point,
             .keyframe_binding_point = keyframe_binding_point,
@@ -432,6 +451,8 @@ pub const BillboardRenderer = struct {
         screen_dimensions: ScreenDimensions,
         camera_direction: math.Vector3d,
         texture_id: c_uint,
+        previous_tick: u32,
+        interval_between_previous_and_current_tick: math.Fix32,
     ) void {
         const camera_rotation_to_z_axis = camera_direction.toFlatVector()
             .computeRotationToOtherVector(.{ .x = fp(0), .z = fp(-1) });
@@ -450,6 +471,11 @@ pub const BillboardRenderer = struct {
         gl.uniform2fv(self.y_rotation_location, 1, &y_rotation_towards_camera);
         gl.uniform2fv(self.screen_dimensions_location, 1, &screen_dimensions_f32);
         gl.uniformMatrix4fv(self.vp_matrix_location, 1, 0, &vp_matrix.toFloatArray());
+        gl.uniform1ui(self.previous_tick_location, previous_tick);
+        gl.uniform1f(
+            self.tick_inverval_location,
+            interval_between_previous_and_current_tick.convertTo(f32),
+        );
         renderStandingQuadInstanced(self.sprites_uploaded_to_vbo);
         gl.bindTexture(gl.TEXTURE_2D, 0);
         gl.bindVertexArray(0);

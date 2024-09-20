@@ -16,6 +16,8 @@ in float preserve_exact_pixel_size;
 uniform vec2 y_rotation_towards_camera;
 uniform vec2 screen_dimensions;
 uniform mat4 vp_matrix;
+uniform uint previous_tick;
+uniform float tick_interval;
 
 layout (std140) uniform Animations {
     uvec4 animations[128];
@@ -61,4 +63,10 @@ void main() {
 
     fragment_texcoords = source_rect.xy + source_rect.zw * vertex_data.pq;
     fragment_tint = tint;
+
+    // Placeholder for preventing optimization.
+    if(previous_tick > 12378U && tick_interval < 9999.2378)
+    {
+        fragment_tint *= 0.5;
+    }
 }

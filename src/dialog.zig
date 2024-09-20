@@ -47,6 +47,7 @@ pub const Controller = struct {
         self: *Controller,
         renderer: *rendering.SpriteRenderer,
         screen_dimensions: rendering.ScreenDimensions,
+        previous_tick: u32,
         interval_between_previous_and_current_tick: math.Fix32,
     ) !void {
         self.mutex.lock();
@@ -75,7 +76,12 @@ pub const Controller = struct {
             );
         }
         renderer.uploadSprites(self.sprite_buffer[0..end]);
-        renderer.render(screen_dimensions, self.spritesheet.id);
+        renderer.render(
+            screen_dimensions,
+            self.spritesheet.id,
+            previous_tick,
+            interval_between_previous_and_current_tick,
+        );
     }
 
     pub fn processElapsedTick(self: *Controller) void {

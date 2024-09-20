@@ -205,6 +205,8 @@ pub fn run(
             camera.getDirectionToTarget(),
             tileable_textures,
             spritesheet,
+            self.current.previous_tick,
+            lap_result.next_tick_progress,
         );
         performance_measurements.end(.render_level_geometry);
 
@@ -214,6 +216,8 @@ pub fn run(
             extra_data.screen_dimensions,
             camera.getDirectionToTarget(),
             spritesheet.id,
+            self.current.previous_tick,
+            lap_result.next_tick_progress,
         );
         performance_measurements.end(.draw_billboards);
 
@@ -227,10 +231,13 @@ pub fn run(
             &billboard_buffer,
             self.current.main_character.gem_count,
             self.current.main_character.character.health.current,
+            self.current.previous_tick,
+            lap_result.next_tick_progress,
         );
         try dialog_controller.render(
             &sprite_renderer,
             extra_data.screen_dimensions,
+            self.current.previous_tick,
             lap_result.next_tick_progress,
         );
         try renderEditMode(
@@ -240,6 +247,8 @@ pub fn run(
             spritesheet,
             &billboard_buffer,
             extra_data.player_is_on_obstacle_tile,
+            self.current.previous_tick,
+            lap_result.next_tick_progress,
         );
         if (extra_data.flow_field_font_size) |font_size| {
             try renderFlowField(
@@ -249,6 +258,8 @@ pub fn run(
                 &billboard_buffer,
                 flow_field_text_buffer.items,
                 font_size,
+                self.current.previous_tick,
+                lap_result.next_tick_progress,
             );
         }
         performance_measurements.end(.hud);
@@ -324,6 +335,8 @@ pub fn releaseSnapshotsAfterWriting(self: *Loop) void {
 }
 
 pub const Snapshots = struct {
+    /// Tick from which the interpolation of these snapshots should start.
+    previous_tick: u32,
     main_character: Player,
     geometry: GeometrySnapshot,
     enemies: std.ArrayList(EnemySnapshot),
@@ -331,6 +344,7 @@ pub const Snapshots = struct {
 
     fn create(allocator: std.mem.Allocator) Snapshots {
         return .{
+            .previous_tick = 0,
             .main_character = Player.create(fp(0), fp(0), fp(1)),
             .geometry = GeometrySnapshot.create(allocator),
             .enemies = std.ArrayList(EnemySnapshot).init(allocator),
@@ -384,6 +398,8 @@ fn renderFlowField(
     sprite_buffer: *std.ArrayList(rendering.SpriteData),
     text_block: []const u8,
     font_size: u16,
+    previous_tick: u32,
+    interval_between_previous_and_current_tick: Fix32,
 ) !void {
     const segments = [_]text_rendering.TextSegment{ui.Highlight.normal(text_block)};
     const dimensions = text_rendering.getTextBlockDimensions(&segments, fp(font_size), spritesheet);
@@ -408,7 +424,12 @@ fn renderFlowField(
     );
 
     renderer.uploadSprites(sprite_buffer.items);
-    renderer.render(screen_dimensions, spritesheet.id);
+    renderer.render(
+        screen_dimensions,
+        spritesheet.id,
+        previous_tick,
+        interval_between_previous_and_current_tick,
+    );
 }
 
 fn renderHud(
@@ -419,6 +440,8 @@ fn renderHud(
     sprite_buffer: *std.ArrayList(rendering.SpriteData),
     gem_count: u64,
     player_health: u32,
+    previous_tick: u32,
+    interval_between_previous_and_current_tick: Fix32,
 ) !void {
     var segments = try allocator.alloc(text_rendering.TextSegment, 1);
     defer allocator.free(segments);
@@ -439,7 +462,12 @@ fn renderHud(
         sprite_buffer.items,
     );
     renderer.uploadSprites(sprite_buffer.items);
-    renderer.render(screen_dimensions, spritesheet.id);
+    renderer.render(
+        screen_dimensions,
+        spritesheet.id,
+        previous_tick,
+        interval_between_previous_and_current_tick,
+    );
 }
 
 fn renderEditMode(
@@ -449,6 +477,8 @@ fn renderEditMode(
     spritesheet: textures.SpriteSheetTexture,
     sprite_buffer: *std.ArrayList(rendering.SpriteData),
     player_is_on_obstacle_tile: bool,
+    previous_tick: u32,
+    interval_between_previous_and_current_tick: Fix32,
 ) !void {
     var text_buffer: [64]u8 = undefined;
     const description = try state.describe(&text_buffer);
@@ -474,5 +504,10 @@ fn renderEditMode(
         sprite_buffer.items,
     );
     renderer.uploadSprites(sprite_buffer.items);
-    renderer.render(screen_dimensions, spritesheet.id);
+    renderer.render(
+        screen_dimensions,
+        spritesheet.id,
+        previous_tick,
+        interval_between_previous_and_current_tick,
+    );
 }

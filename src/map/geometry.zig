@@ -318,6 +318,8 @@ pub const Renderer = struct {
         camera_direction_to_target: math.Vector3d,
         tileable_textures: textures.TileableArrayTexture,
         spritesheet: textures.SpriteSheetTexture,
+        previous_tick: u32,
+        interval_between_previous_and_current_tick: math.Fix32,
     ) void {
         // Prevent floors from overpainting each other.
         gl.stencilFunc(gl.NOTEQUAL, 1, 0xff);
@@ -331,6 +333,8 @@ pub const Renderer = struct {
             screen_dimensions,
             camera_direction_to_target,
             spritesheet.id,
+            previous_tick,
+            interval_between_previous_and_current_tick,
         );
     }
 };
