@@ -1,23 +1,20 @@
-/* For rendering sprites which rotate around the Y axis towards the camera. */
+// Renders sprites which rotate around the Y axis towards the camera. See `SpriteData` in
+// rendering.zig for an explanation of the input values.
 
 #version 330
 
-in vec4 vertex_data; // x, y, u, v
+in vec4 vertex_data;
 
-in vec3 position; // Center of the billboard.
-in vec2 size; // w, h
-// (x, y, w, h) values specified in pixels. (0, 0) is the top-left corner of the spritesheet.
+in vec3 position;
+in vec2 size;
 in uvec4 source_rect;
-// Offsets will be applied after scaling but before Z rotation. Can be used to preserve
-// character order when rendering text.
 in vec2 offset_from_origin;
 in vec4 tint;
 
 in float preserve_exact_pixel_size;
 
-// (sine, cosine) for rotating towards the camera around the Y axis.
 uniform vec2 y_rotation_towards_camera;
-uniform vec2 screen_dimensions; // Width/height in pixels.
+uniform vec2 screen_dimensions;
 uniform mat4 vp_matrix;
 
 out vec2 fragment_texcoords;
