@@ -313,12 +313,17 @@ pub const BillboardRenderer = struct {
     sprite_data_vbo_id: c_uint,
     sprites_uploaded_to_vbo: usize,
     sprite_capacity_in_vbo: usize,
+    animation_data_vbo_id: c_uint,
+    keyframe_data_vbo_id: c_uint,
     shader: Shader,
     y_rotation_location: c_int,
     screen_dimensions_location: c_int,
     vp_matrix_location: c_int,
 
     binding_point_counter: *UboBindingPointCounter,
+    animation_binding_point: usize,
+    keyframe_binding_point: usize,
+
     /// The returned object will keep a reference to the given binding point counter.
     pub fn create(binding_point_counter: *UboBindingPointCounter) !BillboardRenderer {
         var shader = try Shader.create(
@@ -336,6 +341,7 @@ pub const BillboardRenderer = struct {
         const vao_id = createAndBindVao();
         errdefer gl.deleteVertexArrays(1, &vao_id);
         defer gl.bindVertexArray(0);
+
         const vertex_vbo_id = setupAndBindStandingQuadVbo(loc_vertex_data);
         errdefer gl.deleteBuffers(1, &vertex_vbo_id);
         defer gl.bindBuffer(gl.ARRAY_BUFFER, 0);
@@ -357,6 +363,16 @@ pub const BillboardRenderer = struct {
             assert(@sizeOf(SpriteData) == 64);
         }
 
+        const animation_data_vbo_id, const animation_binding_point =
+            try setupUniformBufferBlock(shader, "Animations", binding_point_counter);
+        errdefer binding_point_counter.releaseBindingPoint(animation_binding_point);
+        errdefer gl.deleteBuffers(1, &animation_data_vbo_id);
+
+        const keyframe_data_vbo_id, const keyframe_binding_point =
+            try setupUniformBufferBlock(shader, "Keyframes", binding_point_counter);
+        errdefer binding_point_counter.releaseBindingPoint(keyframe_binding_point);
+        errdefer gl.deleteBuffers(1, &keyframe_data_vbo_id);
+
         setTextureSamplerId(shader, loc_texture_sampler);
 
         return .{
@@ -365,16 +381,24 @@ pub const BillboardRenderer = struct {
             .sprite_data_vbo_id = sprite_data_vbo_id,
             .sprites_uploaded_to_vbo = 0,
             .sprite_capacity_in_vbo = 0,
+            .animation_data_vbo_id = animation_data_vbo_id,
+            .keyframe_data_vbo_id = keyframe_data_vbo_id,
             .shader = shader,
             .y_rotation_location = loc_y_rotation_towards_camera,
             .screen_dimensions_location = loc_screen_dimensions,
             .vp_matrix_location = loc_vp_matrix,
             .binding_point_counter = binding_point_counter,
+            .animation_binding_point = animation_binding_point,
+            .keyframe_binding_point = keyframe_binding_point,
         };
     }
 
     pub fn destroy(self: *BillboardRenderer) void {
+        self.binding_point_counter.releaseBindingPoint(self.keyframe_binding_point);
+        self.binding_point_counter.releaseBindingPoint(self.animation_binding_point);
         self.shader.destroy();
+        gl.deleteBuffers(1, &self.keyframe_data_vbo_id);
+        gl.deleteBuffers(1, &self.animation_data_vbo_id);
         gl.deleteBuffers(1, &self.sprite_data_vbo_id);
         gl.deleteBuffers(1, &self.vertex_vbo_id);
         gl.deleteVertexArrays(1, &self.vao_id);
@@ -682,6 +706,23 @@ fn setupMapGeometryPropertyAttributes(shader: Shader, comptime AttributeType: ty
         assert(@offsetOf(MapGeometryAttributes, "tint") == 68);
         assert(@sizeOf(MapGeometryAttributes) == 72);
     }
+}
+
+fn setupUniformBufferBlock(
+    shader: Shader,
+    uniform_name: [:0]const u8,
+    binding_point_counter: *UboBindingPointCounter,
+) !std.meta.Tuple(&[_]type{ c_uint, usize }) {
+    const vbo_id = createAndBindEmptyVbo(gl.UNIFORM_BUFFER);
+    errdefer gl.deleteBuffers(1, &vbo_id);
+    defer gl.bindBuffer(gl.UNIFORM_BUFFER, 0);
+
+    const binding_point = try binding_point_counter.popAvailableBindingPoint();
+    errdefer binding_point_counter.releaseBindingPoint(binding_point);
+
+    try shader.uniformBlockBinding(uniform_name, @intCast(binding_point));
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, @intCast(binding_point), vbo_id);
+    return .{ vbo_id, binding_point };
 }
 
 fn setTextureSamplerId(shader: Shader, loc_texture_sampler: c_int) void {

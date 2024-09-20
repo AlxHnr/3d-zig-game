@@ -17,6 +17,19 @@ uniform vec2 y_rotation_towards_camera;
 uniform vec2 screen_dimensions;
 uniform mat4 vp_matrix;
 
+layout (std140) uniform Animations {
+    uvec4 animations[128];
+};
+
+struct Keyframe
+{
+    vec4 position_offset_and_destination_interval;
+    uvec4 color_and_z_rotation;
+};
+layout (std140) uniform Keyframes {
+    Keyframe keyframes[512];
+};
+
 out vec2 fragment_texcoords;
 out vec4 fragment_tint;
 
