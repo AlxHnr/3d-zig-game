@@ -343,8 +343,8 @@ pub const BillboardRenderer = struct {
     tick_inverval_location: c_int,
 
     binding_point_counter: *UboBindingPointCounter,
-    animation_binding_point: usize,
-    keyframe_binding_point: usize,
+    animation_binding_point: c_uint,
+    keyframe_binding_point: c_uint,
 
     /// The returned object will keep a reference to the given binding point counter.
     pub fn create(binding_point_counter: *UboBindingPointCounter) !BillboardRenderer {
@@ -749,7 +749,7 @@ fn setupUniformBufferBlock(
     shader: Shader,
     uniform_name: [:0]const u8,
     binding_point_counter: *UboBindingPointCounter,
-) !std.meta.Tuple(&[_]type{ c_uint, usize }) {
+) ![2]c_uint {
     const vbo_id = createAndBindEmptyVbo(gl.UNIFORM_BUFFER);
     errdefer gl.deleteBuffers(1, &vbo_id);
     defer gl.bindBuffer(gl.UNIFORM_BUFFER, 0);
@@ -757,8 +757,8 @@ fn setupUniformBufferBlock(
     const binding_point = try binding_point_counter.popAvailableBindingPoint();
     errdefer binding_point_counter.releaseBindingPoint(binding_point);
 
-    try shader.uniformBlockBinding(uniform_name, @intCast(binding_point));
-    gl.bindBufferBase(gl.UNIFORM_BUFFER, @intCast(binding_point), vbo_id);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, binding_point, vbo_id);
+    try shader.uniformBlockBinding(uniform_name, binding_point);
     return .{ vbo_id, binding_point };
 }
 

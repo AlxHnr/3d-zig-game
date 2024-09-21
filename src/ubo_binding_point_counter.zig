@@ -10,15 +10,15 @@ pub fn create() Self {
     return .{ .unused_binding_points = StaticBitSet(36).initFull() };
 }
 
-pub fn popAvailableBindingPoint(self: *Self) Error!usize {
+pub fn popAvailableBindingPoint(self: *Self) Error!c_uint {
     if (self.unused_binding_points.findFirstSet()) |binding_point| {
         self.unused_binding_points.unset(binding_point);
-        return binding_point;
+        return @intCast(binding_point);
     }
     return Error.OutOfAvailableUboBindingPoints;
 }
 
-pub fn releaseBindingPoint(self: *Self, binding_point: usize) void {
+pub fn releaseBindingPoint(self: *Self, binding_point: c_uint) void {
     assert(!self.unused_binding_points.isSet(binding_point));
     self.unused_binding_points.set(binding_point);
 }
