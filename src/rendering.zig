@@ -505,7 +505,9 @@ pub const SpriteData = packed struct {
     tint: Color,
 
     animation_start_tick: u32,
-    animation_offset_to_target_destination: packed struct { x: f32, y: f32, z: f32 },
+    /// Some animations can choose to interpolate towards this offset. See
+    /// `Keyframe.target_position_interval`.
+    animation_offset_to_target_position: packed struct { x: f32, y: f32, z: f32 },
     animation_index: u8,
 
     /// 0 if the billboard should shrink with increasing camera distance.
@@ -532,6 +534,11 @@ pub const SpriteData = packed struct {
         copy.position.x = position.x.convertTo(f32);
         copy.position.y = position.y.convertTo(f32);
         copy.position.z = position.z.convertTo(f32);
+
+        // Preserve offsets original target.
+        copy.animation_offset_to_target_position.x += self.position.x - copy.position.x;
+        copy.animation_offset_to_target_position.y += self.position.y - copy.position.y;
+        copy.animation_offset_to_target_position.z += self.position.z - copy.position.z;
         return copy;
     }
 
@@ -542,6 +549,12 @@ pub const SpriteData = packed struct {
         return copy;
     }
 
+    pub fn withSourceRect(self: SpriteData, source: TextureSourceRectangle) SpriteData {
+        var copy = self;
+        copy.source_rect = source;
+        return copy;
+    }
+
     pub fn withOffsetFromOrigin(self: SpriteData, x: math.Fix32, y: math.Fix32) SpriteData {
         var copy = self;
         copy.offset_from_origin.x = x.convertTo(f32);
@@ -549,21 +562,25 @@ pub const SpriteData = packed struct {
         return copy;
     }
 
-    pub fn withZRotation(self: SpriteData, angle: math.Fix32) SpriteData {
-        var copy = self;
-        copy.z_rotation = angle.convertTo(f32);
-        return copy;
-    }
-
-    pub fn withSourceRect(self: SpriteData, source: TextureSourceRectangle) SpriteData {
-        var copy = self;
-        copy.source_rect = source;
-        return copy;
-    }
-
     pub fn withTint(self: SpriteData, tint: Color) SpriteData {
         var copy = self;
         copy.tint = tint;
+        return copy;
+    }
+
+    pub fn withAnimation(self: SpriteData, start_tick: u32, animation_index: usize) SpriteData {
+        var copy = self;
+        copy.animation_start_tick = start_tick;
+        copy.animation_index = @intCast(animation_index);
+        return copy;
+    }
+
+    /// Target position to which animations can choose to interpolate towards.
+    pub fn withAnimationTargetPosition(self: SpriteData, position: math.Vector3d) SpriteData {
+        var copy = self;
+        copy.animation_offset_to_target_position.x = position.x.convertTo(f32) - self.position.x;
+        copy.animation_offset_to_target_position.y = position.y.convertTo(f32) - self.position.y;
+        copy.animation_offset_to_target_position.z = position.z.convertTo(f32) - self.position.z;
         return copy;
     }
 
