@@ -10,7 +10,6 @@ const collision = @import("collision.zig");
 const enemy_presets = @import("enemy_presets.zig");
 const fp = math.Fix32.fp;
 const fp64 = math.Fix64.fp;
-const makeSpriteData = @import("game_unit.zig").makeSpriteData;
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
 const simulation = @import("simulation.zig");
@@ -129,67 +128,50 @@ pub const RenderSnapshot = struct {
         spritesheet: SpriteSheetTexture,
         cache: PrerenderedNames,
         camera: ThirdPersonCamera,
-        interval_between_previous_and_current_tick: math.Fix32,
+        previous_tick: u32,
         out: *std.ArrayList(rendering.SpriteData),
     ) !void {
-        const state = self.interpolate(camera, interval_between_previous_and_current_tick);
-
-        try out.append(makeSpriteData(
-            state.values.position,
-            state.values.radius,
-            state.values.height,
-            self.config.sprite,
-            spritesheet,
+        const height_offset = self.current_state.height.div(fp(2));
+        try out.append(rendering.SpriteData.create(
+            self.state_at_previous_tick.position.addY(height_offset),
+            spritesheet.getSpriteSourceRectangle(self.config.sprite),
+            self.current_state.radius.mul(fp(2)),
+            self.config.height,
+        ).withAnimation(previous_tick, 0).withAnimationTargetPosition(
+            self.current_state.position.addY(height_offset),
         ));
 
-        if (state.should_render_health_bar) {
+        const distance = self.current_state.position.toVector3d()
+            .subtract(camera.getPosition()).lengthSquared();
+        const max_text_distance = self.current_state.height.convertTo(math.Fix64).mul(fp64(15));
+        const max_health_distance = self.current_state.height.convertTo(math.Fix64).mul(fp64(35));
+        if (distance.lt(max_health_distance.mul(max_health_distance))) {
             try out.ensureUnusedCapacity(2);
-            populateHealthbarBillboardData(state, spritesheet, out.unusedCapacitySlice());
+            self.populateHealthbarBillboardData(
+                spritesheet,
+                previous_tick,
+                out.unusedCapacitySlice(),
+            );
             out.items.len += 2;
         }
 
-        if (state.should_render_name) {
+        if (distance.lt(max_text_distance.mul(max_text_distance))) {
             const cached_text = cache.get(self.config);
             try out.ensureUnusedCapacity(cached_text.len);
             const out_slice = out.unusedCapacitySlice()[0..cached_text.len];
             out.items.len += cached_text.len;
 
             @memcpy(out_slice, cached_text);
-            const position = state.values.position.addY(
-                state.values.height.mul(offset_to_player_height_factor),
-            );
+            const y_offset = self.current_state.height.mul(offset_to_player_height_factor);
+            const previous_position = self.state_at_previous_tick.position.addY(y_offset);
+            const current_position = self.current_state.position.addY(y_offset);
             for (out_slice) |*billboard_data| {
-                billboard_data.* = billboard_data.withPosition(position);
+                billboard_data.* = billboard_data
+                    .withPosition(previous_position)
+                    .withAnimation(previous_tick, 0)
+                    .withAnimationTargetPosition(current_position);
             }
         }
-    }
-
-    fn interpolate(
-        self: RenderSnapshot,
-        camera: ThirdPersonCamera,
-        t: math.Fix32,
-    ) InterpolatedState {
-        const t64 = t.convertTo(math.Fix64);
-        const values = .{
-            .position = self.state_at_previous_tick.position.lerp(self.current_state.position, t),
-            .radius = self.state_at_previous_tick.radius.lerp(self.current_state.radius, t),
-            .height = self.state_at_previous_tick.height.lerp(self.current_state.height, t),
-            .health = .{
-                .current = fp64(self.state_at_previous_tick.health.current)
-                    .lerp(fp64(self.current_state.health.current), t64).convertTo(u32),
-                .max = fp64(self.state_at_previous_tick.health.max)
-                    .lerp(fp64(self.current_state.health.max), t64).convertTo(u32),
-            },
-        };
-        const distance =
-            values.position.toVector3d().subtract(camera.getPosition()).lengthSquared();
-        const max_text_distance = values.height.convertTo(math.Fix64).mul(fp64(15));
-        const max_health_distance = values.height.convertTo(math.Fix64).mul(fp64(35));
-        return .{
-            .values = values,
-            .should_render_name = distance.lt(max_text_distance.mul(max_text_distance)),
-            .should_render_health_bar = distance.lt(max_health_distance.mul(max_health_distance)),
-        };
     }
 
     const State = struct {
@@ -208,25 +190,21 @@ pub const RenderSnapshot = struct {
         }
     };
 
-    const InterpolatedState = struct {
-        values: State,
-        should_render_name: bool,
-        should_render_health_bar: bool,
-    };
-
     fn populateHealthbarBillboardData(
-        state: InterpolatedState,
+        self: RenderSnapshot,
         spritesheet: SpriteSheetTexture,
+        previous_tick: u32,
         out: []rendering.SpriteData,
     ) void {
         const health_percent =
-            fp(state.values.health.current).div(fp(state.values.health.max));
+            fp(self.current_state.health.current).div(fp(self.current_state.health.max));
         const source = spritesheet.getSpriteSourceRectangle(.white_block);
         // This factor has been determined by trial and error.
         const health_bar_factor =
-            fp(std.math.log1p(@as(f32, @floatFromInt(state.values.health.max))) * 8);
-        const y_offset = state.values.height.mul(offset_to_player_height_factor);
-        const position = state.values.position.addY(y_offset);
+            fp(std.math.log1p(@as(f32, @floatFromInt(self.current_state.health.max))) * 8);
+        const y_offset = self.current_state.height.mul(offset_to_player_height_factor);
+        const previous_position = self.state_at_previous_tick.position.addY(y_offset);
+        const current_position = self.current_state.position.addY(y_offset);
         const health_bar_w = health_bar_scale.mul(health_bar_factor);
         const full_health = Color.create(21, 213, 21, 255);
         const empty_health = Color.create(213, 21, 21, 255);
@@ -236,24 +214,26 @@ pub const RenderSnapshot = struct {
         const left_half = &out[0];
         const left_health_bar_w = health_bar_w.mul(health_percent);
         left_half.* = rendering.SpriteData.create(
-            position,
+            previous_position,
             source,
             left_health_bar_w,
             health_bar_height,
         ).withOffsetFromOrigin(health_bar_w.sub(left_health_bar_w).neg().div(fp(2)), fp(0))
             .withTint(current_health)
-            .withPreserveExactPixelSize(true);
+            .withPreserveExactPixelSize(true)
+            .withAnimation(previous_tick, 0).withAnimationTargetPosition(current_position);
 
         const right_half = &out[1];
         const right_health_bar_w = health_bar_w.mul(fp(1).sub(health_percent));
         right_half.* = rendering.SpriteData.create(
-            position,
+            previous_position,
             source,
             right_health_bar_w,
             health_bar_height,
         ).withOffsetFromOrigin(health_bar_w.sub(right_health_bar_w).div(fp(2)), fp(0))
             .withTint(background)
-            .withPreserveExactPixelSize(true);
+            .withPreserveExactPixelSize(true)
+            .withAnimation(previous_tick, 0).withAnimationTargetPosition(current_position);
     }
 };
 

@@ -249,14 +249,3 @@ pub const Player = struct {
         }
     };
 };
-
-pub fn makeSpriteData(
-    position: math.FlatVector,
-    radius: math.Fix32,
-    height: math.Fix32,
-    sprite: SpriteSheetTexture.SpriteId,
-    spritesheet: SpriteSheetTexture,
-) SpriteData {
-    const source = spritesheet.getSpriteSourceRectangle(sprite);
-    return SpriteData.create(position.addY(height.div(fp(2))), source, radius.mul(fp(2)), height);
-}
