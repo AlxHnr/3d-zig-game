@@ -579,11 +579,11 @@ pub const SpriteData = packed struct {
         size_w: math.Fix32,
         size_h: math.Fix32,
     ) SpriteData {
-        return std.mem.zeroes(SpriteData)
-            .withPosition(position)
-            .withSourceRect(source_rect)
-            .withSize(size_w, size_h)
-            .withTint(Color.white);
+        var result = std.mem.zeroes(SpriteData);
+        result.position.x = position.x.convertTo(f32);
+        result.position.y = position.y.convertTo(f32);
+        result.position.z = position.z.convertTo(f32);
+        return result.withSourceRect(source_rect).withSize(size_w, size_h).withTint(Color.white);
     }
 
     pub fn withPosition(self: SpriteData, position: math.Vector3d) SpriteData {
