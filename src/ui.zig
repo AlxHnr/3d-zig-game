@@ -242,7 +242,7 @@ pub const MinimumSize = struct {
     ) MinimumSize {
         return .{
             .wrapped_widget = widget_to_wrap,
-            .minimum = .{ .width = minimum_width, .height = minimum_height },
+            .minimum = .{ .w = minimum_width, .h = minimum_height },
         };
     }
 

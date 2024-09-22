@@ -793,8 +793,8 @@ fn makePackagedAnimatedTextBlock(
     errdefer allocator.destroy(minimum_size_widget);
     minimum_size_widget.* = .{ .minimum_size = ui.MinimumSize.wrap(
         animated_text_block.getWidgetPointer(),
-        @max(dimensions.width, sample_dimensions.width),
-        @max(dimensions.height, sample_dimensions.height),
+        @max(dimensions.w, sample_dimensions.w),
+        @max(dimensions.h, sample_dimensions.h),
     ) };
 
     return .{
