@@ -299,6 +299,10 @@ pub const SpriteRenderer = struct {
         self.renderer.uploadBillboards(sprites);
     }
 
+    pub fn uploadAnimations(self: *SpriteRenderer, animations: SpriteAnimationCollection) void {
+        self.renderer.uploadAnimations(animations);
+    }
+
     pub fn render(
         self: SpriteRenderer,
         screen_dimensions: ScreenDimensions,
@@ -359,7 +363,8 @@ pub const BillboardRenderer = struct {
         const loc_screen_dimensions = try shader.getUniformLocation("screen_dimensions");
         const loc_vp_matrix = try shader.getUniformLocation("vp_matrix");
         const loc_previous_tick = try shader.getUniformLocation("previous_tick");
-        const loc_tick_interval = try shader.getUniformLocation("tick_interval");
+        const loc_tick_interval =
+            try shader.getUniformLocation("interval_between_previous_and_current_tick");
         const loc_texture_sampler = try shader.getUniformLocation("texture_sampler");
 
         const vao_id = createAndBindVao();
@@ -377,6 +382,14 @@ pub const BillboardRenderer = struct {
         try setupVertexAttributeBasic(shader, SpriteData, .source_rect, .keep_type);
         try setupVertexAttributeBasic(shader, SpriteData, .offset_from_origin, .keep_type);
         try setupVertexAttributeBasic(shader, SpriteData, .tint, .convert_to_normalized_float);
+        try setupVertexAttributeBasic(shader, SpriteData, .animation_start_tick, .keep_type);
+        try setupVertexAttributeBasic(
+            shader,
+            SpriteData,
+            .animation_offset_to_target_position,
+            .keep_type,
+        );
+        try setupVertexAttributeBasic(shader, SpriteData, .animation_index, .keep_type);
         try setupVertexAttributeBasic(
             shader,
             SpriteData,
@@ -386,6 +399,8 @@ pub const BillboardRenderer = struct {
         comptime {
             assert(@sizeOf(SpriteData) == 64);
         }
+
+        setTextureSamplerId(shader, loc_texture_sampler);
 
         const animation_data_vbo_id, const animation_binding_point =
             try setupUniformBufferBlock(shader, "Animations", binding_point_counter);
@@ -397,9 +412,12 @@ pub const BillboardRenderer = struct {
         errdefer binding_point_counter.releaseBindingPoint(keyframe_binding_point);
         errdefer gl.deleteBuffers(1, &keyframe_data_vbo_id);
 
-        setTextureSamplerId(shader, loc_texture_sampler);
+        var static_buffer: [512]u8 = undefined;
+        var static_allocator = std.heap.FixedBufferAllocator.init(&static_buffer);
+        var default_animations = SpriteAnimationCollection.create(static_allocator.allocator());
+        default_animations.addAnimation(fp(1), &.{.{}}) catch unreachable;
 
-        return .{
+        var result = BillboardRenderer{
             .vao_id = vao_id,
             .vertex_vbo_id = vertex_vbo_id,
             .sprite_data_vbo_id = sprite_data_vbo_id,
@@ -419,6 +437,8 @@ pub const BillboardRenderer = struct {
             .animation_binding_point = animation_binding_point,
             .keyframe_binding_point = keyframe_binding_point,
         };
+        result.uploadAnimations(default_animations);
+        return result;
     }
 
     pub fn destroy(self: *BillboardRenderer) void {
@@ -443,6 +463,43 @@ pub const BillboardRenderer = struct {
             gl.STREAM_DRAW,
         );
         self.sprites_uploaded_to_vbo = billboards.len;
+    }
+
+    /// The first animation in the given collection will be the default for sprites which don't
+    /// explicitly set `animation_index`. The given collection can not be empty and must contain at
+    /// least one animation.
+    pub fn uploadAnimations(self: *BillboardRenderer, animations: SpriteAnimationCollection) void {
+        const PackedAnimation = SpriteAnimationCollection.PackedAnimation;
+        const PackedKeyframe = SpriteAnimationCollection.PackedKeyframe;
+
+        // Enforce 16 KB uniform buffer object size limit.
+        std.debug.assert(animations.animations.items.len > 0);
+        std.debug.assert(animations.animations.items.len * @sizeOf(PackedAnimation) <= 16384);
+        std.debug.assert(animations.keyframes.items.len > 0);
+        std.debug.assert(animations.keyframes.items.len * @sizeOf(PackedKeyframe) <= 16384);
+
+        // Arbitrary self-check for development.
+        comptime {
+            std.debug.assert(@sizeOf(PackedAnimation) == 16);
+            std.debug.assert(@sizeOf(PackedKeyframe) == 32);
+        }
+
+        updateVbo(
+            gl.UNIFORM_BUFFER,
+            self.animation_data_vbo_id,
+            animations.animations.items.ptr,
+            animations.animations.items.len * @sizeOf(PackedAnimation),
+            &self.animation_capacity_in_vbo,
+            gl.STATIC_DRAW,
+        );
+        updateVbo(
+            gl.UNIFORM_BUFFER,
+            self.keyframe_data_vbo_id,
+            animations.keyframes.items.ptr,
+            animations.keyframes.items.len * @sizeOf(PackedKeyframe),
+            &self.keyframe_capacity_in_vbo,
+            gl.STATIC_DRAW,
+        );
     }
 
     pub fn render(
@@ -589,6 +646,88 @@ pub const SpriteData = packed struct {
         copy.preserve_exact_pixel_size = @intFromBool(preserve);
         return copy;
     }
+};
+
+pub const SpriteAnimationCollection = struct {
+    animations: std.ArrayList(PackedAnimation),
+    keyframes: std.ArrayList(PackedKeyframe),
+
+    pub fn create(allocator: std.mem.Allocator) SpriteAnimationCollection {
+        return .{
+            .animations = std.ArrayList(PackedAnimation).init(allocator),
+            .keyframes = std.ArrayList(PackedKeyframe).init(allocator),
+        };
+    }
+
+    pub fn destroy(self: *SpriteAnimationCollection) void {
+        self.keyframes.deinit();
+        self.animations.deinit();
+    }
+
+    // Animations are referenced by `SpriteData.animation_index`. The index of the first inserted
+    // animation is 0, the second animation is 1 etc.
+    pub fn addAnimation(
+        self: *SpriteAnimationCollection,
+        /// Amount of in-game ticks which every keyframe of this animation lasts. E.g. `1.25`.
+        keyframe_duration: math.Fix32,
+        /// Must contain at least one keyframe.
+        keyframes: []const Keyframe,
+    ) !void {
+        std.debug.assert(keyframes.len > 0);
+        try self.animations.ensureUnusedCapacity(1);
+        try self.keyframes.ensureUnusedCapacity(keyframes.len);
+
+        self.animations.appendAssumeCapacity(.{
+            .keyframe_duration = @bitCast(keyframe_duration.convertTo(f32)),
+            .offset_to_first_keyframe = @intCast(self.keyframes.items.len),
+            .keyframe_count = @intCast(keyframes.len),
+        });
+        for (keyframes) |keyframe| {
+            self.keyframes.appendAssumeCapacity(.{
+                .position_offset = .{
+                    .x = keyframe.position_offset.x.convertTo(f32),
+                    .y = keyframe.position_offset.y.convertTo(f32),
+                    .z = keyframe.position_offset.z.convertTo(f32),
+                },
+                .target_position_interval = keyframe.target_position_interval.convertTo(f32),
+                .tint = keyframe.tint,
+                .z_rotation = @bitCast(keyframe.z_rotation.convertTo(f32)),
+            });
+        }
+    }
+
+    /// Animations will loop forever, with the last keyframe being followed by the first. All values
+    /// between two keyframes are interpolated linearly. Position offsets form a closed loop and
+    /// represent a Catmull-Rom spline.
+    pub const Keyframe = struct {
+        /// Added to the sprites position.
+        position_offset: math.Vector3d = .{ .x = fp(0), .y = fp(0), .z = fp(0) },
+        /// Value between 0 and 1, with 0 being the sprites position and 1 being its animation
+        /// target position.
+        target_position_interval: math.Fix32 = fp(0),
+        tint: Color = Color.white,
+        /// Angle in radians for rotating the sprite around its Z axis.
+        z_rotation: math.Fix32 = fp(0),
+    };
+
+    const PackedAnimation = packed struct {
+        /// Amount of in-game ticks which every keyframe of this animation lasts. E.g. `1.25`.
+        /// Bit-casted from f32.
+        keyframe_duration: u32,
+        offset_to_first_keyframe: u32,
+        keyframe_count: u32,
+        unused_std140_padding: u32 = 0,
+    };
+
+    const PackedKeyframe = packed struct {
+        position_offset: packed struct { x: f32, y: f32, z: f32 },
+        target_position_interval: f32,
+        tint: Color,
+        /// Bit-casted from f32.
+        z_rotation: u32,
+        unused_std140_padding0: u32 = 0,
+        unused_std140_padding1: u32 = 0,
+    };
 };
 
 fn createAndBindVao() c_uint {
