@@ -579,23 +579,20 @@ pub const SpriteData = packed struct {
         size_w: math.Fix32,
         size_h: math.Fix32,
     ) SpriteData {
-        var result = std.mem.zeroes(SpriteData);
-        result.position.x = position.x.convertTo(f32);
-        result.position.y = position.y.convertTo(f32);
-        result.position.z = position.z.convertTo(f32);
-        return result.withSourceRect(source_rect).withSize(size_w, size_h).withTint(Color.white);
+        return std.mem.zeroes(SpriteData)
+            .withPosition(position)
+            .withSourceRect(source_rect)
+            .withSize(size_w, size_h)
+            .withTint(Color.white);
     }
 
+    /// Resets `animation_offset_to_target_position`.
     pub fn withPosition(self: SpriteData, position: math.Vector3d) SpriteData {
         var copy = self;
         copy.position.x = position.x.convertTo(f32);
         copy.position.y = position.y.convertTo(f32);
         copy.position.z = position.z.convertTo(f32);
-
-        // Preserve offsets original target.
-        copy.animation_offset_to_target_position.x += self.position.x - copy.position.x;
-        copy.animation_offset_to_target_position.y += self.position.y - copy.position.y;
-        copy.animation_offset_to_target_position.z += self.position.z - copy.position.z;
+        copy.animation_offset_to_target_position = .{ .x = 0, .y = 0, .z = 0 };
         return copy;
     }
 
