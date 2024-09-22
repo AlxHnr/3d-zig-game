@@ -128,6 +128,33 @@ pub fn run(
             performance_measurements.begin(.frame_wait_for_data);
             self.swapSnapshots();
             performance_measurements.end(.frame_wait_for_data);
+
+            billboard_buffer.clearRetainingCapacity();
+            performance_measurements.begin(.aggregate_enemy_billboards);
+            for (self.current.enemies.items) |snapshot| {
+                try snapshot.appendBillboardData(
+                    spritesheet,
+                    prerendered_enemy_names,
+                    self.current.main_character.camera,
+                    self.current.previous_tick,
+                    &billboard_buffer,
+                );
+            }
+            performance_measurements.end(.aggregate_enemy_billboards);
+
+            performance_measurements.begin(.aggregate_gem_billboards);
+            for (self.current.gems.items) |snapshot| {
+                try billboard_buffer.append(
+                    snapshot.makeBillboardData(spritesheet, lap_result.next_tick_progress),
+                );
+            }
+            performance_measurements.end(.aggregate_gem_billboards);
+
+            try billboard_buffer.append(
+                self.current.main_character.getBillboardData(spritesheet, self.current.previous_tick),
+            );
+            billboard_renderer.uploadBillboards(billboard_buffer.items);
+            geometry_renderer.uploadRenderSnapshot(self.current.geometry);
         }
 
         gl.clearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
@@ -137,32 +164,6 @@ pub fn run(
         const camera = self.current.main_character.getInterpolatedCamera(
             lap_result.next_tick_progress,
         );
-
-        billboard_buffer.clearRetainingCapacity();
-        performance_measurements.begin(.aggregate_enemy_billboards);
-        for (self.current.enemies.items) |snapshot| {
-            try snapshot.appendBillboardData(
-                spritesheet,
-                prerendered_enemy_names,
-                camera,
-                self.current.previous_tick,
-                &billboard_buffer,
-            );
-        }
-        performance_measurements.end(.aggregate_enemy_billboards);
-
-        performance_measurements.begin(.aggregate_gem_billboards);
-        for (self.current.gems.items) |snapshot| {
-            try billboard_buffer.append(
-                snapshot.makeBillboardData(spritesheet, lap_result.next_tick_progress),
-            );
-        }
-        performance_measurements.end(.aggregate_gem_billboards);
-
-        try billboard_buffer.append(
-            self.current.main_character.getBillboardData(spritesheet, self.current.previous_tick),
-        );
-        billboard_renderer.uploadBillboards(billboard_buffer.items);
 
         const extra_data = blk: {
             self.extra_data.mutex.lock();
@@ -200,7 +201,6 @@ pub fn run(
             extra_data.screen_dimensions,
             max_camera_distance,
         );
-        geometry_renderer.uploadRenderSnapshot(self.current.geometry);
         geometry_renderer.render(
             vp_matrix,
             extra_data.screen_dimensions,
