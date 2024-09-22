@@ -178,9 +178,7 @@ pub fn handleElapsedTick(
     if (self.dialog_controller.hasOpenDialogs()) {
         self.main_character.markAllButtonsAsReleased();
     }
-    self.main_character.applyCurrentInput(
-        self.render_loop.getInterpolationIntervalUsedInLatestFrame(),
-    );
+    self.main_character.applyCurrentInput();
 
     performance_measurements.begin(.logic_total);
     self.map.processElapsedTick();
@@ -266,9 +264,7 @@ pub fn castRay(
     mouse_y: u16,
     screen_dimensions: ScreenDimensions,
 ) collision.Ray3d {
-    const camera = self.main_character.getCamera(
-        self.render_loop.getInterpolationIntervalUsedInLatestFrame(),
-    );
+    const camera = self.main_character.camera;
     const ray_wall_collision = self.map.geometry
         .cast3DRayToWalls(camera.get3DRayFromTargetToSelf());
     const max_camera_distance = if (ray_wall_collision) |ray_collision|
@@ -291,9 +287,7 @@ pub fn resetCameraAngleFromGround(self: *Context) void {
 }
 
 pub fn getCameraDirection(self: Context) math.Vector3d {
-    return self.main_character
-        .getCamera(self.render_loop.getInterpolationIntervalUsedInLatestFrame())
-        .getDirectionToTarget();
+    return self.main_character.camera.getDirectionToTarget();
 }
 
 fn loadMap(

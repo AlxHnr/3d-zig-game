@@ -45,9 +45,6 @@ extra_data: struct {
     printable_flow_field_snapshot: FlowField.PrintableSnapshot,
 },
 
-/// Value between 0 and 1.
-interpolation_interval_used_in_latest_frame: std.atomic.Value(Fix32Int),
-
 pub fn create(
     allocator: std.mem.Allocator,
     screen_dimensions: ScreenDimensions,
@@ -69,8 +66,6 @@ pub fn create(
             .flow_field_font_size = null,
             .printable_flow_field_snapshot = FlowField.PrintableSnapshot.create(allocator),
         },
-        .interpolation_interval_used_in_latest_frame = std.atomic.Value(Fix32Int)
-            .init(fp(0).internal),
     };
 }
 
@@ -268,14 +263,8 @@ pub fn run(
             performance_measurements.printFrameInfo();
         }
 
-        self.interpolation_interval_used_in_latest_frame
-            .store(lap_result.next_tick_progress.internal, .unordered);
         sdl.SDL_GL_SwapWindow(window);
     }
-}
-
-pub fn getInterpolationIntervalUsedInLatestFrame(self: Loop) Fix32 {
-    return .{ .internal = self.interpolation_interval_used_in_latest_frame.load(.unordered) };
 }
 
 pub fn sendStop(self: *Loop) void {

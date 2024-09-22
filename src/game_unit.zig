@@ -141,17 +141,8 @@ pub const Player = struct {
         self.input_state = std.EnumArray(InputButton, bool).initFill(false);
     }
 
-    pub fn applyCurrentInput(
-        self: *Player,
-        interval_between_previous_and_current_tick: math.Fix32,
-    ) void {
-        // Input is relative to the state currently on screen.
-        const state_rendered_to_screen = self.values_from_previous_tick.lerp(
-            self.getValuesForRendering(),
-            interval_between_previous_and_current_tick,
-        );
-        const forward_direction =
-            state_rendered_to_screen.camera.getDirectionToTarget().toFlatVector();
+    pub fn applyCurrentInput(self: *Player) void {
+        const forward_direction = self.camera.getDirectionToTarget().toFlatVector();
         const right_direction = forward_direction.rotateRightBy90Degrees();
 
         var acceleration_direction = math.FlatVector.zero;
