@@ -260,7 +260,6 @@ const ProgramContext = struct {
         try self.render_loop.sendExtraData(
             self.screen_dimensions,
             self.edit_mode_state,
-            self.game_context.playerIsOnFlowFieldObstacleTile(),
             if (self.render_flow_field)
                 self.game_context.getMutablePlayerFlowField().*
             else

@@ -40,7 +40,6 @@ extra_data: struct {
     screen_dimensions: ScreenDimensions,
     screen_dimensions_changed: bool,
     edit_mode_state: EditModeState,
-    player_is_on_obstacle_tile: bool,
     /// Set if the flow field info should be rendered.
     flow_field_font_size: ?u16,
     printable_flow_field_snapshot: FlowField.PrintableSnapshot,
@@ -67,7 +66,6 @@ pub fn create(
             .screen_dimensions = screen_dimensions,
             .screen_dimensions_changed = false,
             .edit_mode_state = edit_mode_state,
-            .player_is_on_obstacle_tile = false,
             .flow_field_font_size = null,
             .printable_flow_field_snapshot = FlowField.PrintableSnapshot.create(allocator),
         },
@@ -246,7 +244,6 @@ pub fn run(
             extra_data.screen_dimensions,
             spritesheet,
             &billboard_buffer,
-            extra_data.player_is_on_obstacle_tile,
             self.current.previous_tick,
             lap_result.next_tick_progress,
         );
@@ -293,7 +290,6 @@ pub fn sendExtraData(
     self: *Loop,
     screen_dimensions: ScreenDimensions,
     edit_mode_state: EditModeState,
-    player_is_on_obstacle_tile: bool,
     /// Null if the flow field should not be rendered.
     player_flow_field: ?FlowField,
     /// Ignored if previous value is null.
@@ -316,7 +312,6 @@ pub fn sendExtraData(
     }
     self.extra_data.screen_dimensions = screen_dimensions;
     self.extra_data.edit_mode_state = edit_mode_state;
-    self.extra_data.player_is_on_obstacle_tile = player_is_on_obstacle_tile;
 }
 
 /// Return a snapshot object to be populated with the latest game state. Must be followed by
@@ -476,7 +471,6 @@ fn renderEditMode(
     screen_dimensions: ScreenDimensions,
     spritesheet: textures.SpriteSheetTexture,
     sprite_buffer: *std.ArrayList(rendering.SpriteData),
-    player_is_on_obstacle_tile: bool,
     previous_tick: u32,
     interval_between_previous_and_current_tick: Fix32,
 ) !void {
@@ -488,10 +482,6 @@ fn renderEditMode(
         .{ .color = text_color, .text = description[0] },
         .{ .color = text_color, .text = "\n" },
         .{ .color = text_color, .text = description[1] },
-        .{ .color = text_color, .text = if (player_is_on_obstacle_tile)
-            "\nFlowField: Unreachable"
-        else
-            "" },
     };
 
     try sprite_buffer.resize(text_rendering.getSpriteCount(&segments));
