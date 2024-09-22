@@ -100,6 +100,14 @@ pub fn run(
     var billboard_renderer = try rendering.BillboardRenderer.create(&binding_point_counter);
     defer billboard_renderer.destroy();
 
+    var animation_collection = rendering.SpriteAnimationCollection.create(self.allocator);
+    defer animation_collection.destroy();
+    try animation_collection.addAnimation(fp(1), &.{
+        .{ .target_position_interval = fp(0) },
+        .{ .target_position_interval = fp(1) },
+    });
+    billboard_renderer.uploadAnimations(animation_collection);
+
     var sprite_renderer = try rendering.SpriteRenderer.create(&binding_point_counter);
     defer sprite_renderer.destroy();
 
@@ -151,10 +159,9 @@ pub fn run(
         }
         performance_measurements.end(.aggregate_gem_billboards);
 
-        try billboard_buffer.append(self.current.main_character.getBillboardData(
-            spritesheet,
-            lap_result.next_tick_progress,
-        ));
+        try billboard_buffer.append(
+            self.current.main_character.getBillboardData(spritesheet, self.current.previous_tick),
+        );
         billboard_renderer.uploadBillboards(billboard_buffer.items);
 
         const extra_data = blk: {
