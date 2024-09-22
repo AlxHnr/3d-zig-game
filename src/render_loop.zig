@@ -126,7 +126,9 @@ pub fn run(
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
 
         gl.enable(gl.DEPTH_TEST);
-        const camera = self.current.main_character.getCamera(lap_result.next_tick_progress);
+        const camera = self.current.main_character.getInterpolatedCamera(
+            lap_result.next_tick_progress,
+        );
 
         billboard_buffer.clearRetainingCapacity();
         performance_measurements.begin(.aggregate_enemy_billboards);

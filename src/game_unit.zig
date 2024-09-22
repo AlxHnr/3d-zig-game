@@ -218,7 +218,7 @@ pub const Player = struct {
         );
     }
 
-    pub fn getCamera(
+    pub fn getInterpolatedCamera(
         self: Player,
         interval_between_previous_and_current_tick: math.Fix32,
     ) ThirdPersonCamera {
