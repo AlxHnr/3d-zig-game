@@ -10,6 +10,7 @@ const PerformanceMeasurements = @import("performance_measurements.zig").Measurem
 const Player = @import("game_unit.zig").Player;
 const ScreenDimensions = rendering.ScreenDimensions;
 const UboBindingPointCounter = @import("ubo_binding_point_counter.zig");
+const animation = @import("animation.zig");
 const fp = @import("math.zig").Fix32.fp;
 const gl = @import("gl");
 const rendering = @import("rendering.zig");
@@ -98,13 +99,9 @@ pub fn run(
     var billboard_renderer = try rendering.BillboardRenderer.create(&binding_point_counter);
     defer billboard_renderer.destroy();
 
-    var animation_collection = rendering.SpriteAnimationCollection.create(self.allocator);
-    defer animation_collection.destroy();
-    try animation_collection.addAnimation(fp(1), &.{
-        .{ .target_position_interval = fp(0) },
-        .{ .target_position_interval = fp(1) },
-    });
-    billboard_renderer.uploadAnimations(animation_collection);
+    var billboard_animations = try animation.BillboardAnimationCollection.create(self.allocator);
+    defer billboard_animations.destroy(self.allocator);
+    billboard_renderer.uploadAnimations(billboard_animations.animation_collection.*);
 
     var sprite_renderer = try rendering.SpriteRenderer.create(&binding_point_counter);
     defer sprite_renderer.destroy();

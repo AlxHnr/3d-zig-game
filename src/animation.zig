@@ -1,3 +1,4 @@
+const SpriteAnimationCollection = @import("rendering.zig").SpriteAnimationCollection;
 const fp = math.Fix32.fp;
 const math = @import("math.zig");
 const std = @import("std");
@@ -30,5 +31,34 @@ pub const FourStepCycle = struct {
             .cycle = self.cycle.lerp(other.cycle, t),
             .step = if (t.lt(fp(0.5))) self.step else other.step,
         };
+    }
+};
+
+pub const BillboardAnimationCollection = struct {
+    animation_collection: *SpriteAnimationCollection,
+
+    gem_jump: u8,
+
+    pub fn create(allocator: std.mem.Allocator) !BillboardAnimationCollection {
+        var collection = try allocator.create(SpriteAnimationCollection);
+        errdefer allocator.destroy(collection);
+        collection.* = try SpriteAnimationCollection.create(allocator, fp(1), &.{
+            .{ .target_position_interval = fp(0) },
+            .{ .target_position_interval = fp(1) },
+        });
+        errdefer collection.destroy();
+
+        return .{
+            .animation_collection = collection,
+            .gem_jump = try collection.addAnimation(fp(1), &.{
+                .{ .target_position_interval = fp(0) },
+                .{ .target_position_interval = fp(1) },
+            }),
+        };
+    }
+
+    pub fn destroy(self: *BillboardAnimationCollection, allocator: std.mem.Allocator) void {
+        self.animation_collection.destroy();
+        allocator.destroy(self.animation_collection);
     }
 };
