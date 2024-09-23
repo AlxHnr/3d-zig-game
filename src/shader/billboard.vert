@@ -30,7 +30,7 @@ layout (std140) uniform Animations {
 struct PackedKeyframe
 {
     vec4 position_offset_and_target_interval;
-    uvec4 tint_and_z_rotation;
+    uvec4 tint_and_more;
 };
 layout (std140) uniform Keyframes {
     PackedKeyframe packed_keyframes[512];
@@ -45,6 +45,7 @@ struct Keyframe
     float target_position_interval;
     vec4 tint;
     float z_rotation;
+    float scaling_factor;
 };
 
 // Does not unpack `position_offset`.
@@ -52,14 +53,15 @@ void unpackPartialKeyframe(in int keyframe_index, out Keyframe keyframe)
 {
     keyframe.target_position_interval =
       packed_keyframes[keyframe_index].position_offset_and_target_interval[3];
-    int tint32 = int(packed_keyframes[keyframe_index].tint_and_z_rotation[0]);
+    int tint32 = int(packed_keyframes[keyframe_index].tint_and_more[0]);
     keyframe.tint = vec4(
       float(tint32 >>  0 & 0xff),
       float(tint32 >>  8 & 0xff),
       float(tint32 >> 16 & 0xff),
       float(tint32 >> 24 & 0xff)
     ) / 255;
-    keyframe.z_rotation = uintBitsToFloat(packed_keyframes[keyframe_index].tint_and_z_rotation[1]);
+    keyframe.z_rotation = uintBitsToFloat(packed_keyframes[keyframe_index].tint_and_more[1]);
+    keyframe.scaling_factor = uintBitsToFloat(packed_keyframes[keyframe_index].tint_and_more[2]);
 }
 
 void computeInterpolatedKeyframe(out Keyframe result)
@@ -109,12 +111,15 @@ void computeInterpolatedKeyframe(out Keyframe result)
     result.z_rotation = mix(
       previous_keyframe.z_rotation, next_keyframe.z_rotation, keyframe_interval
     );
+    result.scaling_factor = mix(
+      previous_keyframe.scaling_factor, next_keyframe.scaling_factor, keyframe_interval
+    );
 }
 
 void main() {
     Keyframe keyframe;
     computeInterpolatedKeyframe(keyframe);
-    vec2 scaled_position = vertex_data.xy * size + offset_from_origin;
+    vec2 scaled_position = vertex_data.xy * size * keyframe.scaling_factor + offset_from_origin;
     vec3 animated_position = mix(
         position, position + animation_offset_to_target_position, keyframe.target_position_interval
     ) + keyframe.position_offset;

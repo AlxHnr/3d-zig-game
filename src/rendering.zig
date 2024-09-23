@@ -710,6 +710,7 @@ pub const SpriteAnimationCollection = struct {
                 .target_position_interval = keyframe.target_position_interval.convertTo(f32),
                 .tint = keyframe.tint,
                 .z_rotation = @bitCast(keyframe.z_rotation.convertTo(f32)),
+                .scaling_factor = @bitCast(keyframe.scaling_factor.convertTo(f32)),
             });
         }
         return @intCast(new_animation_index);
@@ -727,6 +728,7 @@ pub const SpriteAnimationCollection = struct {
         tint: Color = Color.white,
         /// Angle in radians for rotating the sprite around its Z axis.
         z_rotation: math.Fix32 = fp(0),
+        scaling_factor: math.Fix32 = fp(1),
     };
 
     const PackedAnimation = packed struct {
@@ -744,7 +746,8 @@ pub const SpriteAnimationCollection = struct {
         tint: Color,
         /// Bit-casted from f32.
         z_rotation: u32,
-        unused_std140_padding0: u32 = 0,
+        /// Bit-casted from f32.
+        scaling_factor: u32,
         unused_std140_padding1: u32 = 0,
     };
 };
