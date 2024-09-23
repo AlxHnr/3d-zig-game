@@ -8,13 +8,18 @@ const math = @import("math.zig");
 const meshes = @import("meshes.zig");
 const std = @import("std");
 
-pub const ScreenDimensions = packed struct { w: u16, h: u16 };
+pub const ScreenDimensions = extern struct { w: u16 align(1), h: u16 align(1) };
 
 /// Texture pixel coordinates, starting at the top left corner of the sprite at (0, 0).
-pub const TextureSourceRectangle = packed struct { x: u16, y: u16, w: u16, h: u16 };
+pub const TextureSourceRectangle = extern struct {
+    x: u16 align(1),
+    y: u16 align(1),
+    w: u16 align(1),
+    h: u16 align(1),
+};
 
 /// Values from 0 to 255.
-pub const Color = packed struct {
+pub const Color = extern struct {
     r: u8,
     g: u8,
     b: u8,
@@ -138,9 +143,9 @@ pub const WallRenderer = struct {
         properties: MapGeometryAttributes,
         // How often the texture should repeat along each axis.
         texture_repeat_dimensions: extern struct {
-            x: f32,
-            y: f32,
-            z: f32,
+            x: f32 align(1),
+            y: f32 align(1),
+            z: f32 align(1),
         },
 
         comptime {
@@ -238,11 +243,11 @@ pub const FloorRenderer = struct {
     pub const FloorData = extern struct {
         properties: MapGeometryAttributes,
         /// Either 1 or 0. Animations work by adding 0, 1 or 2 to `.properties.texture_layer_id`.
-        affected_by_animation_cycle: f32,
+        affected_by_animation_cycle: f32 align(1),
         /// How often the texture should repeat along the floors width and height.
         texture_repeat_dimensions: extern struct {
-            x: f32,
-            y: f32,
+            x: f32 align(1),
+            y: f32 align(1),
         },
 
         comptime {
@@ -256,9 +261,9 @@ pub const FloorRenderer = struct {
 
 /// Basic geometry data to be uploaded as vertex attributes to the GPU.
 pub const MapGeometryAttributes = extern struct {
-    model_matrix: [16]f32,
+    model_matrix: [16]f32 align(1),
     /// Index of the layer in the array texture passed to render(). Will be rounded.
-    texture_layer_id: f32,
+    texture_layer_id: f32 align(1),
     tint: Color,
 };
 
@@ -474,12 +479,6 @@ pub const BillboardRenderer = struct {
         std.debug.assert(animations.keyframes.items.len > 0);
         std.debug.assert(animations.keyframes.items.len * @sizeOf(PackedKeyframe) <= 16384);
 
-        // Arbitrary self-check for development.
-        comptime {
-            std.debug.assert(@sizeOf(PackedAnimation) == 16);
-            std.debug.assert(@sizeOf(PackedKeyframe) == 32);
-        }
-
         updateVbo(
             gl.UNIFORM_BUFFER,
             self.animation_data_vbo_id,
@@ -544,32 +543,36 @@ pub const BillboardRenderer = struct {
 ///   ignored.
 /// * For 3d billboards the x, y, z and w, h values are specified in game-units relative to the game
 ///   world.
-pub const SpriteData = packed struct {
+pub const SpriteData = extern struct {
     /// Center of the object.
-    position: packed struct { x: f32, y: f32, z: f32 },
-    size: packed struct { w: f32, h: f32 },
+    position: extern struct { x: f32 align(1), y: f32 align(1), z: f32 align(1) },
+    size: extern struct { w: f32 align(1), h: f32 align(1) },
     /// Specifies the part of the currently bound texture which should be stretched onto the
     /// billboard.
     source_rect: TextureSourceRectangle,
 
     /// Offsets will be applied after scaling but before Z rotation. Can be used to preserve
     /// letter ordering when rendering text sentences.
-    offset_from_origin: packed struct { x: f32, y: f32 },
+    offset_from_origin: extern struct { x: f32 align(1), y: f32 align(1) },
     tint: Color,
 
-    animation_start_tick: u32,
+    animation_start_tick: u32 align(1),
     /// Some animations can choose to interpolate towards this offset. See
     /// `Keyframe.target_position_interval`.
-    animation_offset_to_target_position: packed struct { x: f32, y: f32, z: f32 },
+    animation_offset_to_target_position: extern struct {
+        x: f32 align(1),
+        y: f32 align(1),
+        z: f32 align(1),
+    },
     animation_index: u8,
 
-    /// 0 if the billboard should shrink with increasing camera distance.
-    /// 1 if the billboard should have a fixed pixel size independently from its distance to the
+    /// False if the billboard should shrink with increasing camera distance.
+    /// True if the billboard should have a fixed pixel size independently from its distance to the
     /// camera. Only relevant for `BillboardRenderer`.
-    preserve_exact_pixel_size: u8,
+    preserve_exact_pixel_size: bool,
 
     comptime {
-        assert(@sizeOf(SpriteData) == 64);
+        assert(@sizeOf(SpriteData) == 54);
     }
 
     /// Constructs an object with all mandatory fields initialized. All other fields are optional.
@@ -645,7 +648,7 @@ pub const SpriteData = packed struct {
 
     pub fn withPreserveExactPixelSize(self: SpriteData, preserve: bool) SpriteData {
         var copy = self;
-        copy.preserve_exact_pixel_size = @intFromBool(preserve);
+        copy.preserve_exact_pixel_size = preserve;
         return copy;
     }
 };
@@ -731,24 +734,32 @@ pub const SpriteAnimationCollection = struct {
         scaling_factor: math.Fix32 = fp(1),
     };
 
-    const PackedAnimation = packed struct {
+    const PackedAnimation = extern struct {
         /// Amount of in-game ticks which every keyframe of this animation lasts. E.g. `1.25`.
         /// Bit-casted from f32.
-        keyframe_duration: u32,
-        offset_to_first_keyframe: u32,
-        keyframe_count: u32,
-        unused_std140_padding: u32 = 0,
+        keyframe_duration: u32 align(1),
+        offset_to_first_keyframe: u32 align(1),
+        keyframe_count: u32 align(1),
+        unused_std140_padding: u32 align(1) = 0,
+
+        comptime {
+            std.debug.assert(@sizeOf(PackedAnimation) == 16);
+        }
     };
 
-    const PackedKeyframe = packed struct {
-        position_offset: packed struct { x: f32, y: f32, z: f32 },
-        target_position_interval: f32,
+    const PackedKeyframe = extern struct {
+        position_offset: extern struct { x: f32 align(1), y: f32 align(1), z: f32 align(1) },
+        target_position_interval: f32 align(1),
         tint: Color,
         /// Bit-casted from f32.
-        z_rotation: u32,
+        z_rotation: u32 align(1),
         /// Bit-casted from f32.
-        scaling_factor: u32,
-        unused_std140_padding1: u32 = 0,
+        scaling_factor: u32 align(1),
+        unused_std140_padding1: u32 align(1) = 0,
+
+        comptime {
+            std.debug.assert(@sizeOf(PackedKeyframe) == 32);
+        }
     };
 };
 
