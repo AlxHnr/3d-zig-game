@@ -558,8 +558,8 @@ fn populateRenderSnapshotsThread(
     snapshots.main_character = self.main_character;
     try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
     for (self.thread_contexts) |context| {
-        try snapshots.enemies.appendSlice(context.enemies.billboard_buffer.items);
-        try snapshots.gems.appendSlice(context.gems.billboard_buffer.items);
+        try snapshots.billboard_buffer.appendSlice(context.enemies.billboard_buffer.items);
+        try snapshots.billboard_buffer.appendSlice(context.gems.billboard_buffer.items);
     }
 }
 

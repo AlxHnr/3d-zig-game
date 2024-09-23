@@ -95,12 +95,16 @@ pub fn run(
     var geometry_renderer = try GeometryRenderer.create(&binding_point_counter);
     defer geometry_renderer.destroy();
 
-    var billboard_renderer = try rendering.BillboardRenderer.create(&binding_point_counter);
-    defer billboard_renderer.destroy();
-
     var billboard_animations = try animation.BillboardAnimationCollection.create(self.allocator);
     defer billboard_animations.destroy(self.allocator);
+
+    var billboard_renderer = try rendering.BillboardRenderer.create(&binding_point_counter);
+    defer billboard_renderer.destroy();
     billboard_renderer.uploadAnimations(billboard_animations.animation_collection.*);
+
+    var player_renderer = try rendering.BillboardRenderer.create(&binding_point_counter);
+    defer player_renderer.destroy();
+    player_renderer.uploadAnimations(billboard_animations.animation_collection.*);
 
     var sprite_renderer = try rendering.SpriteRenderer.create(&binding_point_counter);
     defer sprite_renderer.destroy();
@@ -143,24 +147,7 @@ pub fn run(
             self.swapSnapshots();
             performance_measurements.end(.frame_wait_for_data);
 
-            billboard_buffer.clearRetainingCapacity();
             performance_measurements.begin(.aggregate_enemy_billboards);
-            try billboard_buffer.appendSlice(self.current.enemies.items);
-            performance_measurements.end(.aggregate_enemy_billboards);
-
-            performance_measurements.begin(.aggregate_gem_billboards);
-            try billboard_buffer.appendSlice(self.current.gems.items);
-            performance_measurements.end(.aggregate_gem_billboards);
-
-            try billboard_buffer.append(
-                self.current.main_character.getBillboardData(
-                    spritesheet,
-                    self.current.previous_tick,
-                ),
-            );
-            geometry_renderer.uploadRenderSnapshot(self.current.geometry);
-            billboard_renderer.uploadBillboards(billboard_buffer.items);
-
             billboard_buffer.clearRetainingCapacity();
             try appendRenderHudSpriteData(
                 self.allocator,
@@ -181,7 +168,19 @@ pub fn run(
                     &billboard_buffer,
                 );
             }
+            performance_measurements.end(.aggregate_enemy_billboards);
+
+            performance_measurements.begin(.aggregate_gem_billboards);
+            geometry_renderer.uploadRenderSnapshot(self.current.geometry);
+            billboard_renderer.uploadBillboards(self.current.billboard_buffer.items);
+            player_renderer.uploadBillboards(&.{
+                self.current.main_character.getBillboardData(
+                    spritesheet,
+                    self.current.previous_tick,
+                ),
+            });
             sprite_renderer.uploadSprites(billboard_buffer.items);
+            performance_measurements.end(.aggregate_gem_billboards);
         }
 
         gl.clearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
@@ -217,6 +216,14 @@ pub fn run(
 
         performance_measurements.begin(.draw_billboards);
         billboard_renderer.render(
+            vp_matrix,
+            extra_data.screen_dimensions,
+            camera.getDirectionToTarget(),
+            spritesheet.id,
+            self.current.previous_tick,
+            lap_result.next_tick_progress,
+        );
+        player_renderer.render(
             vp_matrix,
             extra_data.screen_dimensions,
             camera.getDirectionToTarget(),
@@ -303,28 +310,24 @@ pub const Snapshots = struct {
     previous_tick: u32,
     main_character: Player,
     geometry: GeometrySnapshot,
-    enemies: std.ArrayList(rendering.SpriteData),
-    gems: std.ArrayList(rendering.SpriteData),
+    billboard_buffer: std.ArrayList(rendering.SpriteData),
 
     fn create(allocator: std.mem.Allocator) Snapshots {
         return .{
             .previous_tick = 0,
             .main_character = Player.create(fp(0), fp(0), fp(1)),
             .geometry = GeometrySnapshot.create(allocator),
-            .enemies = std.ArrayList(rendering.SpriteData).init(allocator),
-            .gems = std.ArrayList(rendering.SpriteData).init(allocator),
+            .billboard_buffer = std.ArrayList(rendering.SpriteData).init(allocator),
         };
     }
 
     fn destroy(self: *Snapshots) void {
-        self.gems.deinit();
-        self.enemies.deinit();
+        self.billboard_buffer.deinit();
         self.geometry.destroy();
     }
 
     fn reset(self: *Snapshots) void {
-        self.enemies.clearRetainingCapacity();
-        self.gems.clearRetainingCapacity();
+        self.billboard_buffer.clearRetainingCapacity();
     }
 };
 
