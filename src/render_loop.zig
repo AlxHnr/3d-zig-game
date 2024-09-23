@@ -3,7 +3,6 @@ const DialogController = @import("dialog.zig").Controller;
 const EditModeState = @import("edit_mode.zig").State;
 const Fix32 = @import("math.zig").Fix32;
 const FlowField = @import("flow_field.zig");
-const GemSnapshot = @import("gem.zig").RenderSnapshot;
 const GeometryRenderer = @import("map/geometry.zig").Renderer;
 const GeometrySnapshot = @import("map/geometry.zig").RenderSnapshot;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
@@ -150,11 +149,7 @@ pub fn run(
             performance_measurements.end(.aggregate_enemy_billboards);
 
             performance_measurements.begin(.aggregate_gem_billboards);
-            for (self.current.gems.items) |snapshot| {
-                try billboard_buffer.append(
-                    snapshot.makeBillboardData(spritesheet, lap_result.next_tick_progress),
-                );
-            }
+            try billboard_buffer.appendSlice(self.current.gems.items);
             performance_measurements.end(.aggregate_gem_billboards);
 
             try billboard_buffer.append(
@@ -309,7 +304,7 @@ pub const Snapshots = struct {
     main_character: Player,
     geometry: GeometrySnapshot,
     enemies: std.ArrayList(rendering.SpriteData),
-    gems: std.ArrayList(GemSnapshot),
+    gems: std.ArrayList(rendering.SpriteData),
 
     fn create(allocator: std.mem.Allocator) Snapshots {
         return .{
@@ -317,7 +312,7 @@ pub const Snapshots = struct {
             .main_character = Player.create(fp(0), fp(0), fp(1)),
             .geometry = GeometrySnapshot.create(allocator),
             .enemies = std.ArrayList(rendering.SpriteData).init(allocator),
-            .gems = std.ArrayList(GemSnapshot).init(allocator),
+            .gems = std.ArrayList(rendering.SpriteData).init(allocator),
         };
     }
 

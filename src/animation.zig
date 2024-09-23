@@ -1,5 +1,7 @@
 const SpriteAnimationCollection = @import("rendering.zig").SpriteAnimationCollection;
 const fp = math.Fix32.fp;
+const gem_jump_duration_in_ticks = @import("gem.zig").gem_jump_duration_in_ticks;
+const gem_jump_height = @import("gem.zig").gem_jump_height;
 const math = @import("math.zig");
 const std = @import("std");
 
@@ -37,7 +39,8 @@ pub const FourStepCycle = struct {
 pub const BillboardAnimationCollection = struct {
     animation_collection: *SpriteAnimationCollection,
 
-    gem_jump: u8,
+    gem_spawn: u8,
+    gem_pickup: u8,
 
     pub fn create(allocator: std.mem.Allocator) !BillboardAnimationCollection {
         var collection = try allocator.create(SpriteAnimationCollection);
@@ -48,12 +51,34 @@ pub const BillboardAnimationCollection = struct {
         });
         errdefer collection.destroy();
 
+        const gem_tick_duration = gem_jump_duration_in_ticks.div(fp(3));
+        const gem_base = [_]SpriteAnimationCollection.Keyframe{
+            .{
+                .target_position_interval = fp(0.0),
+                .position_offset = .{ .x = fp(0), .y = fp(0), .z = fp(0) },
+            },
+            .{
+                .target_position_interval = fp(0.4),
+                .position_offset = .{ .x = fp(0), .y = gem_jump_height, .z = fp(0) },
+            },
+            .{
+                .target_position_interval = fp(0.6),
+                .position_offset = .{ .x = fp(0), .y = gem_jump_height, .z = fp(0) },
+            },
+            .{
+                .target_position_interval = fp(1.0),
+                .position_offset = .{ .x = fp(0), .y = fp(0), .z = fp(0) },
+            },
+        };
+        var gem_spawn = gem_base;
+        gem_spawn[0].scaling_factor = fp(0);
+        var gem_pickup = gem_base;
+        gem_pickup[3].scaling_factor = fp(0);
+
         return .{
             .animation_collection = collection,
-            .gem_jump = try collection.addAnimation(fp(1), &.{
-                .{ .target_position_interval = fp(0) },
-                .{ .target_position_interval = fp(1) },
-            }),
+            .gem_spawn = try collection.addAnimation(gem_tick_duration, &gem_spawn),
+            .gem_pickup = try collection.addAnimation(gem_tick_duration, &gem_pickup),
         };
     }
 

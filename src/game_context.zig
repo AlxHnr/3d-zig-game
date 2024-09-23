@@ -3,7 +3,6 @@ const CellIndex = @import("spatial_partitioning/cell_index.zig").Index;
 const Enemy = @import("enemy.zig").Enemy;
 const EnemyObjectHandle = SharedContext.EnemyCollection.ObjectHandle;
 const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
-const EnemyRenderSnapshot = @import("enemy.zig").RenderSnapshot;
 const FlowField = @import("flow_field.zig");
 const Gem = @import("gem.zig");
 const GemObjectHandle = SharedContext.GemCollection.ObjectHandle;
@@ -41,6 +40,7 @@ map: Map,
 shared_context: SharedContext,
 spritesheet: textures.SpriteSheetTexture,
 prerendered_enemy_names: PrerenderedEnemyNames,
+billboard_animations: animation.BillboardAnimationCollection,
 
 /// For objects which die at the end of each tick.
 tick_lifetime_allocator: std.heap.ArenaAllocator,
@@ -73,6 +73,8 @@ pub fn create(
     errdefer spritesheet.destroy();
     var prerendered_enemy_names = try PrerenderedEnemyNames.create(allocator, spritesheet);
     errdefer prerendered_enemy_names.destroy(allocator);
+    var billboard_animations = try animation.BillboardAnimationCollection.create(allocator);
+    errdefer billboard_animations.destroy(allocator);
 
     var shared_context = SharedContext.create(allocator);
     errdefer shared_context.destroy();
@@ -133,6 +135,7 @@ pub fn create(
         .shared_context = shared_context,
         .spritesheet = spritesheet,
         .prerendered_enemy_names = prerendered_enemy_names,
+        .billboard_animations = billboard_animations,
 
         .tick_lifetime_allocator = tick_lifetime_allocator,
         .thread_pool = thread_pool,
@@ -153,6 +156,7 @@ pub fn destroy(self: *Context) void {
     self.allocator.free(self.thread_contexts);
     self.thread_pool.destroy(self.allocator);
     self.tick_lifetime_allocator.deinit();
+    self.billboard_animations.destroy(self.allocator);
     self.prerendered_enemy_names.destroy(self.allocator);
     self.spritesheet.destroy();
     self.shared_context.destroy();
@@ -522,7 +526,13 @@ fn processGemThread(self: *Context, thread_id: usize) !void {
                     self.shared_context.gem_collection.getObjectHandle(gem_ptr),
                 ),
             }
-            try thread_context.gems.render_snapshots.append(gem_ptr.makeRenderSnapshot());
+            try thread_context.gems.billboard_buffer.append(
+                gem_ptr.makeBillboardData(
+                    self.spritesheet,
+                    self.billboard_animations,
+                    self.tick_counter,
+                ),
+            );
         }
         try appendUnorderedResultsIfNeeded(
             *GemObjectHandle,
@@ -549,7 +559,7 @@ fn populateRenderSnapshotsThread(
     try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
     for (self.thread_contexts) |context| {
         try snapshots.enemies.appendSlice(context.enemies.billboard_buffer.items);
-        try snapshots.gems.appendSlice(context.gems.render_snapshots.items);
+        try snapshots.gems.appendSlice(context.gems.billboard_buffer.items);
     }
 }
 
@@ -566,7 +576,7 @@ const ThreadContext = struct {
         arena_allocator: *std.heap.ArenaAllocator,
         amount_collected: u64,
         removal_queue: UnorderedCollection(CellItems(*GemObjectHandle)),
-        render_snapshots: std.ArrayList(Gem.RenderSnapshot),
+        billboard_buffer: std.ArrayList(rendering.SpriteData),
     },
 
     fn create(allocator: std.mem.Allocator) !ThreadContext {
@@ -595,13 +605,13 @@ const ThreadContext = struct {
                 .amount_collected = 0,
                 .removal_queue = UnorderedCollection(CellItems(*GemObjectHandle))
                     .create(gem_allocator.allocator()),
-                .render_snapshots = std.ArrayList(Gem.RenderSnapshot).init(allocator),
+                .billboard_buffer = std.ArrayList(rendering.SpriteData).init(allocator),
             },
         };
     }
 
     fn destroy(self: *ThreadContext, allocator: std.mem.Allocator) void {
-        self.gems.render_snapshots.deinit();
+        self.gems.billboard_buffer.deinit();
         self.gems.arena_allocator.deinit();
         allocator.destroy(self.gems.arena_allocator);
         self.enemies.billboard_buffer.deinit();
@@ -622,7 +632,7 @@ const ThreadContext = struct {
         self.gems.amount_collected = 0;
         self.gems.removal_queue = UnorderedCollection(CellItems(*GemObjectHandle))
             .create(self.gems.arena_allocator.allocator());
-        self.gems.render_snapshots.clearRetainingCapacity();
+        self.gems.billboard_buffer.clearRetainingCapacity();
     }
 
     fn CellItems(comptime T: type) type {
