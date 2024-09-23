@@ -14,7 +14,6 @@ const dialog_text_scale = 2;
 pub const Controller = struct {
     allocator: std.mem.Allocator,
     mutex: std.Thread.Mutex,
-    sprite_buffer: []rendering.SpriteData,
     spritesheet: *SpriteSheetTexture,
     dialog_stack: std.ArrayList(Dialog),
 
@@ -27,7 +26,6 @@ pub const Controller = struct {
         return .{
             .allocator = allocator,
             .mutex = .{},
-            .sprite_buffer = &.{},
             .spritesheet = spritesheet,
             .dialog_stack = std.ArrayList(Dialog).init(allocator),
         };
@@ -40,29 +38,23 @@ pub const Controller = struct {
         self.dialog_stack.deinit();
         self.spritesheet.destroy();
         self.allocator.destroy(self.spritesheet);
-        self.allocator.free(self.sprite_buffer);
     }
 
-    pub fn render(
+    pub fn appendSpriteData(
         self: *Controller,
-        renderer: *rendering.SpriteRenderer,
         screen_dimensions: rendering.ScreenDimensions,
-        previous_tick: u32,
-        interval_between_previous_and_current_tick: math.Fix32,
+        out: *std.ArrayList(rendering.SpriteData),
     ) !void {
         self.mutex.lock();
         defer self.mutex.unlock();
+        const interval_between_previous_and_current_tick = fp(1);
 
         var total_sprites: usize = 0;
         for (self.dialog_stack.items) |*dialog| {
             try dialog.prepareRender(interval_between_previous_and_current_tick);
             total_sprites += dialog.getSpriteCount();
         }
-
-        if (self.sprite_buffer.len < total_sprites) {
-            self.sprite_buffer =
-                try self.allocator.realloc(self.sprite_buffer, total_sprites);
-        }
+        try out.ensureUnusedCapacity(total_sprites);
 
         var start: usize = 0;
         var end: usize = 0;
@@ -72,16 +64,10 @@ pub const Controller = struct {
             dialog.populateSpriteData(
                 screen_dimensions,
                 interval_between_previous_and_current_tick,
-                self.sprite_buffer[start..end],
+                out.unusedCapacitySlice()[start..end],
             );
         }
-        renderer.uploadSprites(self.sprite_buffer[0..end]);
-        renderer.render(
-            screen_dimensions,
-            self.spritesheet.id,
-            previous_tick,
-            interval_between_previous_and_current_tick,
-        );
+        out.items.len += total_sprites;
     }
 
     pub fn processElapsedTick(self: *Controller) void {

@@ -122,8 +122,31 @@ pub fn run(
 
     while (self.keep_running.load(.unordered)) {
         performance_measurements.begin(.frame_total);
-
         const lap_result = timer.lap();
+
+        const extra_data = blk: {
+            self.extra_data.mutex.lock();
+            defer self.extra_data.mutex.unlock();
+
+            if (self.extra_data.flow_field_font_size != null) {
+                try self.extra_data.printable_flow_field_snapshot.formatIntoBuffer(
+                    &flow_field_text_buffer,
+                );
+            }
+
+            const copy = self.extra_data;
+            self.extra_data.screen_dimensions_changed = false;
+            break :blk copy;
+        };
+        if (extra_data.screen_dimensions_changed) {
+            gl.viewport(
+                0,
+                0,
+                extra_data.screen_dimensions.w,
+                extra_data.screen_dimensions.h,
+            );
+        }
+
         if (lap_result.elapsed_ticks > 0) {
             performance_measurements.begin(.frame_wait_for_data);
             self.swapSnapshots();
@@ -151,10 +174,35 @@ pub fn run(
             performance_measurements.end(.aggregate_gem_billboards);
 
             try billboard_buffer.append(
-                self.current.main_character.getBillboardData(spritesheet, self.current.previous_tick),
+                self.current.main_character.getBillboardData(
+                    spritesheet,
+                    self.current.previous_tick,
+                ),
             );
-            billboard_renderer.uploadBillboards(billboard_buffer.items);
             geometry_renderer.uploadRenderSnapshot(self.current.geometry);
+            billboard_renderer.uploadBillboards(billboard_buffer.items);
+
+            billboard_buffer.clearRetainingCapacity();
+            try appendRenderHudSpriteData(
+                self.allocator,
+                spritesheet,
+                extra_data.screen_dimensions,
+                self.current.main_character.gem_count,
+                self.current.main_character.character.health.current,
+                &billboard_buffer,
+            );
+            try dialog_controller.appendSpriteData(extra_data.screen_dimensions, &billboard_buffer);
+            try appendEditModeSpritedData(extra_data.edit_mode_state, spritesheet, &billboard_buffer);
+            if (extra_data.flow_field_font_size) |font_size| {
+                try appendFlowFieldSpritedData(
+                    extra_data.screen_dimensions,
+                    spritesheet,
+                    flow_field_text_buffer.items,
+                    font_size,
+                    &billboard_buffer,
+                );
+            }
+            sprite_renderer.uploadSprites(billboard_buffer.items);
         }
 
         gl.clearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
@@ -164,30 +212,6 @@ pub fn run(
         const camera = self.current.main_character.getInterpolatedCamera(
             lap_result.next_tick_progress,
         );
-
-        const extra_data = blk: {
-            self.extra_data.mutex.lock();
-            defer self.extra_data.mutex.unlock();
-
-            if (self.extra_data.flow_field_font_size != null) {
-                try self.extra_data.printable_flow_field_snapshot.formatIntoBuffer(
-                    &flow_field_text_buffer,
-                );
-            }
-
-            const copy = self.extra_data;
-            self.extra_data.screen_dimensions_changed = false;
-            break :blk copy;
-        };
-
-        if (extra_data.screen_dimensions_changed) {
-            gl.viewport(
-                0,
-                0,
-                extra_data.screen_dimensions.w,
-                extra_data.screen_dimensions.h,
-            );
-        }
 
         performance_measurements.begin(.render_level_geometry);
         const ray_wall_collision = self.current.geometry
@@ -225,44 +249,12 @@ pub fn run(
 
         performance_measurements.begin(.hud);
         gl.disable(gl.DEPTH_TEST);
-        try renderHud(
-            self.allocator,
-            &sprite_renderer,
+        sprite_renderer.render(
             extra_data.screen_dimensions,
-            spritesheet,
-            &billboard_buffer,
-            self.current.main_character.gem_count,
-            self.current.main_character.character.health.current,
+            spritesheet.id,
             self.current.previous_tick,
             lap_result.next_tick_progress,
         );
-        try dialog_controller.render(
-            &sprite_renderer,
-            extra_data.screen_dimensions,
-            self.current.previous_tick,
-            lap_result.next_tick_progress,
-        );
-        try renderEditMode(
-            extra_data.edit_mode_state,
-            &sprite_renderer,
-            extra_data.screen_dimensions,
-            spritesheet,
-            &billboard_buffer,
-            self.current.previous_tick,
-            lap_result.next_tick_progress,
-        );
-        if (extra_data.flow_field_font_size) |font_size| {
-            try renderFlowField(
-                &sprite_renderer,
-                extra_data.screen_dimensions,
-                spritesheet,
-                &billboard_buffer,
-                flow_field_text_buffer.items,
-                font_size,
-                self.current.previous_tick,
-                lap_result.next_tick_progress,
-            );
-        }
         performance_measurements.end(.hud);
         performance_measurements.end(.frame_total);
 
@@ -384,57 +376,13 @@ fn swapSnapshots(self: *Loop) void {
     }
 }
 
-fn renderFlowField(
-    renderer: *rendering.SpriteRenderer,
-    screen_dimensions: ScreenDimensions,
-    spritesheet: textures.SpriteSheetTexture,
-    sprite_buffer: *std.ArrayList(rendering.SpriteData),
-    text_block: []const u8,
-    font_size: u16,
-    previous_tick: u32,
-    interval_between_previous_and_current_tick: Fix32,
-) !void {
-    const segments = [_]text_rendering.TextSegment{ui.Highlight.normal(text_block)};
-    const dimensions = text_rendering.getTextBlockDimensions(&segments, fp(font_size), spritesheet);
-    const background = spritesheet.getSpriteSourceRectangle(.white_block);
-    const screen_center = .{
-        .x = fp(screen_dimensions.w).div(fp(2)),
-        .y = fp(screen_dimensions.h).div(fp(2)),
-        .z = fp(0),
-    };
-
-    try sprite_buffer.resize(text_rendering.getSpriteCount(&segments) + 1); // Background sprite.
-    sprite_buffer.items[0] = rendering.SpriteData
-        .create(screen_center, background, dimensions.width, dimensions.height)
-        .withTint(Color.create(0, 0, 0, 255));
-    text_rendering.populateSpriteData(
-        &segments,
-        screen_center.x.sub(dimensions.width.div(fp(2))),
-        screen_center.y.sub(dimensions.height.div(fp(2))),
-        font_size,
-        spritesheet,
-        sprite_buffer.items[1..],
-    );
-
-    renderer.uploadSprites(sprite_buffer.items);
-    renderer.render(
-        screen_dimensions,
-        spritesheet.id,
-        previous_tick,
-        interval_between_previous_and_current_tick,
-    );
-}
-
-fn renderHud(
+fn appendRenderHudSpriteData(
     allocator: std.mem.Allocator,
-    renderer: *rendering.SpriteRenderer,
-    screen_dimensions: ScreenDimensions,
     spritesheet: textures.SpriteSheetTexture,
-    sprite_buffer: *std.ArrayList(rendering.SpriteData),
+    screen_dimensions: ScreenDimensions,
     gem_count: u64,
     player_health: u32,
-    previous_tick: u32,
-    interval_between_previous_and_current_tick: Fix32,
+    out: *std.ArrayList(rendering.SpriteData),
 ) !void {
     var segments = try allocator.alloc(text_rendering.TextSegment, 1);
     defer allocator.free(segments);
@@ -448,29 +396,20 @@ fn renderHud(
     defer allocator.destroy(widget);
     widget.* = .{ .text = ui.Text.wrap(segments, &spritesheet, 3) };
 
-    try sprite_buffer.resize(widget.getSpriteCount());
+    const sprite_count = widget.getSpriteCount();
+    try out.ensureUnusedCapacity(sprite_count);
     widget.populateSpriteData(
         0,
         screen_dimensions.h - widget.getDimensionsInPixels().h,
-        sprite_buffer.items,
+        out.unusedCapacitySlice(),
     );
-    renderer.uploadSprites(sprite_buffer.items);
-    renderer.render(
-        screen_dimensions,
-        spritesheet.id,
-        previous_tick,
-        interval_between_previous_and_current_tick,
-    );
+    out.items.len += sprite_count;
 }
 
-fn renderEditMode(
+fn appendEditModeSpritedData(
     state: EditModeState,
-    renderer: *rendering.SpriteRenderer,
-    screen_dimensions: ScreenDimensions,
     spritesheet: textures.SpriteSheetTexture,
-    sprite_buffer: *std.ArrayList(rendering.SpriteData),
-    previous_tick: u32,
-    interval_between_previous_and_current_tick: Fix32,
+    out: *std.ArrayList(rendering.SpriteData),
 ) !void {
     var text_buffer: [64]u8 = undefined;
     const description = try state.describe(&text_buffer);
@@ -482,20 +421,47 @@ fn renderEditMode(
         .{ .color = text_color, .text = description[1] },
     };
 
-    try sprite_buffer.resize(text_rendering.getSpriteCount(&segments));
+    const sprite_count = text_rendering.getSpriteCount(&segments);
+    try out.ensureUnusedCapacity(sprite_count);
     text_rendering.populateSpriteData(
         &segments,
         fp(0),
         fp(0),
         spritesheet.getFontSizeMultiple(2),
         spritesheet,
-        sprite_buffer.items,
+        out.unusedCapacitySlice(),
     );
-    renderer.uploadSprites(sprite_buffer.items);
-    renderer.render(
-        screen_dimensions,
-        spritesheet.id,
-        previous_tick,
-        interval_between_previous_and_current_tick,
+    out.items.len += sprite_count;
+}
+
+fn appendFlowFieldSpritedData(
+    screen_dimensions: ScreenDimensions,
+    spritesheet: textures.SpriteSheetTexture,
+    text_block: []const u8,
+    font_size: u16,
+    out: *std.ArrayList(rendering.SpriteData),
+) !void {
+    const segments = [_]text_rendering.TextSegment{ui.Highlight.normal(text_block)};
+    const dimensions = text_rendering.getTextBlockDimensions(&segments, fp(font_size), spritesheet);
+    const background = spritesheet.getSpriteSourceRectangle(.white_block);
+    const screen_center = .{
+        .x = fp(screen_dimensions.w).div(fp(2)),
+        .y = fp(screen_dimensions.h).div(fp(2)),
+        .z = fp(0),
+    };
+
+    const sprite_count = text_rendering.getSpriteCount(&segments) + 1; // Background sprite.
+    try out.ensureUnusedCapacity(sprite_count);
+    out.unusedCapacitySlice()[0] = rendering.SpriteData
+        .create(screen_center, background, dimensions.width, dimensions.height)
+        .withTint(Color.create(0, 0, 0, 255));
+    text_rendering.populateSpriteData(
+        &segments,
+        screen_center.x.sub(dimensions.width.div(fp(2))),
+        screen_center.y.sub(dimensions.height.div(fp(2))),
+        font_size,
+        spritesheet,
+        out.unusedCapacitySlice()[1..],
     );
+    out.items.len += sprite_count;
 }
