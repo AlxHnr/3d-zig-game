@@ -218,35 +218,36 @@ pub const SpriteSheetTexture = struct {
     const custom_character_count = 8; // Extra arrows in spritesheet.
     const font_character_side_length = 8;
 
+    const sourceRectangle = rendering.TextureSourceRectangle.create;
     const sprite_source_pixel_map = std.enums.directEnumArray(
         SpriteId,
         rendering.TextureSourceRectangle,
         @typeInfo(SpriteId).Enum.fields.len,
         .{
-            .black_magician_with_book = .{ .x = 72, .y = 112, .w = 23, .h = 32 },
-            .blue_frozen_statue = .{ .x = 0, .y = 168, .w = 32, .h = 31 },
-            .blue_grey_dragon = .{ .x = 32, .y = 128, .w = 32, .h = 32 },
-            .dialog_box_bottom_center = .{ .x = 120, .y = 80, .w = 8, .h = 8 },
-            .dialog_box_bottom_left = .{ .x = 104, .y = 80, .w = 8, .h = 8 },
-            .dialog_box_bottom_right = .{ .x = 136, .y = 80, .w = 8, .h = 8 },
-            .dialog_box_center_center = .{ .x = 120, .y = 64, .w = 8, .h = 8 },
-            .dialog_box_center_left = .{ .x = 104, .y = 64, .w = 8, .h = 8 },
-            .dialog_box_center_right = .{ .x = 136, .y = 64, .w = 8, .h = 8 },
-            .dialog_box_top_center = .{ .x = 120, .y = 48, .w = 8, .h = 8 },
-            .dialog_box_top_left = .{ .x = 104, .y = 48, .w = 8, .h = 8 },
-            .dialog_box_top_right = .{ .x = 136, .y = 48, .w = 8, .h = 8 },
-            .gem = .{ .x = 72, .y = 88, .w = 14, .h = 13 },
-            .green_ghost_warrior = .{ .x = 0, .y = 128, .w = 24, .h = 31 },
-            .player_back_frame_0 = .{ .x = 0, .y = 48, .w = 16, .h = 30 },
-            .player_back_frame_1 = .{ .x = 24, .y = 48, .w = 16, .h = 30 },
-            .player_back_frame_2 = .{ .x = 48, .y = 48, .w = 16, .h = 30 },
-            .player_front_frame_0 = .{ .x = 0, .y = 88, .w = 16, .h = 30 },
-            .player_front_frame_1 = .{ .x = 24, .y = 88, .w = 16, .h = 30 },
-            .player_front_frame_2 = .{ .x = 48, .y = 88, .w = 16, .h = 30 },
-            .red_lava_worm = .{ .x = 0, .y = 208, .w = 29, .h = 31 },
-            .small_bush = .{ .x = 72, .y = 48, .w = 24, .h = 26 },
-            .white_block = .{ .x = 488, .y = 40, .w = 8, .h = 8 },
-            .yellow_floating_eye = .{ .x = 40, .y = 168, .w = 16, .h = 24 },
+            .black_magician_with_book = sourceRectangle(72, 112, 23, 32),
+            .blue_frozen_statue = sourceRectangle(0, 168, 32, 31),
+            .blue_grey_dragon = sourceRectangle(32, 128, 32, 32),
+            .dialog_box_bottom_center = sourceRectangle(120, 80, 8, 8),
+            .dialog_box_bottom_left = sourceRectangle(104, 80, 8, 8),
+            .dialog_box_bottom_right = sourceRectangle(136, 80, 8, 8),
+            .dialog_box_center_center = sourceRectangle(120, 64, 8, 8),
+            .dialog_box_center_left = sourceRectangle(104, 64, 8, 8),
+            .dialog_box_center_right = sourceRectangle(136, 64, 8, 8),
+            .dialog_box_top_center = sourceRectangle(120, 48, 8, 8),
+            .dialog_box_top_left = sourceRectangle(104, 48, 8, 8),
+            .dialog_box_top_right = sourceRectangle(136, 48, 8, 8),
+            .gem = sourceRectangle(72, 88, 14, 13),
+            .green_ghost_warrior = sourceRectangle(0, 128, 24, 31),
+            .player_back_frame_0 = sourceRectangle(0, 48, 16, 30),
+            .player_back_frame_1 = sourceRectangle(24, 48, 16, 30),
+            .player_back_frame_2 = sourceRectangle(48, 48, 16, 30),
+            .player_front_frame_0 = sourceRectangle(0, 88, 16, 30),
+            .player_front_frame_1 = sourceRectangle(24, 88, 16, 30),
+            .player_front_frame_2 = sourceRectangle(48, 88, 16, 30),
+            .red_lava_worm = sourceRectangle(0, 208, 29, 31),
+            .small_bush = sourceRectangle(72, 48, 24, 26),
+            .white_block = sourceRectangle(488, 40, 8, 8),
+            .yellow_floating_eye = sourceRectangle(40, 168, 16, 24),
         },
     );
 
@@ -257,21 +258,16 @@ pub const SpriteSheetTexture = struct {
         var result: [font_character_count + custom_character_count]rendering.TextureSourceRectangle =
             undefined;
         for (result[0..font_character_count], 0..) |_, index| {
-            result[index] = .{
-                .x = @as(u16, @mod(index, 32) * 16),
-                .y = @as(u16, @divFloor(index, 32) * 16),
-                .w = w,
-                .h = h,
-            };
+            result[index] = sourceRectangle(@mod(index, 32) * 16, @divFloor(index, 32) * 16, w, h);
         }
-        result[getCharacterIndex(forceDecodeUtf8("←"))] = .{ .x = 352, .y = 48, .w = w, .h = h };
-        result[getCharacterIndex(forceDecodeUtf8("↖"))] = .{ .x = 368, .y = 48, .w = w, .h = h };
-        result[getCharacterIndex(forceDecodeUtf8("↑"))] = .{ .x = 384, .y = 48, .w = w, .h = h };
-        result[getCharacterIndex(forceDecodeUtf8("↗"))] = .{ .x = 400, .y = 48, .w = w, .h = h };
-        result[getCharacterIndex(forceDecodeUtf8("→"))] = .{ .x = 416, .y = 48, .w = w, .h = h };
-        result[getCharacterIndex(forceDecodeUtf8("↘"))] = .{ .x = 432, .y = 48, .w = w, .h = h };
-        result[getCharacterIndex(forceDecodeUtf8("↓"))] = .{ .x = 448, .y = 48, .w = w, .h = h };
-        result[getCharacterIndex(forceDecodeUtf8("↙"))] = .{ .x = 464, .y = 48, .w = w, .h = h };
+        result[getCharacterIndex(forceDecodeUtf8("←"))] = sourceRectangle(352, 48, w, h);
+        result[getCharacterIndex(forceDecodeUtf8("↖"))] = sourceRectangle(368, 48, w, h);
+        result[getCharacterIndex(forceDecodeUtf8("↑"))] = sourceRectangle(384, 48, w, h);
+        result[getCharacterIndex(forceDecodeUtf8("↗"))] = sourceRectangle(400, 48, w, h);
+        result[getCharacterIndex(forceDecodeUtf8("→"))] = sourceRectangle(416, 48, w, h);
+        result[getCharacterIndex(forceDecodeUtf8("↘"))] = sourceRectangle(432, 48, w, h);
+        result[getCharacterIndex(forceDecodeUtf8("↓"))] = sourceRectangle(448, 48, w, h);
+        result[getCharacterIndex(forceDecodeUtf8("↙"))] = sourceRectangle(464, 48, w, h);
 
         break :blk result;
     };

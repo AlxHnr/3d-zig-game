@@ -145,6 +145,8 @@ void main() {
     gl_Position /= mix(1, gl_Position.w, preserve_exact_pixel_size);
     gl_Position.xy += offset_on_screen;
 
-    fragment_texcoords = source_rect.xy + source_rect.zw * vertex_data.pq;
+    float spritesheet_alignment_grid_size = 8;
+    fragment_texcoords =
+      source_rect.xy * spritesheet_alignment_grid_size + source_rect.zw * vertex_data.pq;
     fragment_tint = tint * keyframe.tint;
 }

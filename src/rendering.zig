@@ -12,10 +12,23 @@ pub const ScreenDimensions = extern struct { w: u16 align(1), h: u16 align(1) };
 
 /// Texture pixel coordinates, starting at the top left corner of the sprite at (0, 0).
 pub const TextureSourceRectangle = extern struct {
-    x: u16 align(1),
-    y: u16 align(1),
-    w: u16 align(1),
-    h: u16 align(1),
+    x: u8, // Must get multiplied by `spritesheet_alignment_grid_size` to get the real value.
+    y: u8, // Must get multiplied by `spritesheet_alignment_grid_size` to get the real value.
+    w: u8,
+    h: u8,
+
+    pub const spritesheet_alignment_grid_size = 8;
+
+    pub fn create(x: u16, y: u16, w: u8, h: u8) TextureSourceRectangle {
+        std.debug.assert(@mod(x, spritesheet_alignment_grid_size) == 0);
+        std.debug.assert(@mod(y, spritesheet_alignment_grid_size) == 0);
+        return .{
+            .x = x / spritesheet_alignment_grid_size,
+            .y = y / spritesheet_alignment_grid_size,
+            .w = w,
+            .h = h,
+        };
+    }
 };
 
 /// Values from 0 to 255.
