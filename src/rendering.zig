@@ -79,12 +79,6 @@ pub const WallRenderer = struct {
         const wall_data_vbo_id = createAndBindEmptyVbo(gl.ARRAY_BUFFER);
         try setupMapGeometryPropertyAttributes(shader, WallData);
         try setupVertexAttributeBasic(shader, WallData, .texture_repeat_dimensions, .keep_type);
-        comptime {
-            assert(@offsetOf(WallData, "properties") == 0);
-            assert(@offsetOf(WallData, "texture_repeat_dimensions") == 72);
-            assert(@sizeOf(WallData) == 84);
-        }
-
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
         gl.bindVertexArray(0);
         setTextureSamplerId(shader, loc_texture_sampler);
@@ -148,6 +142,12 @@ pub const WallRenderer = struct {
             y: f32,
             z: f32,
         },
+
+        comptime {
+            assert(@offsetOf(WallData, "properties") == 0);
+            assert(@offsetOf(WallData, "texture_repeat_dimensions") == 72);
+            assert(@sizeOf(WallData) == 84);
+        }
     };
 };
 
@@ -180,13 +180,6 @@ pub const FloorRenderer = struct {
         try setupMapGeometryPropertyAttributes(shader, FloorData);
         try setupVertexAttributeBasic(shader, FloorData, .affected_by_animation_cycle, .keep_type);
         try setupVertexAttributeBasic(shader, FloorData, .texture_repeat_dimensions, .keep_type);
-        comptime {
-            assert(@offsetOf(FloorData, "properties") == 0);
-            assert(@offsetOf(FloorData, "affected_by_animation_cycle") == 72);
-            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 76);
-            assert(@sizeOf(FloorData) == 84);
-        }
-
         gl.bindBuffer(gl.ARRAY_BUFFER, 0);
         gl.bindVertexArray(0);
         setTextureSamplerId(shader, loc_texture_sampler);
@@ -251,6 +244,13 @@ pub const FloorRenderer = struct {
             x: f32,
             y: f32,
         },
+
+        comptime {
+            assert(@offsetOf(FloorData, "properties") == 0);
+            assert(@offsetOf(FloorData, "affected_by_animation_cycle") == 72);
+            assert(@offsetOf(FloorData, "texture_repeat_dimensions") == 76);
+            assert(@sizeOf(FloorData) == 84);
+        }
     };
 };
 
@@ -396,10 +396,6 @@ pub const BillboardRenderer = struct {
             .preserve_exact_pixel_size,
             .convert_to_float,
         );
-        comptime {
-            assert(@sizeOf(SpriteData) == 64);
-        }
-
         setTextureSamplerId(shader, loc_texture_sampler);
 
         const animation_data_vbo_id, const animation_binding_point =
@@ -571,6 +567,10 @@ pub const SpriteData = packed struct {
     /// 1 if the billboard should have a fixed pixel size independently from its distance to the
     /// camera. Only relevant for `BillboardRenderer`.
     preserve_exact_pixel_size: u8,
+
+    comptime {
+        assert(@sizeOf(SpriteData) == 64);
+    }
 
     /// Constructs an object with all mandatory fields initialized. All other fields are optional.
     pub fn create(
