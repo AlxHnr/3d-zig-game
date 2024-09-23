@@ -584,8 +584,10 @@ pub const SpriteData = extern struct {
     /// camera. Only relevant for `BillboardRenderer`.
     preserve_exact_pixel_size: bool,
 
+    padding: u16,
     comptime {
-        assert(@sizeOf(SpriteData) == 54);
+        assert(@sizeOf(SpriteData) == 56);
+        assert(@mod(@sizeOf(SpriteData), @sizeOf(u32)) == 0);
     }
 
     /// Constructs an object with all mandatory fields initialized. All other fields are optional.
