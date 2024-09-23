@@ -414,8 +414,8 @@ pub const BillboardRenderer = struct {
 
         var static_buffer: [512]u8 = undefined;
         var static_allocator = std.heap.FixedBufferAllocator.init(&static_buffer);
-        var default_animations = SpriteAnimationCollection.create(static_allocator.allocator());
-        default_animations.addAnimation(fp(1), &.{.{}}) catch unreachable;
+        const default_animations =
+            try SpriteAnimationCollection.create(static_allocator.allocator(), fp(1), &.{.{}});
 
         var result = BillboardRenderer{
             .vao_id = vao_id,
@@ -654,11 +654,27 @@ pub const SpriteAnimationCollection = struct {
     animations: std.ArrayList(PackedAnimation),
     keyframes: std.ArrayList(PackedKeyframe),
 
-    pub fn create(allocator: std.mem.Allocator) SpriteAnimationCollection {
-        return .{
+    /// Creates a collection with a predefined default animation, which is used by sprites which
+    /// never set `animation_index`.
+    pub fn create(
+        allocator: std.mem.Allocator,
+        /// Amount of in-game ticks which every keyframe of the animation lasts. E.g. `1.25`.
+        default_animation_keyframe_duration: math.Fix32,
+        /// Must contain at least one keyframe.
+        default_animation_keyframes: []const Keyframe,
+    ) !SpriteAnimationCollection {
+        var collection = SpriteAnimationCollection{
             .animations = std.ArrayList(PackedAnimation).init(allocator),
             .keyframes = std.ArrayList(PackedKeyframe).init(allocator),
         };
+        errdefer collection.destroy();
+
+        const index = try collection.addAnimation(
+            default_animation_keyframe_duration,
+            default_animation_keyframes,
+        );
+        std.debug.assert(index == 0);
+        return collection;
     }
 
     pub fn destroy(self: *SpriteAnimationCollection) void {
@@ -666,18 +682,18 @@ pub const SpriteAnimationCollection = struct {
         self.animations.deinit();
     }
 
-    // Animations are referenced by `SpriteData.animation_index`. The index of the first inserted
-    // animation is 0, the second animation is 1 etc.
+    // Returns a value which can be referenced by `SpriteData.animation_index`.
     pub fn addAnimation(
         self: *SpriteAnimationCollection,
         /// Amount of in-game ticks which every keyframe of this animation lasts. E.g. `1.25`.
         keyframe_duration: math.Fix32,
         /// Must contain at least one keyframe.
         keyframes: []const Keyframe,
-    ) !void {
+    ) !u8 {
         std.debug.assert(keyframes.len > 0);
         try self.animations.ensureUnusedCapacity(1);
         try self.keyframes.ensureUnusedCapacity(keyframes.len);
+        const new_animation_index = self.animations.items.len;
 
         self.animations.appendAssumeCapacity(.{
             .keyframe_duration = @bitCast(keyframe_duration.convertTo(f32)),
@@ -696,6 +712,7 @@ pub const SpriteAnimationCollection = struct {
                 .z_rotation = @bitCast(keyframe.z_rotation.convertTo(f32)),
             });
         }
+        return @intCast(new_animation_index);
     }
 
     /// Animations will loop forever, with the last keyframe being followed by the first. All values
