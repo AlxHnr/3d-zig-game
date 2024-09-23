@@ -112,7 +112,7 @@ pub const Enemy = struct {
             spritesheet.getSpriteSourceRectangle(self.config.sprite),
             self.character.moving_circle.radius.mul(fp(2)),
             self.config.height,
-        ).withAnimation(previous_tick, 0).withAnimationTargetPosition(
+        ).withAnimationStartTick(previous_tick).withAnimationTargetPosition(
             self.character.moving_circle.getPosition().addY(y_offset),
         ));
 
@@ -143,7 +143,7 @@ pub const Enemy = struct {
             for (out_slice) |*billboard_data| {
                 billboard_data.* = billboard_data
                     .withPosition(previous_position)
-                    .withAnimation(previous_tick, 0)
+                    .withAnimationStartTick(previous_tick)
                     .withAnimationTargetPosition(current_position);
             }
         }
@@ -203,7 +203,7 @@ pub const Enemy = struct {
         ).withOffsetFromOrigin(health_bar_w.sub(left_health_bar_w).neg().div(fp(2)), fp(0))
             .withTint(current_health)
             .withPreserveExactPixelSize(true)
-            .withAnimation(previous_tick, 0).withAnimationTargetPosition(current_position);
+            .withAnimationStartTick(previous_tick).withAnimationTargetPosition(current_position);
 
         const right_half = &out[1];
         const right_health_bar_w = health_bar_w.mul(fp(1).sub(health_percent));
@@ -215,7 +215,7 @@ pub const Enemy = struct {
         ).withOffsetFromOrigin(health_bar_w.sub(right_health_bar_w).div(fp(2)), fp(0))
             .withTint(background)
             .withPreserveExactPixelSize(true)
-            .withAnimation(previous_tick, 0).withAnimationTargetPosition(current_position);
+            .withAnimationStartTick(previous_tick).withAnimationTargetPosition(current_position);
     }
 };
 

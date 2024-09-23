@@ -622,10 +622,15 @@ pub const SpriteData = packed struct {
         return copy;
     }
 
-    pub fn withAnimation(self: SpriteData, start_tick: u32, animation_index: usize) SpriteData {
+    pub fn withAnimationStartTick(self: SpriteData, start_tick: u32) SpriteData {
         var copy = self;
         copy.animation_start_tick = start_tick;
-        copy.animation_index = @intCast(animation_index);
+        return copy;
+    }
+
+    pub fn withAnimationIndex(self: SpriteData, animation_index: u8) SpriteData {
+        var copy = self;
+        copy.animation_index = animation_index;
         return copy;
     }
 

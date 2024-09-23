@@ -207,7 +207,7 @@ pub const Player = struct {
             spritesheet.getSpriteSourceRectangle(sprite_id),
             self.character.moving_circle.radius.mul(fp(2)),
             self.character.height,
-        ).withAnimation(previous_tick, 0).withAnimationTargetPosition(
+        ).withAnimationStartTick(previous_tick).withAnimationTargetPosition(
             self.character.moving_circle.getPosition().addY(height_offset),
         );
     }
