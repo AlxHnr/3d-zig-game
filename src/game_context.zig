@@ -10,8 +10,8 @@ const GemObjectHandle = SharedContext.GemCollection.ObjectHandle;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
+const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
 const RenderLoop = @import("render_loop.zig");
-const ScreenDimensions = @import("rendering.zig").ScreenDimensions;
 const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig");
 const ThreadPool = @import("thread_pool.zig").Pool;
@@ -24,6 +24,7 @@ const fp = math.Fix32.fp;
 const fp64 = math.Fix64.fp;
 const game_unit = @import("game_unit.zig");
 const math = @import("math.zig");
+const rendering = @import("rendering.zig");
 const std = @import("std");
 const textures = @import("textures.zig");
 
@@ -39,6 +40,7 @@ map_file_path: []const u8,
 map: Map,
 shared_context: SharedContext,
 spritesheet: textures.SpriteSheetTexture,
+prerendered_enemy_names: PrerenderedEnemyNames,
 
 /// For objects which die at the end of each tick.
 tick_lifetime_allocator: std.heap.ArenaAllocator,
@@ -69,6 +71,8 @@ pub fn create(
 
     var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
     errdefer spritesheet.destroy();
+    var prerendered_enemy_names = try PrerenderedEnemyNames.create(allocator, spritesheet);
+    errdefer prerendered_enemy_names.destroy(allocator);
 
     var shared_context = SharedContext.create(allocator);
     errdefer shared_context.destroy();
@@ -128,6 +132,7 @@ pub fn create(
         .map = map,
         .shared_context = shared_context,
         .spritesheet = spritesheet,
+        .prerendered_enemy_names = prerendered_enemy_names,
 
         .tick_lifetime_allocator = tick_lifetime_allocator,
         .thread_pool = thread_pool,
@@ -148,6 +153,7 @@ pub fn destroy(self: *Context) void {
     self.allocator.free(self.thread_contexts);
     self.thread_pool.destroy(self.allocator);
     self.tick_lifetime_allocator.deinit();
+    self.prerendered_enemy_names.destroy(self.allocator);
     self.spritesheet.destroy();
     self.shared_context.destroy();
     self.map.destroy();
@@ -262,7 +268,7 @@ pub fn castRay(
     self: Context,
     mouse_x: u16,
     mouse_y: u16,
-    screen_dimensions: ScreenDimensions,
+    screen_dimensions: rendering.ScreenDimensions,
 ) collision.Ray3d {
     const camera = self.main_character.camera;
     const ray_wall_collision = self.map.geometry
@@ -460,7 +466,13 @@ fn processEnemyCellGroup(
         if (enemy_ptr.state == .attacking) {
             try cell_attacking_list.append(enemy_ptr.makeAttackingEnemyPosition());
         }
-        try thread_context.enemies.render_snapshots.append(enemy_ptr.makeRenderSnapshot());
+        try enemy_ptr.appendBillboardData(
+            self.spritesheet,
+            self.prerendered_enemy_names,
+            self.main_character.camera,
+            self.tick_counter,
+            &thread_context.enemies.billboard_buffer,
+        );
     }
 
     try appendUnorderedResultsIfNeeded(
@@ -536,7 +548,7 @@ fn populateRenderSnapshotsThread(
     snapshots.main_character = self.main_character;
     try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
     for (self.thread_contexts) |context| {
-        try snapshots.enemies.appendSlice(context.enemies.render_snapshots.items);
+        try snapshots.enemies.appendSlice(context.enemies.billboard_buffer.items);
         try snapshots.gems.appendSlice(context.gems.render_snapshots.items);
     }
 }
@@ -548,7 +560,7 @@ const ThreadContext = struct {
         insertion_queue: UnorderedCollection(CellItems(Enemy)),
         removal_queue: UnorderedCollection(CellItems(*EnemyObjectHandle)),
         attacking_positions: UnorderedCollection(CellItems(AttackingEnemyPosition)),
-        render_snapshots: std.ArrayList(EnemyRenderSnapshot),
+        billboard_buffer: std.ArrayList(rendering.SpriteData),
     },
     gems: struct {
         arena_allocator: *std.heap.ArenaAllocator,
@@ -576,7 +588,7 @@ const ThreadContext = struct {
                     .create(enemy_allocator.allocator()),
                 .attacking_positions = UnorderedCollection(CellItems(AttackingEnemyPosition))
                     .create(enemy_allocator.allocator()),
-                .render_snapshots = std.ArrayList(EnemyRenderSnapshot).init(allocator),
+                .billboard_buffer = std.ArrayList(rendering.SpriteData).init(allocator),
             },
             .gems = .{
                 .arena_allocator = gem_allocator,
@@ -592,7 +604,7 @@ const ThreadContext = struct {
         self.gems.render_snapshots.deinit();
         self.gems.arena_allocator.deinit();
         allocator.destroy(self.gems.arena_allocator);
-        self.enemies.render_snapshots.deinit();
+        self.enemies.billboard_buffer.deinit();
         self.enemies.arena_allocator.deinit();
         allocator.destroy(self.enemies.arena_allocator);
     }
@@ -606,7 +618,7 @@ const ThreadContext = struct {
             .create(self.enemies.arena_allocator.allocator());
         self.enemies.attacking_positions = UnorderedCollection(CellItems(AttackingEnemyPosition))
             .create(self.enemies.arena_allocator.allocator());
-        self.enemies.render_snapshots.clearRetainingCapacity();
+        self.enemies.billboard_buffer.clearRetainingCapacity();
         self.gems.amount_collected = 0;
         self.gems.removal_queue = UnorderedCollection(CellItems(*GemObjectHandle))
             .create(self.gems.arena_allocator.allocator());

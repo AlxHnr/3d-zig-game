@@ -48,8 +48,20 @@ pub const Enemy = struct {
     config: *const Config,
     character: GameCharacter,
     state: State,
-    state_at_previous_tick: RenderSnapshot.State,
+    /// For interpolating between two ticks.
+    previous_tick_data: TickData,
 
+    const State = union(enum) {
+        spawning: void,
+        idle: IdleState,
+        attacking: AttackingState,
+        dead: void,
+    };
+
+    const enemy_name_font_scale = 1;
+    const health_bar_scale = fp(1);
+    const health_bar_height = health_bar_scale.mul(fp(6));
+    const offset_to_player_height_factor = fp(1.2);
     const peer_overlap_radius =
         fp(position_grid_cell_size).div(fp(simulation.enemy_peer_overlap_radius_factor));
     const peer_flock_radius = fp(position_grid_cell_size).div(fp(10)).mul(fp(4));
@@ -71,12 +83,12 @@ pub const Enemy = struct {
             .config = config,
             .character = character,
             .state = .{ .spawning = undefined },
-            .state_at_previous_tick = RenderSnapshot.State.create(character),
+            .previous_tick_data = TickData.create(character),
         };
     }
 
     pub fn processElapsedTick(self: *Enemy, context: TickContext) void {
-        self.state_at_previous_tick = RenderSnapshot.State.create(self.character);
+        self.previous_tick_data = TickData.create(self.character);
         switch (self.state) {
             .spawning => self.state = .{ .idle = IdleState.create(context) },
             .idle => |*state| state.handleElapsedTick(self, context),
@@ -86,12 +98,55 @@ pub const Enemy = struct {
         self.character.processElapsedTick(context.map.*);
     }
 
-    pub fn makeRenderSnapshot(self: Enemy) RenderSnapshot {
-        return .{
-            .config = self.config,
-            .current_state = RenderSnapshot.State.create(self.character),
-            .state_at_previous_tick = self.state_at_previous_tick,
-        };
+    pub fn appendBillboardData(
+        self: Enemy,
+        spritesheet: SpriteSheetTexture,
+        cache: PrerenderedNames,
+        camera: ThirdPersonCamera,
+        previous_tick: u32,
+        out: *std.ArrayList(rendering.SpriteData),
+    ) !void {
+        const y_offset = self.character.height.div(fp(2));
+        try out.append(rendering.SpriteData.create(
+            self.previous_tick_data.position.addY(y_offset),
+            spritesheet.getSpriteSourceRectangle(self.config.sprite),
+            self.character.moving_circle.radius.mul(fp(2)),
+            self.config.height,
+        ).withAnimation(previous_tick, 0).withAnimationTargetPosition(
+            self.character.moving_circle.getPosition().addY(y_offset),
+        ));
+
+        const distance = self.character.moving_circle.getPosition().toVector3d()
+            .subtract(camera.getPosition()).lengthSquared();
+        const max_text_distance = self.character.height.convertTo(math.Fix64).mul(fp64(15));
+        const max_health_distance = self.character.height.convertTo(math.Fix64).mul(fp64(35));
+        if (distance.lt(max_health_distance.mul(max_health_distance))) {
+            try out.ensureUnusedCapacity(2);
+            self.populateHealthbarBillboardData(
+                spritesheet,
+                previous_tick,
+                out.unusedCapacitySlice(),
+            );
+            out.items.len += 2;
+        }
+
+        if (distance.lt(max_text_distance.mul(max_text_distance))) {
+            const cached_text = cache.get(self.config);
+            const text_y_offset = self.character.height.mul(offset_to_player_height_factor);
+            const previous_position = self.previous_tick_data.position.addY(text_y_offset);
+            const current_position = self.character.moving_circle.getPosition().addY(text_y_offset);
+            try out.ensureUnusedCapacity(cached_text.len);
+            const out_slice = out.unusedCapacitySlice()[0..cached_text.len];
+            out.items.len += cached_text.len;
+
+            @memcpy(out_slice, cached_text);
+            for (out_slice) |*billboard_data| {
+                billboard_data.* = billboard_data
+                    .withPosition(previous_position)
+                    .withAnimation(previous_tick, 0)
+                    .withAnimationTargetPosition(current_position);
+            }
+        }
     }
 
     pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
@@ -105,106 +160,33 @@ pub const Enemy = struct {
         };
     }
 
-    const State = union(enum) {
-        spawning: void,
-        idle: IdleState,
-        attacking: AttackingState,
-        dead: void,
-    };
-};
-
-pub const RenderSnapshot = struct {
-    config: *const Config,
-    current_state: State,
-    state_at_previous_tick: State,
-
-    const enemy_name_font_scale = 1;
-    const health_bar_scale = fp(1);
-    const health_bar_height = health_bar_scale.mul(fp(6));
-    const offset_to_player_height_factor = fp(1.2);
-
-    pub fn appendBillboardData(
-        self: RenderSnapshot,
-        spritesheet: SpriteSheetTexture,
-        cache: PrerenderedNames,
-        camera: ThirdPersonCamera,
-        previous_tick: u32,
-        out: *std.ArrayList(rendering.SpriteData),
-    ) !void {
-        const height_offset = self.current_state.height.div(fp(2));
-        try out.append(rendering.SpriteData.create(
-            self.state_at_previous_tick.position.addY(height_offset),
-            spritesheet.getSpriteSourceRectangle(self.config.sprite),
-            self.current_state.radius.mul(fp(2)),
-            self.config.height,
-        ).withAnimation(previous_tick, 0).withAnimationTargetPosition(
-            self.current_state.position.addY(height_offset),
-        ));
-
-        const distance = self.current_state.position.toVector3d()
-            .subtract(camera.getPosition()).lengthSquared();
-        const max_text_distance = self.current_state.height.convertTo(math.Fix64).mul(fp64(15));
-        const max_health_distance = self.current_state.height.convertTo(math.Fix64).mul(fp64(35));
-        if (distance.lt(max_health_distance.mul(max_health_distance))) {
-            try out.ensureUnusedCapacity(2);
-            self.populateHealthbarBillboardData(
-                spritesheet,
-                previous_tick,
-                out.unusedCapacitySlice(),
-            );
-            out.items.len += 2;
-        }
-
-        if (distance.lt(max_text_distance.mul(max_text_distance))) {
-            const cached_text = cache.get(self.config);
-            try out.ensureUnusedCapacity(cached_text.len);
-            const out_slice = out.unusedCapacitySlice()[0..cached_text.len];
-            out.items.len += cached_text.len;
-
-            @memcpy(out_slice, cached_text);
-            const y_offset = self.current_state.height.mul(offset_to_player_height_factor);
-            const previous_position = self.state_at_previous_tick.position.addY(y_offset);
-            const current_position = self.current_state.position.addY(y_offset);
-            for (out_slice) |*billboard_data| {
-                billboard_data.* = billboard_data
-                    .withPosition(previous_position)
-                    .withAnimation(previous_tick, 0)
-                    .withAnimationTargetPosition(current_position);
-            }
-        }
-    }
-
-    const State = struct {
+    const TickData = struct {
         position: math.FlatVector,
-        radius: math.Fix32,
-        height: math.Fix32,
         health: GameCharacter.Health,
 
-        fn create(character: GameCharacter) State {
+        fn create(character: GameCharacter) TickData {
             return .{
                 .position = character.moving_circle.getPosition(),
-                .radius = character.moving_circle.radius,
-                .height = character.height,
                 .health = character.health,
             };
         }
     };
 
     fn populateHealthbarBillboardData(
-        self: RenderSnapshot,
+        self: Enemy,
         spritesheet: SpriteSheetTexture,
         previous_tick: u32,
         out: []rendering.SpriteData,
     ) void {
         const health_percent =
-            fp(self.current_state.health.current).div(fp(self.current_state.health.max));
+            fp(self.character.health.current).div(fp(self.character.health.max));
         const source = spritesheet.getSpriteSourceRectangle(.white_block);
         // This factor has been determined by trial and error.
         const health_bar_factor =
-            fp(std.math.log1p(@as(f32, @floatFromInt(self.current_state.health.max))) * 8);
-        const y_offset = self.current_state.height.mul(offset_to_player_height_factor);
-        const previous_position = self.state_at_previous_tick.position.addY(y_offset);
-        const current_position = self.current_state.position.addY(y_offset);
+            fp(std.math.log1p(@as(f32, @floatFromInt(self.character.health.max))) * 8);
+        const y_offset = self.character.height.mul(offset_to_player_height_factor);
+        const previous_position = self.previous_tick_data.position.addY(y_offset);
+        const current_position = self.character.moving_circle.getPosition().addY(y_offset);
         const health_bar_w = health_bar_scale.mul(health_bar_factor);
         const full_health = Color.create(21, 213, 21, 255);
         const empty_health = Color.create(213, 21, 21, 255);
@@ -266,8 +248,8 @@ pub const PrerenderedNames = struct {
                 text_segment,
                 .{ .x = fp(0), .y = fp(0), .z = fp(0) },
                 0,
-                RenderSnapshot.health_bar_height.mul(fp(2)).convertTo(i16),
-                spritesheet.getFontSizeMultiple(RenderSnapshot.enemy_name_font_scale),
+                Enemy.health_bar_height.mul(fp(2)).convertTo(i16),
+                spritesheet.getFontSizeMultiple(Enemy.enemy_name_font_scale),
                 spritesheet,
                 billboard_data,
             );
@@ -391,7 +373,7 @@ const AttackingState = struct {
             AverageAccumulator.create(enemy.character.acceleration_direction);
         while (iterator.next()) |peer| {
             // Ignore self.
-            if (peer.position.equal(enemy.state_at_previous_tick.position)) {
+            if (peer.position.equal(enemy.previous_tick_data.position)) {
                 continue;
             }
 

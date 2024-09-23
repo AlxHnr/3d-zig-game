@@ -1,7 +1,6 @@
 const Color = rendering.Color;
 const DialogController = @import("dialog.zig").Controller;
 const EditModeState = @import("edit_mode.zig").State;
-const EnemySnapshot = @import("enemy.zig").RenderSnapshot;
 const Fix32 = @import("math.zig").Fix32;
 const FlowField = @import("flow_field.zig");
 const GemSnapshot = @import("gem.zig").RenderSnapshot;
@@ -9,7 +8,6 @@ const GeometryRenderer = @import("map/geometry.zig").Renderer;
 const GeometrySnapshot = @import("map/geometry.zig").RenderSnapshot;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
 const Player = @import("game_unit.zig").Player;
-const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
 const ScreenDimensions = rendering.ScreenDimensions;
 const UboBindingPointCounter = @import("ubo_binding_point_counter.zig");
 const fp = @import("math.zig").Fix32.fp;
@@ -114,9 +112,6 @@ pub fn run(
     var billboard_buffer = std.ArrayList(rendering.SpriteData).init(self.allocator);
     defer billboard_buffer.deinit();
 
-    var prerendered_enemy_names = try PrerenderedEnemyNames.create(self.allocator, spritesheet);
-    defer prerendered_enemy_names.destroy(self.allocator);
-
     var flow_field_text_buffer = std.ArrayList(u8).init(self.allocator);
     defer flow_field_text_buffer.deinit();
 
@@ -154,15 +149,7 @@ pub fn run(
 
             billboard_buffer.clearRetainingCapacity();
             performance_measurements.begin(.aggregate_enemy_billboards);
-            for (self.current.enemies.items) |snapshot| {
-                try snapshot.appendBillboardData(
-                    spritesheet,
-                    prerendered_enemy_names,
-                    self.current.main_character.camera,
-                    self.current.previous_tick,
-                    &billboard_buffer,
-                );
-            }
+            try billboard_buffer.appendSlice(self.current.enemies.items);
             performance_measurements.end(.aggregate_enemy_billboards);
 
             performance_measurements.begin(.aggregate_gem_billboards);
@@ -324,7 +311,7 @@ pub const Snapshots = struct {
     previous_tick: u32,
     main_character: Player,
     geometry: GeometrySnapshot,
-    enemies: std.ArrayList(EnemySnapshot),
+    enemies: std.ArrayList(rendering.SpriteData),
     gems: std.ArrayList(GemSnapshot),
 
     fn create(allocator: std.mem.Allocator) Snapshots {
@@ -332,7 +319,7 @@ pub const Snapshots = struct {
             .previous_tick = 0,
             .main_character = Player.create(fp(0), fp(0), fp(1)),
             .geometry = GeometrySnapshot.create(allocator),
-            .enemies = std.ArrayList(EnemySnapshot).init(allocator),
+            .enemies = std.ArrayList(rendering.SpriteData).init(allocator),
             .gems = std.ArrayList(GemSnapshot).init(allocator),
         };
     }
