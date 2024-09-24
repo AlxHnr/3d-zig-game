@@ -58,12 +58,6 @@ pub const Enemy = struct {
         dead: void,
     };
 
-    const enemy_name_font_scale = 1;
-    const health_bar_scale = fp(1);
-    const health_bar_height = health_bar_scale.mul(fp(6));
-    const offset_to_player_height_factor = fp(1.2);
-    const peer_overlap_radius =
-        fp(position_grid_cell_size).div(fp(simulation.enemy_peer_overlap_radius_factor));
     const peer_flock_radius = fp(position_grid_cell_size).div(fp(10)).mul(fp(4));
 
     pub fn create(
@@ -101,13 +95,13 @@ pub const Enemy = struct {
     pub fn appendBillboardData(
         self: Enemy,
         spritesheet: SpriteSheetTexture,
-        cache: PrerenderedNames,
-        camera: ThirdPersonCamera,
         previous_tick: u32,
         out: *std.ArrayList(rendering.SpriteData),
     ) !void {
+        try out.ensureUnusedCapacity(3);
+
         const y_offset = self.character.height.div(fp(2));
-        try out.append(rendering.SpriteData.create(
+        out.appendAssumeCapacity(rendering.SpriteData.create(
             self.previous_tick_data.position.addY(y_offset),
             spritesheet.getSpriteSourceRectangle(self.config.sprite),
             self.character.moving_circle.radius.mul(fp(2)),
@@ -115,38 +109,8 @@ pub const Enemy = struct {
         ).withAnimationStartTick(previous_tick).withAnimationTargetPosition(
             self.character.moving_circle.getPosition().addY(y_offset),
         ));
-
-        const distance = self.character.moving_circle.getPosition().toVector3d()
-            .subtract(camera.getPosition()).lengthSquared();
-        const max_text_distance = self.character.height.convertTo(math.Fix64).mul(fp64(15));
-        const max_health_distance = self.character.height.convertTo(math.Fix64).mul(fp64(35));
-        if (distance.lt(max_health_distance.mul(max_health_distance))) {
-            try out.ensureUnusedCapacity(2);
-            self.populateHealthbarBillboardData(
-                spritesheet,
-                previous_tick,
-                out.unusedCapacitySlice(),
-            );
-            out.items.len += 2;
-        }
-
-        if (distance.lt(max_text_distance.mul(max_text_distance))) {
-            const cached_text = cache.get(self.config);
-            const text_y_offset = self.character.height.mul(offset_to_player_height_factor);
-            const previous_position = self.previous_tick_data.position.addY(text_y_offset);
-            const current_position = self.character.moving_circle.getPosition().addY(text_y_offset);
-            try out.ensureUnusedCapacity(cached_text.len);
-            const out_slice = out.unusedCapacitySlice()[0..cached_text.len];
-            out.items.len += cached_text.len;
-
-            @memcpy(out_slice, cached_text);
-            for (out_slice) |*billboard_data| {
-                billboard_data.* = billboard_data
-                    .withPosition(previous_position)
-                    .withAnimationStartTick(previous_tick)
-                    .withAnimationTargetPosition(current_position);
-            }
-        }
+        self.populateHealthbarBillboardData(spritesheet, previous_tick, out.unusedCapacitySlice());
+        out.items.len += 2;
     }
 
     pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
@@ -178,20 +142,23 @@ pub const Enemy = struct {
         previous_tick: u32,
         out: []rendering.SpriteData,
     ) void {
-        const health_percent =
-            fp(self.character.health.current).div(fp(self.character.health.max));
+        const offset_to_player_height_factor = fp(1.2);
+        const health_color = Color.create(21, 213, 21, 255);
+        const background_color = Color.create(213, 21, 21, 255);
         const source = spritesheet.getSpriteSourceRectangle(.white_block);
+        const health_percent = fp64(self.character.health.current)
+            .div(fp64(self.character.health.max))
+            .convertTo(math.Fix32);
+
         // This factor has been determined by trial and error.
         const health_bar_factor =
             fp(std.math.log1p(@as(f32, @floatFromInt(self.character.health.max))) * 8);
         const y_offset = self.character.height.mul(offset_to_player_height_factor);
         const previous_position = self.previous_tick_data.position.addY(y_offset);
         const current_position = self.character.moving_circle.getPosition().addY(y_offset);
+        const health_bar_scale = self.character.height.mul(fp(0.0075));
         const health_bar_w = health_bar_scale.mul(health_bar_factor);
-        const full_health = Color.create(21, 213, 21, 255);
-        const empty_health = Color.create(213, 21, 21, 255);
-        const background = Color.create(0, 0, 0, 255);
-        const current_health = empty_health.lerp(full_health, health_percent);
+        const health_bar_h = health_bar_scale.mul(fp(8));
 
         const left_half = &out[0];
         const left_health_bar_w = health_bar_w.mul(health_percent);
@@ -199,10 +166,9 @@ pub const Enemy = struct {
             previous_position,
             source,
             left_health_bar_w,
-            health_bar_height,
+            health_bar_h,
         ).withOffsetFromOrigin(health_bar_w.sub(left_health_bar_w).neg().div(fp(2)), fp(0))
-            .withTint(current_health)
-            .withPreserveExactPixelSize(true)
+            .withTint(health_color)
             .withAnimationStartTick(previous_tick).withAnimationTargetPosition(current_position);
 
         const right_half = &out[1];
@@ -211,74 +177,11 @@ pub const Enemy = struct {
             previous_position,
             source,
             right_health_bar_w,
-            health_bar_height,
+            health_bar_h,
         ).withOffsetFromOrigin(health_bar_w.sub(right_health_bar_w).div(fp(2)), fp(0))
-            .withTint(background)
-            .withPreserveExactPixelSize(true)
+            .withTint(background_color)
             .withAnimationStartTick(previous_tick).withAnimationTargetPosition(current_position);
     }
-};
-
-pub const PrerenderedNames = struct {
-    cache: Cache,
-
-    const Cache = std.AutoHashMap(*const Config, []rendering.SpriteData);
-
-    pub fn create(
-        allocator: std.mem.Allocator,
-        spritesheet: SpriteSheetTexture,
-    ) !PrerenderedNames {
-        var cache = Cache.init(allocator);
-        errdefer cache.deinit();
-        errdefer {
-            var iterator = cache.valueIterator();
-            while (iterator.next()) |billboard_data| {
-                allocator.free(billboard_data.*);
-            }
-        }
-        for (enemy_preset_addresses) |preset_ptr| {
-            const text_segment = &[_]text_rendering.TextSegment{
-                .{ .color = Color.white, .text = preset_ptr.name },
-            };
-            const billboard_count = text_rendering.getSpriteCount(text_segment);
-            const billboard_data = try allocator.alloc(rendering.SpriteData, billboard_count);
-            errdefer allocator.free(billboard_data);
-
-            text_rendering.populateBillboardDataExactPixelSizeWithOffset(
-                text_segment,
-                .{ .x = fp(0), .y = fp(0), .z = fp(0) },
-                0,
-                Enemy.health_bar_height.mul(fp(2)).convertTo(i16),
-                spritesheet.getFontSizeMultiple(Enemy.enemy_name_font_scale),
-                spritesheet,
-                billboard_data,
-            );
-            try cache.put(preset_ptr, billboard_data);
-        }
-        return .{ .cache = cache };
-    }
-
-    pub fn destroy(self: *PrerenderedNames, allocator: std.mem.Allocator) void {
-        var iterator = self.cache.valueIterator();
-        while (iterator.next()) |billboard_data| {
-            allocator.free(billboard_data.*);
-        }
-        self.cache.deinit();
-    }
-
-    fn get(self: PrerenderedNames, config: *const Config) []const rendering.SpriteData {
-        const result = self.cache.get(config);
-        std.debug.assert(result != null);
-        return result.?;
-    }
-
-    const enemy_preset_addresses = blk: {
-        var addresses: [@typeInfo(enemy_presets).Struct.decls.len]*const Config = undefined;
-        for (@typeInfo(enemy_presets).Struct.decls, 0..) |field, index| {
-            addresses[index] = &@field(enemy_presets, field.name);
-        }
-        break :blk addresses;
-    };
 };
 
 const IdleState = struct {
@@ -357,9 +260,11 @@ const AttackingState = struct {
             return;
         }
 
+        const peer_overlap_radius =
+            fp(position_grid_cell_size).div(fp(simulation.enemy_peer_overlap_radius_factor));
         const circle = collision.Circle{
             .position = position,
-            .radius = Enemy.peer_overlap_radius,
+            .radius = peer_overlap_radius,
         };
         const direction = enemy.character.moving_circle.velocity.normalize();
         var iterator = context.attacking_enemy_positions_at_previous_tick.areaIterator(
@@ -377,7 +282,7 @@ const AttackingState = struct {
                 continue;
             }
 
-            const peer_circle = .{ .position = peer.position, .radius = Enemy.peer_overlap_radius };
+            const peer_circle = .{ .position = peer.position, .radius = peer_overlap_radius };
             if (circle.collidesWithCircleDisplacementVector(peer_circle)) |displacement_vector| {
                 collides_with_peer = true;
                 combined_displacement_vector = combined_displacement_vector.add(displacement_vector);

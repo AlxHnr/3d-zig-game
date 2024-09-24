@@ -9,7 +9,6 @@ const GemObjectHandle = SharedContext.GemCollection.ObjectHandle;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
-const PrerenderedEnemyNames = @import("enemy.zig").PrerenderedNames;
 const RenderLoop = @import("render_loop.zig");
 const SharedContext = @import("shared_context.zig").SharedContext;
 const ThirdPersonCamera = @import("third_person_camera.zig");
@@ -39,7 +38,6 @@ map_file_path: []const u8,
 map: Map,
 shared_context: SharedContext,
 spritesheet: textures.SpriteSheetTexture,
-prerendered_enemy_names: PrerenderedEnemyNames,
 billboard_animations: animation.BillboardAnimationCollection,
 
 /// For objects which die at the end of each tick.
@@ -71,8 +69,6 @@ pub fn create(
 
     var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
     errdefer spritesheet.destroy();
-    var prerendered_enemy_names = try PrerenderedEnemyNames.create(allocator, spritesheet);
-    errdefer prerendered_enemy_names.destroy(allocator);
     var billboard_animations = try animation.BillboardAnimationCollection.create(allocator);
     errdefer billboard_animations.destroy(allocator);
 
@@ -134,7 +130,6 @@ pub fn create(
         .map = map,
         .shared_context = shared_context,
         .spritesheet = spritesheet,
-        .prerendered_enemy_names = prerendered_enemy_names,
         .billboard_animations = billboard_animations,
 
         .tick_lifetime_allocator = tick_lifetime_allocator,
@@ -157,7 +152,6 @@ pub fn destroy(self: *Context) void {
     self.thread_pool.destroy(self.allocator);
     self.tick_lifetime_allocator.deinit();
     self.billboard_animations.destroy(self.allocator);
-    self.prerendered_enemy_names.destroy(self.allocator);
     self.spritesheet.destroy();
     self.shared_context.destroy();
     self.map.destroy();
@@ -472,8 +466,6 @@ fn processEnemyCellGroup(
         }
         try enemy_ptr.appendBillboardData(
             self.spritesheet,
-            self.prerendered_enemy_names,
-            self.main_character.camera,
             self.tick_counter,
             &thread_context.enemies.billboard_buffer,
         );
