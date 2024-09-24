@@ -25,9 +25,9 @@ const Fix32Int = @TypeOf(fp(0).internal);
 
 allocator: std.mem.Allocator,
 keep_running: std.atomic.Value(bool),
-current: Snapshots,
+current: Snapshot,
 /// Will be atomically swapped with `current`.
-secondary: Snapshots,
+secondary: Snapshot,
 secondary_is_populated: bool,
 mutex: std.Thread.Mutex,
 condition: std.Thread.Condition,
@@ -51,8 +51,8 @@ pub fn create(
     return .{
         .allocator = allocator,
         .keep_running = std.atomic.Value(bool).init(true),
-        .current = Snapshots.create(allocator),
-        .secondary = Snapshots.create(allocator),
+        .current = Snapshot.create(allocator),
+        .secondary = Snapshot.create(allocator),
         .secondary_is_populated = false,
         .mutex = .{},
         .condition = .{},
@@ -144,7 +144,7 @@ pub fn run(
 
         if (lap_result.elapsed_ticks > 0) {
             performance_measurements.begin(.frame_wait_for_data);
-            self.swapSnapshots();
+            self.swapSnapshot();
             performance_measurements.end(.frame_wait_for_data);
 
             performance_measurements.begin(.aggregate_enemy_billboards);
@@ -291,28 +291,28 @@ pub fn sendExtraData(
 }
 
 /// Return a snapshot object to be populated with the latest game state. Must be followed by
-/// `unlockSnapshotsAfterWriting()`.
-pub fn getLockedSnapshotsForWriting(self: *Loop) *Snapshots {
+/// `unlockSnapshotAfterWriting()`.
+pub fn getLockedSnapshotForWriting(self: *Loop) *Snapshot {
     self.mutex.lock();
     self.secondary.reset();
     return &self.secondary;
 }
 
-/// Must be preceded by `getLockedSnapshotsForWriting()`.
-pub fn releaseSnapshotsAfterWriting(self: *Loop) void {
+/// Must be preceded by `getLockedSnapshotForWriting()`.
+pub fn releaseSnapshotAfterWriting(self: *Loop) void {
     self.secondary_is_populated = true;
     self.condition.signal();
     self.mutex.unlock();
 }
 
-pub const Snapshots = struct {
+pub const Snapshot = struct {
     /// Tick from which the interpolation of these snapshots should start.
     previous_tick: u32,
     main_character: Player,
     geometry: GeometrySnapshot,
     billboard_buffer: std.ArrayList(rendering.SpriteData),
 
-    fn create(allocator: std.mem.Allocator) Snapshots {
+    fn create(allocator: std.mem.Allocator) Snapshot {
         return .{
             .previous_tick = 0,
             .main_character = Player.create(fp(0), fp(0), fp(1)),
@@ -321,12 +321,12 @@ pub const Snapshots = struct {
         };
     }
 
-    fn destroy(self: *Snapshots) void {
+    fn destroy(self: *Snapshot) void {
         self.billboard_buffer.deinit();
         self.geometry.destroy();
     }
 
-    fn reset(self: *Snapshots) void {
+    fn reset(self: *Snapshot) void {
         self.billboard_buffer.clearRetainingCapacity();
     }
 };
@@ -345,7 +345,7 @@ fn getRefreshRate() ?u32 {
     return @intCast(display_mode.refresh_rate);
 }
 
-fn swapSnapshots(self: *Loop) void {
+fn swapSnapshot(self: *Loop) void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
@@ -353,7 +353,7 @@ fn swapSnapshots(self: *Loop) void {
         self.condition.wait(&self.mutex);
     }
     if (self.secondary_is_populated) {
-        std.mem.swap(Snapshots, &self.current, &self.secondary);
+        std.mem.swap(Snapshot, &self.current, &self.secondary);
         self.secondary_is_populated = false;
     }
 }

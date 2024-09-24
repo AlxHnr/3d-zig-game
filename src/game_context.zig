@@ -217,7 +217,7 @@ pub fn handleElapsedTick(
         .{ self, performance_measurements },
     );
     try self.thread_pool.dispatchIgnoreErrors(
-        populateRenderSnapshotsThread,
+        populateRenderSnapshotThread,
         .{ self.*, performance_measurements },
     );
     self.thread_pool.wait();
@@ -536,15 +536,15 @@ fn processGemThread(self: *Context, thread_id: usize) !void {
     thread_context.gems.amount_collected = gems_collected;
 }
 
-fn populateRenderSnapshotsThread(
+fn populateRenderSnapshotThread(
     self: Context,
     performance_measurements: *PerformanceMeasurements,
 ) !void {
     performance_measurements.begin(.populate_render_snapshots);
     defer performance_measurements.end(.populate_render_snapshots);
 
-    const snapshots = self.render_loop.getLockedSnapshotsForWriting();
-    defer self.render_loop.releaseSnapshotsAfterWriting();
+    const snapshots = self.render_loop.getLockedSnapshotForWriting();
+    defer self.render_loop.releaseSnapshotAfterWriting();
 
     snapshots.previous_tick = self.tick_counter;
     snapshots.main_character = self.main_character;
