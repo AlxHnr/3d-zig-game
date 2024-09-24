@@ -216,16 +216,18 @@ pub fn handleElapsedTick(
         recomputeFlowFieldThread,
         .{ self, performance_measurements },
     );
-    try self.thread_pool.dispatchIgnoreErrors(
-        populateRenderSnapshotThread,
-        .{ self, performance_measurements },
-    );
     self.thread_pool.wait();
 
     for (self.thread_contexts) |*context| {
         self.main_character.gem_count += context.gems.amount_collected;
         context.reset();
     }
+
+    self.render_snapshot.previous_tick = self.tick_counter;
+    self.render_snapshot.main_character = self.main_character;
+    try self.map.geometry.populateRenderSnapshot(&self.render_snapshot.geometry);
+    self.render_loop.swapRenderSnapshot(&self.render_snapshot);
+
     self.tick_counter += 1;
 }
 
@@ -573,19 +575,6 @@ fn processGemThread(self: *Context, thread_id: usize) !void {
         );
     }
     thread_context.gems.amount_collected = gems_collected;
-}
-
-fn populateRenderSnapshotThread(
-    self: *Context,
-    performance_measurements: *PerformanceMeasurements,
-) !void {
-    performance_measurements.begin(.populate_render_snapshots);
-    defer performance_measurements.end(.populate_render_snapshots);
-
-    self.render_snapshot.previous_tick = self.tick_counter;
-    self.render_snapshot.main_character = self.main_character;
-    try self.map.geometry.populateRenderSnapshot(&self.render_snapshot.geometry);
-    self.render_loop.swapRenderSnapshot(&self.render_snapshot);
 }
 
 const ThreadContext = struct {
