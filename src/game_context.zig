@@ -39,6 +39,7 @@ map: Map,
 shared_context: SharedContext,
 spritesheet: textures.SpriteSheetTexture,
 billboard_animations: animation.BillboardAnimationCollection,
+billboard_buffer: std.ArrayList(rendering.SpriteData),
 
 /// For objects which die at the end of each tick.
 tick_lifetime_allocator: std.heap.ArenaAllocator,
@@ -127,6 +128,7 @@ pub fn create(
         .shared_context = shared_context,
         .spritesheet = spritesheet,
         .billboard_animations = billboard_animations,
+        .billboard_buffer = std.ArrayList(rendering.SpriteData).init(allocator),
 
         .tick_lifetime_allocator = tick_lifetime_allocator,
         .thread_pool = thread_pool,
@@ -146,6 +148,7 @@ pub fn destroy(self: *Context) void {
     self.allocator.free(self.thread_contexts);
     self.thread_pool.destroy(self.allocator);
     self.tick_lifetime_allocator.deinit();
+    self.billboard_buffer.deinit();
     self.billboard_animations.destroy(self.allocator);
     self.spritesheet.destroy();
     self.shared_context.destroy();
@@ -183,6 +186,7 @@ pub fn handleElapsedTick(
     self.map.processElapsedTick();
     self.main_character.processElapsedTick(self.map);
 
+    try self.setupBillboardBufferSlices();
     for (0..self.thread_contexts.len) |thread_id| {
         try self.thread_pool.dispatchIgnoreErrors(
             processEnemyThread,
@@ -308,6 +312,44 @@ fn loadMap(
         spritesheet,
         serializable_data.value,
     );
+}
+
+pub fn setupBillboardBufferSlices(self: *Context) !void {
+    var billboard_buffer_size: usize = 0;
+    for (self.thread_contexts, 0..) |*context, thread_id| {
+        const stride = self.thread_contexts.len - 1;
+        var enemy_iterator = self.shared_context.enemy_collection.cellGroupIteratorAdvanced(
+            thread_id,
+            stride,
+        );
+        while (enemy_iterator.next()) |cell_group| {
+            context.enemies.required_billboard_buffer_size +=
+                cell_group.cell.count() * Enemy.rendered_billboard_count;
+        }
+        billboard_buffer_size += context.enemies.required_billboard_buffer_size;
+
+        var gem_iterator = self.shared_context.gem_collection.cellGroupIteratorAdvanced(
+            thread_id,
+            stride,
+        );
+        while (gem_iterator.next()) |cell_group| {
+            context.gems.required_billboard_buffer_size += cell_group.cell.count();
+        }
+        billboard_buffer_size += context.gems.required_billboard_buffer_size;
+    }
+
+    try self.billboard_buffer.resize(billboard_buffer_size);
+    var billboard_slice = self.billboard_buffer.items;
+    for (self.thread_contexts) |*context| {
+        context.enemies.billboard_buffer =
+            billboard_slice[0..context.enemies.required_billboard_buffer_size];
+        billboard_slice = billboard_slice[context.enemies.required_billboard_buffer_size..];
+
+        context.gems.billboard_buffer =
+            billboard_slice[0..context.gems.required_billboard_buffer_size];
+        billboard_slice = billboard_slice[context.gems.required_billboard_buffer_size..];
+    }
+    std.debug.assert(billboard_slice.len == 0);
 }
 
 fn mergeMeasurementsFromSlowestThread(
@@ -459,11 +501,13 @@ fn processEnemyCellGroup(
         if (enemy_ptr.state == .attacking) {
             try cell_attacking_list.append(enemy_ptr.makeAttackingEnemyPosition());
         }
-        try enemy_ptr.appendBillboardData(
+        enemy_ptr.populateBillboardData(
             self.spritesheet,
             self.tick_counter,
-            &thread_context.enemies.billboard_buffer,
+            thread_context.enemies.billboard_buffer,
         );
+        thread_context.enemies.billboard_buffer =
+            thread_context.enemies.billboard_buffer[Enemy.rendered_billboard_count..];
     }
 
     try appendUnorderedResultsIfNeeded(
@@ -513,13 +557,12 @@ fn processGemThread(self: *Context, thread_id: usize) !void {
                     self.shared_context.gem_collection.getObjectHandle(gem_ptr),
                 ),
             }
-            try thread_context.gems.billboard_buffer.append(
-                gem_ptr.makeBillboardData(
-                    self.spritesheet,
-                    self.billboard_animations,
-                    self.tick_counter,
-                ),
+            thread_context.gems.billboard_buffer[0] = gem_ptr.makeBillboardData(
+                self.spritesheet,
+                self.billboard_animations,
+                self.tick_counter,
             );
+            thread_context.gems.billboard_buffer = thread_context.gems.billboard_buffer[1..];
         }
         try appendUnorderedResultsIfNeeded(
             *GemObjectHandle,
@@ -544,10 +587,7 @@ fn populateRenderSnapshotThread(
     snapshots.previous_tick = self.tick_counter;
     snapshots.main_character = self.main_character;
     try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
-    for (self.thread_contexts) |context| {
-        try snapshots.billboard_buffer.appendSlice(context.enemies.billboard_buffer.items);
-        try snapshots.billboard_buffer.appendSlice(context.gems.billboard_buffer.items);
-    }
+    try snapshots.billboard_buffer.appendSlice(self.billboard_buffer.items);
 }
 
 const ThreadContext = struct {
@@ -557,13 +597,15 @@ const ThreadContext = struct {
         insertion_queue: UnorderedCollection(CellItems(Enemy)),
         removal_queue: UnorderedCollection(CellItems(*EnemyObjectHandle)),
         attacking_positions: UnorderedCollection(CellItems(AttackingEnemyPosition)),
-        billboard_buffer: std.ArrayList(rendering.SpriteData),
+        required_billboard_buffer_size: usize,
+        billboard_buffer: []rendering.SpriteData,
     } align(std.atomic.cache_line),
     gems: struct {
         arena_allocator: std.heap.ArenaAllocator,
         amount_collected: u64,
         removal_queue: UnorderedCollection(CellItems(*GemObjectHandle)),
-        billboard_buffer: std.ArrayList(rendering.SpriteData),
+        required_billboard_buffer_size: usize,
+        billboard_buffer: []rendering.SpriteData,
     } align(std.atomic.cache_line),
 
     fn create(allocator: std.mem.Allocator) !ThreadContext {
@@ -581,22 +623,22 @@ const ThreadContext = struct {
                     .create(enemy_allocator.allocator()),
                 .attacking_positions = UnorderedCollection(CellItems(AttackingEnemyPosition))
                     .create(enemy_allocator.allocator()),
-                .billboard_buffer = std.ArrayList(rendering.SpriteData).init(allocator),
+                .required_billboard_buffer_size = 0,
+                .billboard_buffer = &.{},
             },
             .gems = .{
                 .arena_allocator = gem_allocator,
                 .amount_collected = 0,
                 .removal_queue = UnorderedCollection(CellItems(*GemObjectHandle))
                     .create(gem_allocator.allocator()),
-                .billboard_buffer = std.ArrayList(rendering.SpriteData).init(allocator),
+                .required_billboard_buffer_size = 0,
+                .billboard_buffer = &.{},
             },
         };
     }
 
     fn destroy(self: *ThreadContext) void {
-        self.gems.billboard_buffer.deinit();
         self.gems.arena_allocator.deinit();
-        self.enemies.billboard_buffer.deinit();
         self.enemies.arena_allocator.deinit();
     }
 
@@ -609,11 +651,13 @@ const ThreadContext = struct {
             .create(self.enemies.arena_allocator.allocator());
         self.enemies.attacking_positions = UnorderedCollection(CellItems(AttackingEnemyPosition))
             .create(self.enemies.arena_allocator.allocator());
-        self.enemies.billboard_buffer.clearRetainingCapacity();
+        self.enemies.required_billboard_buffer_size = 0;
+        self.enemies.billboard_buffer = &.{};
         self.gems.amount_collected = 0;
         self.gems.removal_queue = UnorderedCollection(CellItems(*GemObjectHandle))
             .create(self.gems.arena_allocator.allocator());
-        self.gems.billboard_buffer.clearRetainingCapacity();
+        self.gems.required_billboard_buffer_size = 0;
+        self.gems.billboard_buffer = &.{};
     }
 
     fn CellItems(comptime T: type) type {

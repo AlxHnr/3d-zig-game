@@ -92,25 +92,25 @@ pub const Enemy = struct {
         self.character.processElapsedTick(context.map.*);
     }
 
-    pub fn appendBillboardData(
+    pub const rendered_billboard_count = 3;
+
+    pub fn populateBillboardData(
         self: Enemy,
         spritesheet: SpriteSheetTexture,
         previous_tick: u32,
-        out: *std.ArrayList(rendering.SpriteData),
-    ) !void {
-        try out.ensureUnusedCapacity(3);
-
+        /// Must be at least as large as `rendered_billboard_count`.
+        out: []rendering.SpriteData,
+    ) void {
         const y_offset = self.character.height.div(fp(2));
-        out.appendAssumeCapacity(rendering.SpriteData.create(
+        out[0] = rendering.SpriteData.create(
             self.previous_tick_data.position.addY(y_offset),
             spritesheet.getSpriteSourceRectangle(self.config.sprite),
             self.character.moving_circle.radius.mul(fp(2)),
             self.config.height,
         ).withAnimationStartTick(previous_tick).withAnimationTargetPosition(
             self.character.moving_circle.getPosition().addY(y_offset),
-        ));
-        self.populateHealthbarBillboardData(spritesheet, previous_tick, out.unusedCapacitySlice());
-        out.items.len += 2;
+        );
+        self.populateHealthbarBillboardData(spritesheet, previous_tick, out[1..]);
     }
 
     pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
