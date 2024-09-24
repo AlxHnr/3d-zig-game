@@ -45,8 +45,7 @@ tick_lifetime_allocator: std.heap.ArenaAllocator,
 /// Allocated with `tick_lifetime_allocator`.
 attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
 thread_pool: ThreadPool,
-/// Contexts are not stored in a single contiguous array to avoid false sharing.
-thread_contexts: []*ThreadContext,
+thread_contexts: []ThreadContext,
 
 /// Non-owning pointer.
 render_loop: *RenderLoop,
@@ -100,19 +99,16 @@ pub fn create(
     var thread_pool = try ThreadPool.create(allocator);
     errdefer thread_pool.destroy(allocator);
 
-    var thread_contexts = try allocator.alloc(*ThreadContext, thread_pool.countThreads());
+    const thread_contexts = try allocator.alloc(ThreadContext, thread_pool.countThreads());
     errdefer allocator.free(thread_contexts);
-    var contexts_created: usize = 0;
-    errdefer for (0..contexts_created) |index| {
-        thread_contexts[index].destroy(allocator);
-        allocator.destroy(thread_contexts[index]);
+
+    var contexts_initialized: usize = 0;
+    errdefer for (thread_contexts[0..contexts_initialized]) |*context| {
+        context.destroy();
     };
     for (thread_contexts) |*context| {
-        context.* = try allocator.create(ThreadContext);
-        errdefer allocator.destroy(context.*);
-
-        context.*.* = try ThreadContext.create(allocator);
-        contexts_created += 1;
+        context.* = try ThreadContext.create(allocator);
+        contexts_initialized += 1;
     }
 
     return .{
@@ -144,9 +140,8 @@ pub fn create(
 }
 
 pub fn destroy(self: *Context) void {
-    for (self.thread_contexts) |context| {
-        context.destroy(self.allocator);
-        self.allocator.destroy(context);
+    for (self.thread_contexts) |*context| {
+        context.destroy();
     }
     self.allocator.free(self.thread_contexts);
     self.thread_pool.destroy(self.allocator);
@@ -222,7 +217,7 @@ pub fn handleElapsedTick(
     );
     self.thread_pool.wait();
 
-    for (self.thread_contexts) |context| {
+    for (self.thread_contexts) |*context| {
         self.main_character.gem_count += context.gems.amount_collected;
         context.reset();
     }
@@ -400,7 +395,7 @@ fn processEnemyThread(
     thread_id: usize,
     attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
 ) !void {
-    const thread_context = self.thread_contexts[thread_id];
+    const thread_context = &self.thread_contexts[thread_id];
     thread_context.performance_measurements.begin(.enemy_logic);
     defer thread_context.performance_measurements.end(.enemy_logic);
 
@@ -492,7 +487,7 @@ fn processEnemyCellGroup(
 }
 
 fn processGemThread(self: *Context, thread_id: usize) !void {
-    const thread_context = self.thread_contexts[thread_id];
+    const thread_context = &self.thread_contexts[thread_id];
     thread_context.performance_measurements.begin(.gem_logic);
     defer thread_context.performance_measurements.end(.gem_logic);
 
@@ -558,30 +553,26 @@ fn populateRenderSnapshotThread(
 const ThreadContext = struct {
     performance_measurements: PerformanceMeasurements,
     enemies: struct {
-        arena_allocator: *std.heap.ArenaAllocator,
+        arena_allocator: std.heap.ArenaAllocator,
         insertion_queue: UnorderedCollection(CellItems(Enemy)),
         removal_queue: UnorderedCollection(CellItems(*EnemyObjectHandle)),
         attacking_positions: UnorderedCollection(CellItems(AttackingEnemyPosition)),
         billboard_buffer: std.ArrayList(rendering.SpriteData),
-    },
+    } align(std.atomic.cache_line),
     gems: struct {
-        arena_allocator: *std.heap.ArenaAllocator,
+        arena_allocator: std.heap.ArenaAllocator,
         amount_collected: u64,
         removal_queue: UnorderedCollection(CellItems(*GemObjectHandle)),
         billboard_buffer: std.ArrayList(rendering.SpriteData),
-    },
+    } align(std.atomic.cache_line),
 
     fn create(allocator: std.mem.Allocator) !ThreadContext {
-        const enemy_allocator = try allocator.create(std.heap.ArenaAllocator);
-        errdefer allocator.destroy(enemy_allocator);
-        enemy_allocator.* = std.heap.ArenaAllocator.init(allocator);
-
-        const gem_allocator = try allocator.create(std.heap.ArenaAllocator);
-        errdefer allocator.destroy(gem_allocator);
-        gem_allocator.* = std.heap.ArenaAllocator.init(allocator);
+        const measurements = try PerformanceMeasurements.create();
+        var enemy_allocator = std.heap.ArenaAllocator.init(allocator);
+        var gem_allocator = std.heap.ArenaAllocator.init(allocator);
 
         return .{
-            .performance_measurements = try PerformanceMeasurements.create(),
+            .performance_measurements = measurements,
             .enemies = .{
                 .arena_allocator = enemy_allocator,
                 .insertion_queue = UnorderedCollection(CellItems(Enemy))
@@ -602,13 +593,11 @@ const ThreadContext = struct {
         };
     }
 
-    fn destroy(self: *ThreadContext, allocator: std.mem.Allocator) void {
+    fn destroy(self: *ThreadContext) void {
         self.gems.billboard_buffer.deinit();
         self.gems.arena_allocator.deinit();
-        allocator.destroy(self.gems.arena_allocator);
         self.enemies.billboard_buffer.deinit();
         self.enemies.arena_allocator.deinit();
-        allocator.destroy(self.enemies.arena_allocator);
     }
 
     fn reset(self: *ThreadContext) void {
@@ -678,7 +667,7 @@ fn MergedThreadResults(comptime Item: type) type {
         /// specified fields/collections.
         fn create(
             allocator: std.mem.Allocator,
-            thread_contexts: []const *const ThreadContext,
+            thread_contexts: []const ThreadContext,
             comptime toplevel_field: []const u8,
             comptime collection_field: []const u8,
         ) !Self {
