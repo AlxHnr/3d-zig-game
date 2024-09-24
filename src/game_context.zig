@@ -39,7 +39,6 @@ map: Map,
 shared_context: SharedContext,
 spritesheet: textures.SpriteSheetTexture,
 billboard_animations: animation.BillboardAnimationCollection,
-billboard_buffer: std.ArrayList(rendering.SpriteData),
 
 /// For objects which die at the end of each tick.
 tick_lifetime_allocator: std.heap.ArenaAllocator,
@@ -50,6 +49,7 @@ thread_contexts: []ThreadContext,
 
 /// Non-owning pointer.
 render_loop: *RenderLoop,
+render_snapshot: RenderLoop.Snapshot,
 /// Non-owning pointer.
 dialog_controller: *dialog.Controller,
 
@@ -128,7 +128,6 @@ pub fn create(
         .shared_context = shared_context,
         .spritesheet = spritesheet,
         .billboard_animations = billboard_animations,
-        .billboard_buffer = std.ArrayList(rendering.SpriteData).init(allocator),
 
         .tick_lifetime_allocator = tick_lifetime_allocator,
         .thread_pool = thread_pool,
@@ -136,19 +135,21 @@ pub fn create(
             tick_lifetime_allocator.allocator(),
         ),
         .thread_contexts = thread_contexts,
+
         .render_loop = render_loop,
+        .render_snapshot = render_loop.makeRenderSnapshot(),
         .dialog_controller = dialog_controller,
     };
 }
 
 pub fn destroy(self: *Context) void {
+    self.render_snapshot.destroy();
     for (self.thread_contexts) |*context| {
         context.destroy();
     }
     self.allocator.free(self.thread_contexts);
     self.thread_pool.destroy(self.allocator);
     self.tick_lifetime_allocator.deinit();
-    self.billboard_buffer.deinit();
     self.billboard_animations.destroy(self.allocator);
     self.spritesheet.destroy();
     self.shared_context.destroy();
@@ -217,7 +218,7 @@ pub fn handleElapsedTick(
     );
     try self.thread_pool.dispatchIgnoreErrors(
         populateRenderSnapshotThread,
-        .{ self.*, performance_measurements },
+        .{ self, performance_measurements },
     );
     self.thread_pool.wait();
 
@@ -338,8 +339,8 @@ pub fn setupBillboardBufferSlices(self: *Context) !void {
         billboard_buffer_size += context.gems.required_billboard_buffer_size;
     }
 
-    try self.billboard_buffer.resize(billboard_buffer_size);
-    var billboard_slice = self.billboard_buffer.items;
+    try self.render_snapshot.billboard_buffer.resize(billboard_buffer_size);
+    var billboard_slice = self.render_snapshot.billboard_buffer.items;
     for (self.thread_contexts) |*context| {
         context.enemies.billboard_buffer =
             billboard_slice[0..context.enemies.required_billboard_buffer_size];
@@ -575,19 +576,16 @@ fn processGemThread(self: *Context, thread_id: usize) !void {
 }
 
 fn populateRenderSnapshotThread(
-    self: Context,
+    self: *Context,
     performance_measurements: *PerformanceMeasurements,
 ) !void {
     performance_measurements.begin(.populate_render_snapshots);
     defer performance_measurements.end(.populate_render_snapshots);
 
-    const snapshots = self.render_loop.getLockedSnapshotForWriting();
-    defer self.render_loop.releaseSnapshotAfterWriting();
-
-    snapshots.previous_tick = self.tick_counter;
-    snapshots.main_character = self.main_character;
-    try self.map.geometry.populateRenderSnapshot(&snapshots.geometry);
-    try snapshots.billboard_buffer.appendSlice(self.billboard_buffer.items);
+    self.render_snapshot.previous_tick = self.tick_counter;
+    self.render_snapshot.main_character = self.main_character;
+    try self.map.geometry.populateRenderSnapshot(&self.render_snapshot.geometry);
+    self.render_loop.swapRenderSnapshot(&self.render_snapshot);
 }
 
 const ThreadContext = struct {

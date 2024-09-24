@@ -290,19 +290,20 @@ pub fn sendExtraData(
     self.extra_data.edit_mode_state = edit_mode_state;
 }
 
-/// Return a snapshot object to be populated with the latest game state. Must be followed by
-/// `unlockSnapshotAfterWriting()`.
-pub fn getLockedSnapshotForWriting(self: *Loop) *Snapshot {
-    self.mutex.lock();
-    self.secondary.reset();
-    return &self.secondary;
+/// Returns a snapshot containing render data, which can be atomically swapped with the render loop
+/// via `swapRenderSnapshot()`. Returned object must be destroyed by the caller.
+pub fn makeRenderSnapshot(self: *Loop) Snapshot {
+    return Snapshot.create(self.allocator);
 }
 
-/// Must be preceded by `getLockedSnapshotForWriting()`.
-pub fn releaseSnapshotAfterWriting(self: *Loop) void {
+pub fn swapRenderSnapshot(self: *Loop, snapshot: *Snapshot) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    self.secondary.reset();
+    std.mem.swap(Snapshot, &self.secondary, snapshot);
     self.secondary_is_populated = true;
     self.condition.signal();
-    self.mutex.unlock();
 }
 
 pub const Snapshot = struct {
@@ -321,7 +322,7 @@ pub const Snapshot = struct {
         };
     }
 
-    fn destroy(self: *Snapshot) void {
+    pub fn destroy(self: *Snapshot) void {
         self.billboard_buffer.deinit();
         self.geometry.destroy();
     }
