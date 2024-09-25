@@ -105,7 +105,7 @@ pub fn create(
 
     var contexts_initialized: usize = 0;
     errdefer for (thread_contexts[0..contexts_initialized]) |*context| {
-        context.destroy();
+        context.destroy(allocator);
     };
     for (thread_contexts) |*context| {
         context.* = try ThreadContext.create(allocator);
@@ -145,7 +145,7 @@ pub fn create(
 pub fn destroy(self: *Context) void {
     self.render_snapshot.destroy();
     for (self.thread_contexts) |*context| {
-        context.destroy();
+        context.destroy(self.allocator);
     }
     self.allocator.free(self.thread_contexts);
     self.thread_pool.destroy(self.allocator);
@@ -578,7 +578,7 @@ fn processGemThread(self: *Context, thread_id: usize) !void {
 const ThreadContext = struct {
     performance_measurements: PerformanceMeasurements,
     enemies: struct {
-        arena_allocator: std.heap.ArenaAllocator,
+        arena_allocator: *std.heap.ArenaAllocator,
         insertion_queue: UnorderedCollection(CellItems(Enemy)),
         removal_queue: UnorderedCollection(CellItems(*EnemyObjectHandle)),
         attacking_positions: UnorderedCollection(CellItems(AttackingEnemyPosition)),
@@ -586,7 +586,7 @@ const ThreadContext = struct {
         billboard_buffer: []rendering.SpriteData,
     } align(std.atomic.cache_line),
     gems: struct {
-        arena_allocator: std.heap.ArenaAllocator,
+        arena_allocator: *std.heap.ArenaAllocator,
         amount_collected: u64,
         removal_queue: UnorderedCollection(CellItems(*GemObjectHandle)),
         required_billboard_buffer_size: usize,
@@ -595,8 +595,16 @@ const ThreadContext = struct {
 
     fn create(allocator: std.mem.Allocator) !ThreadContext {
         const measurements = try PerformanceMeasurements.create();
-        var enemy_allocator = std.heap.ArenaAllocator.init(allocator);
-        var gem_allocator = std.heap.ArenaAllocator.init(allocator);
+
+        var enemy_allocator = try allocator.create(std.heap.ArenaAllocator);
+        errdefer allocator.destroy(enemy_allocator);
+        enemy_allocator.* = std.heap.ArenaAllocator.init(allocator);
+        errdefer enemy_allocator.deinit();
+
+        var gem_allocator = try allocator.create(std.heap.ArenaAllocator);
+        errdefer allocator.destroy(gem_allocator);
+        gem_allocator.* = std.heap.ArenaAllocator.init(allocator);
+        errdefer gem_allocator.deinit();
 
         return .{
             .performance_measurements = measurements,
@@ -622,9 +630,11 @@ const ThreadContext = struct {
         };
     }
 
-    fn destroy(self: *ThreadContext) void {
+    fn destroy(self: *ThreadContext, allocator: std.mem.Allocator) void {
         self.gems.arena_allocator.deinit();
+        allocator.destroy(self.gems.arena_allocator);
         self.enemies.arena_allocator.deinit();
+        allocator.destroy(self.enemies.arena_allocator);
     }
 
     fn reset(self: *ThreadContext) void {
