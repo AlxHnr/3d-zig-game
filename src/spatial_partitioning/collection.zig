@@ -42,8 +42,7 @@ pub fn Collection(comptime T: type, comptime cell_side_length: u32) type {
             self.cells.deinit();
         }
 
-        /// Inserts the given object into the collection. Invalidates existing iterators. The same
-        /// object id should not be inserted twice.
+        /// Inserts the given object into the collection. Invalidates existing iterators.
         pub fn insert(self: *Self, object: T, position: FlatVector) !*ObjectHandle {
             const cell_index = CellIndex.fromPosition(position);
 
