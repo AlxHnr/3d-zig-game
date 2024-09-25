@@ -82,9 +82,8 @@ pub fn run(
     try sdl.makeGLContextCurrent(window, gl_context);
     var timer = try simulation.TickTimer.start(simulation.tickrate);
     var performance_measurements = try PerformanceMeasurements.create();
-    var frame_counter: usize = 0;
+    var measurements_timer = try std.time.Timer.start();
     var binding_point_counter = UboBindingPointCounter.create();
-    const refresh_rate = getRefreshRate() orelse 60;
 
     var spritesheet = try textures.SpriteSheetTexture.loadFromDisk();
     defer spritesheet.destroy();
@@ -147,7 +146,7 @@ pub fn run(
             self.swapSnapshot();
             performance_measurements.end(.frame_wait_for_data);
 
-            performance_measurements.begin(.aggregate_enemy_billboards);
+            performance_measurements.begin(.hud_sprite_data);
             billboard_buffer.clearRetainingCapacity();
             try appendRenderHudSpriteData(
                 self.allocator,
@@ -168,9 +167,9 @@ pub fn run(
                     &billboard_buffer,
                 );
             }
-            performance_measurements.end(.aggregate_enemy_billboards);
+            performance_measurements.end(.hud_sprite_data);
 
-            performance_measurements.begin(.aggregate_gem_billboards);
+            performance_measurements.begin(.upload_billboards);
             geometry_renderer.uploadRenderSnapshot(self.current.geometry);
             billboard_renderer.uploadBillboards(self.current.billboard_buffer.items);
             player_renderer.uploadBillboards(&.{
@@ -180,7 +179,7 @@ pub fn run(
                 ),
             });
             sprite_renderer.uploadSprites(billboard_buffer.items);
-            performance_measurements.end(.aggregate_gem_billboards);
+            performance_measurements.end(.upload_billboards);
         }
 
         gl.clearColor(140.0 / 255.0, 190.0 / 255.0, 214.0 / 255.0, 1.0);
@@ -214,7 +213,7 @@ pub fn run(
         );
         performance_measurements.end(.render_level_geometry);
 
-        performance_measurements.begin(.draw_billboards);
+        performance_measurements.begin(.render_billboards);
         billboard_renderer.render(
             vp_matrix,
             extra_data.screen_dimensions,
@@ -231,9 +230,9 @@ pub fn run(
             self.current.previous_tick,
             lap_result.next_tick_progress,
         );
-        performance_measurements.end(.draw_billboards);
+        performance_measurements.end(.render_billboards);
 
-        performance_measurements.begin(.hud);
+        performance_measurements.begin(.render_hud);
         gl.disable(gl.DEPTH_TEST);
         sprite_renderer.render(
             extra_data.screen_dimensions,
@@ -241,15 +240,14 @@ pub fn run(
             self.current.previous_tick,
             lap_result.next_tick_progress,
         );
-        performance_measurements.end(.hud);
+        performance_measurements.end(.render_hud);
         performance_measurements.end(.frame_total);
 
-        frame_counter += 1;
-        if (@mod(frame_counter, refresh_rate * 3) == 0) {
+        if (measurements_timer.read() > 5 * std.time.ns_per_s) {
+            measurements_timer.reset();
             performance_measurements.updateAverageAndReset();
             performance_measurements.printFrameInfo();
         }
-
         sdl.SDL_GL_SwapWindow(window);
     }
 }
@@ -331,20 +329,6 @@ pub const Snapshot = struct {
         self.billboard_buffer.clearRetainingCapacity();
     }
 };
-
-fn getRefreshRate() ?u32 {
-    var display_mode: sdl.SDL_DisplayMode = undefined;
-    if (sdl.SDL_GetCurrentDisplayMode(0, &display_mode) != 0) {
-        std.log.warn("unable to retrieve display refresh rate: {s}", .{
-            sdl.SDL_GetError(),
-        });
-        return null;
-    }
-    if (display_mode.refresh_rate == 0) {
-        return null;
-    }
-    return @intCast(display_mode.refresh_rate);
-}
 
 fn swapSnapshot(self: *Loop) void {
     self.mutex.lock();

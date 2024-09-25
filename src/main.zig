@@ -142,9 +142,9 @@ const ProgramContext = struct {
     }
 
     fn run(self: *ProgramContext) !void {
-        var tick_counter: u32 = 0;
         var tick_timer = try simulation.TickTimer.start(simulation.tickrate);
         var performance_measurements = try PerformanceMeasurements.create();
+        var measurements_timer = try std.time.Timer.start();
 
         main_loop: while (true) {
             const lap_result = tick_timer.lap();
@@ -165,8 +165,8 @@ const ProgramContext = struct {
                     try self.game_context.handleElapsedTick(&performance_measurements);
                 }
 
-                tick_counter += 1;
-                if (@mod(tick_counter, simulation.tickrate * 3) == 0) {
+                if (measurements_timer.read() > 5 * std.time.ns_per_s) {
+                    measurements_timer.reset();
                     performance_measurements.updateAverageAndReset();
                     performance_measurements.printTickInfo();
                 }

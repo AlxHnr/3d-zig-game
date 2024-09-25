@@ -5,26 +5,27 @@ pub const Measurements = struct {
 
     pub const MetricType = enum {
         tick_total,
-        logic_total,
         enemy_logic,
         gem_logic,
         spatial_grids,
         flow_field,
-        populate_render_snapshots,
 
         frame_total,
         frame_wait_for_data,
-        aggregate_enemy_billboards,
-        aggregate_gem_billboards,
-        draw_billboards,
+        hud_sprite_data,
+        upload_billboards,
+        render_billboards,
         render_level_geometry,
-        hud,
+        render_hud,
     };
     const Metric = struct {
         timer: std.time.Timer,
         accumulated_time: u64,
         accumulated_time_count: u64,
+        accumulated_worst_time: u64,
+
         average_time: u64,
+        worst_time: u64,
     };
 
     pub fn create() !Measurements {
@@ -35,7 +36,9 @@ pub const Measurements = struct {
                 .timer = try std.time.Timer.start(),
                 .accumulated_time = 0,
                 .accumulated_time_count = 0,
+                .accumulated_worst_time = 0,
                 .average_time = 0,
+                .worst_time = 0,
             };
         }
         return .{ .metrics = metrics };
@@ -45,19 +48,12 @@ pub const Measurements = struct {
         self.metrics.getPtr(metric_type).timer.reset();
     }
 
-    pub fn pause(self: *Measurements, metric_type: MetricType) void {
-        const metric = self.metrics.getPtr(metric_type);
-        metric.accumulated_time += metric.timer.read();
-    }
-
-    pub fn proceed(self: *Measurements, metric_type: MetricType) void {
-        self.begin(metric_type);
-    }
-
     pub fn end(self: *Measurements, metric_type: MetricType) void {
         const metric = self.metrics.getPtr(metric_type);
-        metric.accumulated_time += metric.timer.read();
+        const time = metric.timer.read();
+        metric.accumulated_time += time;
         metric.accumulated_time_count += 1;
+        metric.accumulated_worst_time = @max(metric.accumulated_worst_time, time);
     }
 
     pub fn updateAverageAndReset(self: *Measurements) void {
@@ -66,21 +62,28 @@ pub const Measurements = struct {
             const metric = item.value;
             if (metric.accumulated_time_count == 0) {
                 metric.average_time = 0;
+                metric.accumulated_worst_time = 0;
             } else {
                 metric.average_time = metric.accumulated_time / metric.accumulated_time_count;
+                metric.worst_time = metric.accumulated_worst_time;
             }
             metric.accumulated_time = 0;
             metric.accumulated_time_count = 0;
+            metric.accumulated_worst_time = 0;
         }
     }
 
     pub fn getLongest(self: Measurements, other: Measurements, metric_type: MetricType) Measurements {
-        if (self.metrics.get(metric_type).accumulated_time >
-            other.metrics.get(metric_type).accumulated_time)
-        {
-            return self;
+        var result = self;
+        const result_metric = result.metrics.getPtr(metric_type);
+        const other_metric = other.metrics.get(metric_type);
+        if (result_metric.accumulated_time < other_metric.accumulated_time) {
+            result_metric.accumulated_time = other_metric.accumulated_time;
+            result_metric.accumulated_time_count = other_metric.accumulated_time_count;
         }
-        return other;
+        result_metric.accumulated_worst_time =
+            @max(result_metric.accumulated_worst_time, other_metric.accumulated_worst_time);
+        return result;
     }
 
     pub fn copySingleMetric(
@@ -92,37 +95,54 @@ pub const Measurements = struct {
     }
 
     pub fn printTickInfo(self: Measurements) void {
-        std.log.info(
-            "Avg. Tick: {d:.2}ms: 🧵{d:.2}ms⟨👾{d:.2}ms then ♦️ {d:.2}ms⟩ 🧵⟨🌐{d:.2}ms & ↪️ {d:.2}ms & ⏱️ 🖼️{d:.2}ms⟩",
-            .{
-                self.getAverage(.tick_total),
-                self.getAverage(.logic_total),
-                self.getAverage(.enemy_logic),
-                self.getAverage(.gem_logic),
-                self.getAverage(.flow_field),
-                self.getAverage(.spatial_grids),
-                self.getAverage(.populate_render_snapshots),
-            },
-        );
+        for (summary_types) |summary| {
+            std.log.info(
+                "{s} Tick: {d:.2}ms: 🧵⟨👾{d:.2}ms then ♦️ {d:.2}ms⟩ 🧵⟨🗒️{d:.2}ms & 🌐{d:.2}ms⟩",
+                .{
+                    summary.name,
+                    summary.get_function(self, .tick_total),
+                    summary.get_function(self, .enemy_logic),
+                    summary.get_function(self, .gem_logic),
+                    summary.get_function(self, .flow_field),
+                    summary.get_function(self, .spatial_grids),
+                },
+            );
+        }
     }
 
     pub fn printFrameInfo(self: Measurements) void {
-        std.log.info(
-            "Avg. Frame: {d:.2}ms: ⏱️ 🖼️{d:.2}ms 👾{d:.2}ms ♦️ {d:.2}ms 🖌️{d:.2}ms 🌐{d:.2}ms ℹ️ {d:.2}ms",
-            .{
-                self.getAverage(.frame_total),
-                self.getAverage(.frame_wait_for_data),
-                self.getAverage(.aggregate_enemy_billboards),
-                self.getAverage(.aggregate_gem_billboards),
-                self.getAverage(.draw_billboards),
-                self.getAverage(.render_level_geometry),
-                self.getAverage(.hud),
-            },
-        );
+        for (summary_types) |summary| {
+            std.log.info(
+                "{s} Frame: {d:.2}ms: ⏱️ {d:.2}ms 🔳{d:.2}ms ⬆️ {d:.2}ms 🏠{d:.2}ms 🖼️{d:.2}ms 🔳{d:.2}ms",
+                .{
+                    summary.name,
+                    summary.get_function(self, .frame_total),
+                    summary.get_function(self, .frame_wait_for_data),
+                    summary.get_function(self, .hud_sprite_data),
+                    summary.get_function(self, .upload_billboards),
+                    summary.get_function(self, .render_billboards),
+                    summary.get_function(self, .render_level_geometry),
+                    summary.get_function(self, .render_hud),
+                },
+            );
+        }
     }
+
+    const summary_types = [_]struct {
+        name: []const u8,
+        get_function: *const fn (a: Measurements, b: MetricType) f32,
+    }{
+        .{ .name = "Avg. ", .get_function = getAverage },
+        .{ .name = "Worst", .get_function = getWorst },
+    };
 
     fn getAverage(self: Measurements, metric_type: MetricType) f32 {
         return @as(f32, @floatFromInt(self.metrics.get(metric_type).average_time)) /
+            @as(f32, @floatFromInt(std.time.ns_per_ms));
+    }
+
+    fn getWorst(self: Measurements, metric_type: MetricType) f32 {
+        return @as(f32, @floatFromInt(self.metrics.get(metric_type).worst_time)) /
             @as(f32, @floatFromInt(std.time.ns_per_ms));
     }
 };

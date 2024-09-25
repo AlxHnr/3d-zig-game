@@ -183,7 +183,6 @@ pub fn handleElapsedTick(
     }
     self.main_character.applyCurrentInput();
 
-    performance_measurements.begin(.logic_total);
     self.map.processElapsedTick();
     self.main_character.processElapsedTick(self.map);
 
@@ -202,7 +201,6 @@ pub fn handleElapsedTick(
     self.mergeMeasurementsFromSlowestThread(.gem_logic, performance_measurements);
 
     self.dialog_controller.processElapsedTick();
-    performance_measurements.end(.logic_total);
 
     _ = self.tick_lifetime_allocator.reset(.retain_capacity);
     self.attacking_enemy_positions_at_previous_tick = EnemyPositionGrid.create(
