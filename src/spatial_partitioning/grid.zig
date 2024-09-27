@@ -1,4 +1,5 @@
 const AxisAlignedBoundingBox = @import("../collision.zig").AxisAlignedBoundingBox;
+const Fix32 = @import("../math.zig").Fix32;
 const FlatVector = @import("../math.zig").FlatVector;
 const UnorderedCollection = @import("../unordered_collection.zig").UnorderedCollection;
 const cell_line_iterator = @import("cell_line_iterator.zig");
@@ -62,12 +63,40 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
         };
 
         const InsertOnlyFunctions = struct {
+            /// Insert the given object into the cell which contains the specified position.
+            /// Invalidates existing iterators.
+            pub fn insert(self: *Self, object: T, position: FlatVector) !void {
+                try self.insertIntoArea(object, .{ .min = position, .max = position });
+            }
+
             /// Insert copies of the given object into every cell which intersects with the
             /// specified bounding box. Invalidates existing iterators.
             pub fn insertIntoArea(self: *Self, object: T, area: AxisAlignedBoundingBox) !void {
                 const cell_range = CellRange.fromAABB(area);
                 var iterator = cell_range.iterator();
                 try self.insertRaw(object, &iterator);
+            }
+
+            /// Can be called from different threads if each thread inserts into different cells.
+            pub fn insertIntoAreaAssumeCapacity(
+                self: *Self,
+                object: T,
+                area: AxisAlignedBoundingBox,
+            ) void {
+                const cell_range = CellRange.fromAABB(area);
+                var iterator = cell_range.iterator();
+                while (iterator.next()) |cell_index| {
+                    self.insertIntoCellAssumeCapacity(object, cell_index);
+                }
+            }
+
+            /// Can be called from different threads if each thread inserts into different cells.
+            pub fn insertIntoCellAssumeCapacity(
+                self: *Self,
+                object: T,
+                cell_index: CellIndex,
+            ) void {
+                self.cells.getPtr(cell_index).?.appendAssumeCapacity(object);
             }
 
             /// Insert copies of the given object into every cell which intersects with the
@@ -85,6 +114,37 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
                 try self.insertRaw(object, &iterator);
             }
 
+            pub fn ensureUnusedCapacityInCell(
+                self: *Self,
+                object_count_per_cell: usize,
+                cell_index: CellIndex,
+            ) !void {
+                const cell = try self.getOrPutCell(cell_index);
+                errdefer self.cleanupNewCellIfNeeded(cell, cell_index);
+                try cell.value_ptr.ensureUnusedCapacity(object_count_per_cell);
+            }
+
+            /// Cells starting at `area.max` will not be visited.
+            pub fn ensureUnusedCapacityInEachCellNonInclusive(
+                self: *Self,
+                object_count_per_cell: usize,
+                area: AxisAlignedBoundingBox,
+            ) !void {
+                const raw_cell_range = CellRange.fromAABB(area);
+                const cell_range = CellRange{
+                    .min = raw_cell_range.min,
+                    .max = .{
+                        .x = @max(raw_cell_range.min.x, raw_cell_range.max.x - 1),
+                        .z = @max(raw_cell_range.min.z, raw_cell_range.max.z - 1),
+                    },
+                };
+
+                var iterator = cell_range.iterator();
+                while (iterator.next()) |cell_index| {
+                    try self.ensureUnusedCapacityInCell(object_count_per_cell, cell_index);
+                }
+            }
+
             fn insertRaw(
                 self: *Self,
                 object: T,
@@ -93,22 +153,51 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
                 cell_index_iterator: anytype,
             ) !void {
                 while (cell_index_iterator.next()) |cell_index| {
-                    const cell = try self.cells.getOrPut(cell_index);
-                    if (!cell.found_existing) {
-                        cell.value_ptr.* = UnorderedCollection(T).create(self.allocator);
-                    }
-                    errdefer if (!cell.found_existing) {
-                        cell.value_ptr.destroy();
-                        _ = self.cells.remove(cell_index);
-                    };
+                    try self.insertRawIntoCell(object, cell_index);
+                }
+            }
 
-                    try cell.value_ptr.append(object);
-                    errdefer cell.value_ptr.removeLastAppendedItem();
+            fn insertRawIntoCell(self: *Self, object: T, cell_index: CellIndex) !void {
+                const cell = try self.getOrPutCell(cell_index);
+                errdefer self.cleanupNewCellIfNeeded(cell, cell_index);
+
+                try cell.value_ptr.append(object);
+                errdefer cell.value_ptr.removeLastAppendedItem();
+            }
+
+            /// Returns a fully initialized cell, with informations on whether the cell had to be
+            /// created or not.
+            fn getOrPutCell(
+                self: *Self,
+                cell_index: CellIndex,
+            ) !std.AutoHashMap(CellIndex, UnorderedCollection(T)).GetOrPutResult {
+                const cell = try self.cells.getOrPut(cell_index);
+                if (!cell.found_existing) {
+                    cell.value_ptr.* = UnorderedCollection(T).create(self.allocator);
+                }
+                return cell;
+            }
+
+            fn cleanupNewCellIfNeeded(
+                self: *Self,
+                cell: std.AutoHashMap(CellIndex, UnorderedCollection(T)).GetOrPutResult,
+                cell_index: CellIndex,
+            ) void {
+                if (!cell.found_existing) {
+                    cell.value_ptr.destroy();
+                    _ = self.cells.remove(cell_index);
                 }
             }
         };
 
         const InsertRemoveFunctions = struct {
+            /// Insert the given object into the cell which contains the specified position.
+            /// Invalidates existing iterators. The returned handle can be ignored and is only
+            /// needed for optionally removing the inserted object from the grid.
+            pub fn insert(self: *Self, object: T, position: FlatVector) !*ObjectHandle {
+                return self.insertIntoArea(object, .{ .min = position, .max = position });
+            }
+
             /// Insert copies of the given object into every cell which intersects with the
             /// specified bounding box. Invalidates existing iterators. The returned handle can be
             /// ignored and is only needed for optionally removing the inserted object from the
@@ -136,7 +225,9 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
             ) !*ObjectHandle {
                 var indices = try getPolygonIndices(self.allocator, polygon_vertices);
                 defer indices.deinit();
-                var iterator = KeyIteratorWrapper{ .iterator = indices.keyIterator() };
+                var iterator = DereferencingIterator(std.AutoHashMap(CellIndex, void).KeyIterator){
+                    .iterator = indices.keyIterator(),
+                };
                 return try self.insertRaw(object, &iterator, indices.count());
             }
 
@@ -227,6 +318,29 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
             }
         };
 
+        pub fn getAreaOfCell(
+            _: Self,
+            /// Can refer to a cell which does not exist in this grid.
+            cell_index: CellIndex,
+        ) AxisAlignedBoundingBox {
+            const cell_length = Fix32.fp(cell_side_length);
+
+            // The area around zero rounds to 0 and can cover 4 cells.
+            const x = Fix32.fp(if (cell_index.x > 0) cell_index.x else cell_index.x - 1);
+            const z = Fix32.fp(if (cell_index.z > 0) cell_index.z else cell_index.z - 1);
+            const w = if (cell_index.x == 0) Fix32.fp(2) else Fix32.fp(1);
+            const h = if (cell_index.z == 0) Fix32.fp(2) else Fix32.fp(1);
+            const min_x = x.mul(cell_length);
+            const min_z = z.mul(cell_length);
+            return .{
+                .min = .{ .x = min_x, .z = min_z },
+                .max = .{
+                    .x = min_x.add(w.mul(cell_length)),
+                    .z = min_z.add(h.mul(cell_length)),
+                },
+            };
+        }
+
         /// Visit all cells intersecting with the specified area. Objects occupying multiple cells
         /// may be visited multiple times. Will be invalidated by updates to this grid.
         pub fn areaIterator(self: *const Self, area: AxisAlignedBoundingBox) ConstAreaIterator {
@@ -257,6 +371,36 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
             cell_line_iterator.Iterator(CellIndex),
         );
 
+        /// Iterator returns all cell indices currently used in this grid, including empty cells.
+        /// Will be invalidated by updates to the grid.
+        pub fn cellIndexIterator(
+            self: *const Self,
+        ) CellIndexIterator {
+            return .{ .iterator = self.cells.keyIterator() };
+        }
+
+        pub const CellIndexIterator =
+            DereferencingIterator(std.AutoHashMap(CellIndex, UnorderedCollection(T)).KeyIterator);
+
+        /// Will be invalidated by updates to this grid.
+        pub fn constCellIterator(
+            self: *const Self,
+            /// Must exist in this grid. Specified cell can be empty.
+            cell_index: CellIndex,
+        ) UnorderedCollection(T).ConstIterator {
+            return self.cells.getPtr(cell_index).?.constIterator();
+        }
+
+        /// Returns the amount of cells currently in this grid, including empty cells.
+        pub fn countCells(self: Self) usize {
+            return self.cells.count();
+        }
+
+        /// The given cell must exist. Returns 0 if the cell is empty.
+        pub fn countItemsInCell(self: Self, cell_index: CellIndex) usize {
+            return self.cells.get(cell_index).?.count();
+        }
+
         fn getPolygonIndices(
             allocator: std.mem.Allocator,
             vertices: []const FlatVector,
@@ -283,17 +427,18 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
             return indices;
         }
 
-        /// Dereferences results from the wrapped iterator.
-        const KeyIteratorWrapper = struct {
-            iterator: std.AutoHashMap(CellIndex, void).KeyIterator,
+        fn DereferencingIterator(comptime WrappedIterator: type) type {
+            return struct {
+                iterator: WrappedIterator,
 
-            fn next(self: *KeyIteratorWrapper) ?CellIndex {
-                if (self.iterator.next()) |ptr| {
-                    return ptr.*;
+                pub fn next(self: *@This()) ?CellIndex {
+                    if (self.iterator.next()) |ptr| {
+                        return ptr.*;
+                    }
+                    return null;
                 }
-                return null;
-            }
-        };
+            };
+        }
 
         fn ConstBaseIterator(comptime IndexIterator: type) type {
             return struct {

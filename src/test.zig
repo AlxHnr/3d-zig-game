@@ -11,6 +11,8 @@ const util = @import("util.zig");
 const grid_cell_side_length = 7;
 const SpatialGrid = @import("spatial_partitioning/grid.zig")
     .Grid(u32, grid_cell_side_length, .insert_remove);
+const GrowingSpatialGrid = @import("spatial_partitioning/grid.zig")
+    .Grid(u32, grid_cell_side_length, .insert_only);
 const SpatialCollection = @import("spatial_partitioning/collection.zig")
     .Collection(u32, grid_cell_side_length);
 const CellIndexType = @import("spatial_partitioning/cell_index.zig").Index;
@@ -988,6 +990,60 @@ test "SpatialGrid: insert and remove: update displaced object ids" {
     grid.remove(handle_11);
 }
 
+test "SpatialGrid: insert and query informations" {
+    const fp = math.Fix32.fp;
+
+    var grid = GrowingSpatialGrid.create(std.testing.allocator);
+    defer grid.destroy();
+
+    try expect(grid.countCells() == 0);
+    try grid.insert(19, .{ .x = fp(100), .z = fp(100) });
+    try expect(grid.countCells() == 1);
+
+    try grid.insertIntoArea(20, .{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(100), .z = fp(100) },
+    });
+    try grid.insertIntoArea(21, .{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(100), .z = fp(100) },
+    });
+    const cell_at_100 = @as(u16, @divTrunc(100, grid_cell_side_length));
+
+    var cell_indices = std.AutoHashMap(CellIndex, void).init(std.testing.allocator);
+    defer cell_indices.deinit();
+    var iterator = grid.cellIndexIterator();
+    while (iterator.next()) |cell_index| {
+        try cell_indices.put(cell_index, {});
+    }
+    try expect(cell_indices.count() == (cell_at_100 + 1) * (cell_at_100 + 1));
+    try expect(cell_indices.contains(.{ .x = 0, .z = 0 }));
+    try expect(cell_indices.contains(.{ .x = cell_at_100 / 2, .z = cell_at_100 }));
+    try expect(cell_indices.contains(.{ .x = cell_at_100, .z = cell_at_100 / 2 }));
+    try expect(cell_indices.contains(.{ .x = cell_at_100 / 2, .z = cell_at_100 / 2 }));
+    try expect(cell_indices.contains(.{ .x = cell_at_100, .z = cell_at_100 }));
+
+    try expect(grid.countItemsInCell(.{ .x = 0, .z = 0 }) == 2);
+    try expect(grid.countItemsInCell(.{ .x = cell_at_100, .z = cell_at_100 }) == 3);
+}
+
+test "SpatialGrid: insert into cell 0" {
+    const fp = math.Fix32.fp;
+
+    var grid = SpatialGrid.create(std.testing.allocator);
+    defer grid.destroy();
+
+    try expect(grid.countCells() == 0);
+    _ = try grid.insert(19, .{ .x = fp(0), .z = fp(0) });
+    try expect(grid.countCells() == 1);
+
+    _ = try grid.insertIntoArea(19, .{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(0), .z = fp(0) },
+    });
+    try expect(grid.countCells() == 1);
+}
+
 fn testAreaIterator(
     iterator: *SpatialGrid.ConstAreaIterator,
     expected_numbers: []const usize,
@@ -1415,5 +1471,98 @@ test "SpatialGrid: const straight line iterator" {
     );
     try expect(iterator.next().? == 6);
     try expect(iterator.next().? == 7);
+    try expect(iterator.next() == null);
+}
+
+test "SpatialGrid: compute area function" {
+    const fp = math.Fix32.fp;
+
+    const side_length = fp(grid_cell_side_length);
+    var grid = SpatialGrid.create(std.testing.allocator);
+    defer grid.destroy();
+
+    const cell1 = .{ .x = 20, .z = 20 };
+    try expect(grid.getAreaOfCell(cell1).min.x.eql(side_length.mul(fp(20))));
+    try expect(grid.getAreaOfCell(cell1).min.z.eql(side_length.mul(fp(20))));
+    try expect(grid.getAreaOfCell(cell1).max.x.eql(side_length.mul(fp(20)).add(side_length)));
+    try expect(grid.getAreaOfCell(cell1).max.z.eql(side_length.mul(fp(20)).add(side_length)));
+
+    const cell2 = .{ .x = 0, .z = 0 };
+    const cell2_epsilon = fp(0.0001);
+    try expect(grid.getAreaOfCell(cell2).min.x.eql(side_length.mul(fp(-1))));
+    try expect(grid.getAreaOfCell(cell2).min.z.eql(side_length.mul(fp(-1))));
+    try expect(grid.getAreaOfCell(cell2).max.x.sub(side_length).abs().lt(cell2_epsilon));
+    try expect(grid.getAreaOfCell(cell2).max.z.sub(side_length).abs().lt(cell2_epsilon));
+}
+
+test "SpatialGrid: preallocating memory" {
+    const fp = math.Fix32.fp;
+
+    var grid = GrowingSpatialGrid.create(std.testing.allocator);
+    defer grid.destroy();
+
+    try grid.ensureUnusedCapacityInEachCellNonInclusive(3, .{
+        .min = .{ .x = fp(-30), .z = fp(-30) },
+        .max = .{ .x = fp(-grid_cell_side_length), .z = fp(-grid_cell_side_length) },
+    });
+    try grid.ensureUnusedCapacityInEachCellNonInclusive(4, .{
+        .min = .{ .x = fp(-20), .z = fp(-20) },
+        .max = .{ .x = fp(-20), .z = fp(-20) },
+    });
+    const cell_with_30_items = .{
+        .x = @divTrunc(-30, grid_cell_side_length),
+        .z = @divTrunc(-30, grid_cell_side_length),
+    };
+    try grid.ensureUnusedCapacityInCell(30, cell_with_30_items);
+    try grid.ensureUnusedCapacityInCell(5, .{ .x = 4, .z = 4 });
+
+    const insertion_range = .{
+        .min = .{ .x = fp(-30), .z = fp(-30) },
+        .max = .{ .x = fp(-2 * grid_cell_side_length), .z = fp(-2 * grid_cell_side_length) },
+    };
+    grid.insertIntoAreaAssumeCapacity(20, insertion_range);
+    grid.insertIntoAreaAssumeCapacity(21, insertion_range);
+    grid.insertIntoAreaAssumeCapacity(22, insertion_range);
+    grid.insertIntoAreaAssumeCapacity(23, .{
+        .min = .{ .x = fp(-20), .z = fp(-20) },
+        .max = .{ .x = fp(-20), .z = fp(-20) },
+    });
+    for (0..27) |_| {
+        grid.insertIntoCellAssumeCapacity(0, cell_with_30_items);
+    }
+    for (0..5) |_| {
+        grid.insertIntoCellAssumeCapacity(0, .{ .x = 4, .z = 4 });
+    }
+
+    try expect(grid.countCells() == 10);
+    try expect(grid.countItemsInCell(.{ .x = -2, .z = -3 }) == 3);
+    try expect(grid.countItemsInCell(.{ .x = -2, .z = -4 }) == 3);
+    try expect(grid.countItemsInCell(.{ .x = -3, .z = -2 }) == 3);
+    try expect(grid.countItemsInCell(.{ .x = -3, .z = -3 }) == 3);
+    try expect(grid.countItemsInCell(.{ .x = -3, .z = -4 }) == 3);
+    try expect(grid.countItemsInCell(.{ .x = -4, .z = -2 }) == 3);
+    try expect(grid.countItemsInCell(.{ .x = -4, .z = -3 }) == 3);
+    try expect(grid.countItemsInCell(.{
+        .x = @divTrunc(-20, grid_cell_side_length),
+        .z = @divTrunc(-20, grid_cell_side_length),
+    }) == 4);
+    try expect(grid.countItemsInCell(.{ .x = 4, .z = 4 }) == 5);
+    try expect(grid.countItemsInCell(cell_with_30_items) == 30);
+}
+
+test "SpatialGrid: const cell iterator" {
+    const fp = math.Fix32.fp;
+
+    var grid = SpatialGrid.create(std.testing.allocator);
+    defer grid.destroy();
+
+    _ = try grid.insert(19, .{ .x = fp(0), .z = fp(0) });
+    _ = try grid.insert(20, .{ .x = fp(0), .z = fp(0) });
+    _ = try grid.insert(21, .{ .x = fp(0), .z = fp(0) });
+
+    var iterator = grid.constCellIterator(.{ .x = 0, .z = 0 });
+    try expect(iterator.next().?.* == 19);
+    try expect(iterator.next().?.* == 20);
+    try expect(iterator.next().?.* == 21);
     try expect(iterator.next() == null);
 }
