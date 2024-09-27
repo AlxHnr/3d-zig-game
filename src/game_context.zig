@@ -234,6 +234,14 @@ pub fn processElapsedTick(
     }
     self.thread_pool.wait();
 
+    for (self.thread_contexts) |*context| {
+        self.main_character.gem_count += context.gems.amount_collected;
+    }
+    self.render_snapshot.previous_tick = self.tick_counter;
+    self.render_snapshot.main_character = self.main_character;
+    try self.map.geometry.populateRenderSnapshot(&self.render_snapshot.geometry);
+    self.render_loop.swapRenderSnapshot(&self.render_snapshot);
+
     self.mergeMeasurementsFromThreads(.enemy_logic, performance_measurements);
     self.mergeMeasurementsFromThreads(.gem_logic, performance_measurements);
     var enemy_insertion_queue =
@@ -245,7 +253,6 @@ pub fn processElapsedTick(
 
     try self.updateSpatialGrids(enemy_insertion_queue);
     try self.current_tick_data.recomputeEnemyGridCellIndices();
-
     std.mem.swap(TickData, &self.current_tick_data, &self.previous_tick_data);
     self.current_tick_data.reset();
 
@@ -283,14 +290,6 @@ pub fn processElapsedTick(
         },
     }});
     self.thread_pool.wait();
-
-    for (self.thread_contexts) |*context| {
-        self.main_character.gem_count += context.gems.amount_collected;
-    }
-    self.render_snapshot.previous_tick = self.tick_counter;
-    self.render_snapshot.main_character = self.main_character;
-    try self.map.geometry.populateRenderSnapshot(&self.render_snapshot.geometry);
-    self.render_loop.swapRenderSnapshot(&self.render_snapshot);
 
     self.tick_counter += 1;
 }
