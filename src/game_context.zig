@@ -93,6 +93,7 @@ pub fn create(
             position,
         );
     }
+    try previous_tick_data.recomputeEnemyGridCellIndices();
 
     var thread_pool = try ThreadPool.create(allocator);
     errdefer thread_pool.destroy(allocator);
@@ -110,7 +111,19 @@ pub fn create(
     }
 
     var throwaway = try PerformanceMeasurements.create();
-    var result = Context{
+    try preallocateEnemyGrids(.{
+        .in = .{
+            .thread_count = thread_contexts.len,
+            .enemy_grid = previous_tick_data.enemy_grid,
+            .enemy_grid_cell_indices = previous_tick_data.enemy_grid_cell_indices.items,
+        },
+        .out = .{
+            .performance_measurements = &throwaway,
+            .enemy_grid = &current_tick_data.enemy_grid,
+            .enemy_peer_grid = &current_tick_data.enemy_peer_grid,
+        },
+    });
+    return .{
         .allocator = allocator,
 
         .tick_counter = 0,
@@ -136,9 +149,6 @@ pub fn create(
         .render_snapshot = render_loop.makeRenderSnapshot(),
         .dialog_controller = dialog_controller,
     };
-    try result.previous_tick_data.recomputeEnemyGridCellIndices();
-    try result.preallocateTickData(&throwaway);
-    return result;
 }
 
 pub fn destroy(self: *Context) void {
@@ -200,8 +210,11 @@ pub fn processElapsedTick(
                 .main_character = self.main_character,
                 .flow_field = self.main_character_flow_field,
                 .enemy_grid = self.previous_tick_data.enemy_grid,
-                .enemy_grid_cell_index_iterator_copy = self.previous_tick_data
-                    .enemyGridCellIndexIterator(thread_id, stride),
+                .enemy_grid_cell_index_iterator_copy = EnemyGridCellIndexIterator.create(
+                    self.previous_tick_data.enemy_grid_cell_indices.items,
+                    thread_id,
+                    stride,
+                ),
                 .enemy_peer_grid = self.previous_tick_data.enemy_peer_grid,
             },
             .out = .{
@@ -240,10 +253,18 @@ pub fn processElapsedTick(
             .flow_field = &self.main_character_flow_field,
         },
     }});
-    try self.thread_pool.dispatchIgnoreErrors(
-        preallocateTickData,
-        .{ self, performance_measurements },
-    );
+    try self.thread_pool.dispatchIgnoreErrors(preallocateEnemyGrids, .{.{
+        .in = .{
+            .thread_count = self.thread_contexts.len,
+            .enemy_grid = self.previous_tick_data.enemy_grid,
+            .enemy_grid_cell_indices = self.previous_tick_data.enemy_grid_cell_indices.items,
+        },
+        .out = .{
+            .performance_measurements = performance_measurements,
+            .enemy_grid = &self.current_tick_data.enemy_grid,
+            .enemy_peer_grid = &self.current_tick_data.enemy_peer_grid,
+        },
+    }});
     self.thread_pool.wait();
 
     for (self.thread_contexts) |*context| {
@@ -343,28 +364,39 @@ fn loadMap(
     );
 }
 
-fn preallocateTickData(
-    self: *Context,
-    performance_measurements: *PerformanceMeasurements,
-) !void {
-    performance_measurements.begin(.preallocate_tick_buffers);
-    defer performance_measurements.end(.preallocate_tick_buffers);
+const PreallocateTickDataThreadData = struct {
+    in: struct {
+        thread_count: usize,
+        enemy_grid: enemy_grid.Grid,
+        enemy_grid_cell_indices: []const enemy_grid.CellIndex,
+    },
+    out: struct {
+        performance_measurements: *PerformanceMeasurements,
+        enemy_grid: *enemy_grid.Grid,
+        enemy_peer_grid: *enemy_grid.PeerGrid,
+    },
+};
 
-    for (0..self.thread_contexts.len) |thread_id| {
-        const stride = self.thread_contexts.len - 1;
-        var cell_index_iterator =
-            self.previous_tick_data.enemyGridCellIndexIterator(thread_id, stride);
+fn preallocateEnemyGrids(data: PreallocateTickDataThreadData) !void {
+    data.out.performance_measurements.begin(.preallocate_tick_buffers);
+    defer data.out.performance_measurements.end(.preallocate_tick_buffers);
+
+    for (0..data.in.thread_count) |thread_id| {
+        const stride = data.in.thread_count - 1;
+        var cell_index_iterator = EnemyGridCellIndexIterator.create(
+            data.in.enemy_grid_cell_indices,
+            thread_id,
+            stride,
+        );
         while (cell_index_iterator.next()) |cell_index| {
-            const enemy_count = self.previous_tick_data.enemy_grid.countItemsInCell(cell_index);
+            const enemy_count = data.in.enemy_grid.countItemsInCell(cell_index);
             if (enemy_count == 0) {
                 continue;
             }
-            try self.current_tick_data.enemy_grid
-                .ensureUnusedCapacityInCell(enemy_count, cell_index);
-            try self.current_tick_data.enemy_peer_grid
-                .ensureUnusedCapacityInEachCellNonInclusive(
+            try data.out.enemy_grid.ensureUnusedCapacityInCell(enemy_count, cell_index);
+            try data.out.enemy_peer_grid.ensureUnusedCapacityInEachCellNonInclusive(
                 enemy_grid.estimated_enemies_per_cell,
-                self.current_tick_data.enemy_grid.getAreaOfCell(cell_index),
+                data.out.enemy_grid.getAreaOfCell(cell_index),
             );
         }
     }
@@ -374,8 +406,11 @@ fn preallocateBillboardData(self: *Context) !void {
     var billboard_buffer_size: usize = 0;
     for (self.thread_contexts, 0..) |*context, thread_id| {
         const stride = self.thread_contexts.len - 1;
-        var cell_index_iterator = self.previous_tick_data
-            .enemyGridCellIndexIterator(thread_id, stride);
+        var cell_index_iterator = EnemyGridCellIndexIterator.create(
+            self.previous_tick_data.enemy_grid_cell_indices.items,
+            thread_id,
+            stride,
+        );
         while (cell_index_iterator.next()) |cell_index| {
             const enemy_count = self.previous_tick_data.enemy_grid.countItemsInCell(cell_index);
             context.enemies.required_billboard_buffer_size +=
@@ -487,7 +522,7 @@ const EnemyThreadData = struct {
         main_character: game_unit.Player,
         flow_field: FlowField,
         enemy_grid: enemy_grid.Grid,
-        enemy_grid_cell_index_iterator_copy: TickData.EnemyGridCellIndexIterator,
+        enemy_grid_cell_index_iterator_copy: EnemyGridCellIndexIterator,
         enemy_peer_grid: enemy_grid.PeerGrid,
     },
 
@@ -656,7 +691,6 @@ const TickData = struct {
         self.enemy_peer_grid = enemy_grid.PeerGrid.create(self.arena_allocator.allocator());
     }
 
-    /// Invalidates all iterators of type `EnemyGridCellIndexIterator`.
     fn recomputeEnemyGridCellIndices(self: *TickData) !void {
         self.enemy_grid_cell_indices.clearRetainingCapacity();
         try self.enemy_grid_cell_indices.ensureUnusedCapacity(self.enemy_grid.countCells());
@@ -668,39 +702,40 @@ const TickData = struct {
         std.mem.sort(enemy_grid.CellIndex, self.enemy_grid_cell_indices.items, {}, lessThan);
     }
 
-    /// To be called after `recomputeEnemyGridCellIndices()`.
-    fn enemyGridCellIndexIterator(
-        self: *const TickData,
+    fn lessThan(_: void, a: enemy_grid.CellIndex, b: enemy_grid.CellIndex) bool {
+        return a.compare(b) == .lt;
+    }
+};
+
+const EnemyGridCellIndexIterator = struct {
+    indices: []const enemy_grid.CellIndex,
+    index: usize,
+    step: usize,
+
+    /// Returned iterator keeps a reference to the given indices and will be invalidated if they
+    /// change.
+    fn create(
+        indices: []const enemy_grid.CellIndex,
         /// Cells to skip from the first cell in this collection.
         offset_from_start: usize,
         /// Number cells to skip before advancing to the next cell.
         stride: usize,
     ) EnemyGridCellIndexIterator {
         return .{
-            .ordered_indices = self.enemy_grid_cell_indices.items,
+            .indices = indices,
             .index = offset_from_start,
             .step = stride + 1,
         };
     }
 
-    fn lessThan(_: void, a: enemy_grid.CellIndex, b: enemy_grid.CellIndex) bool {
-        return a.compare(b) == .lt;
-    }
-
-    const EnemyGridCellIndexIterator = struct {
-        ordered_indices: []enemy_grid.CellIndex,
-        index: usize,
-        step: usize,
-
-        pub fn next(self: *EnemyGridCellIndexIterator) ?enemy_grid.CellIndex {
-            if (self.index < self.ordered_indices.len) {
-                const cell_index = self.ordered_indices[self.index];
-                self.index += self.step;
-                return cell_index;
-            }
-            return null;
+    pub fn next(self: *EnemyGridCellIndexIterator) ?enemy_grid.CellIndex {
+        if (self.index < self.indices.len) {
+            const cell_index = self.indices[self.index];
+            self.index += self.step;
+            return cell_index;
         }
-    };
+        return null;
+    }
 };
 
 const ThreadContext = struct {
