@@ -5,6 +5,7 @@ pub const Measurements = struct {
 
     pub const MetricType = enum {
         tick_total,
+        preallocate_tick_buffers,
         enemy_logic,
         gem_logic,
         spatial_grids,
@@ -95,14 +96,15 @@ pub const Measurements = struct {
     pub fn printTickInfo(self: Measurements) void {
         for (summary_types) |summary| {
             std.log.info(
-                "{s} Tick: {d:.2}ms: 🧵⟨👾{d:.2}ms then ♦️ {d:.2}ms⟩ 🧵⟨🗒️{d:.2}ms & 🌐{d:.2}ms⟩",
+                "{s} Tick: {d:.2}ms: 🧵⟨👾{d:.2}ms then ♦️ {d:.2}ms⟩ 🌐{d:.2}ms 🧵⟨🗒️{d:.2}ms & 🔼{d:.2}ms⟩",
                 .{
                     summary.name,
                     summary.get_function(self, .tick_total),
                     summary.get_function(self, .enemy_logic),
                     summary.get_function(self, .gem_logic),
-                    summary.get_function(self, .flow_field),
                     summary.get_function(self, .spatial_grids),
+                    summary.get_function(self, .flow_field),
+                    summary.get_function(self, .preallocate_tick_buffers),
                 },
             );
         }
