@@ -229,10 +229,17 @@ pub fn processElapsedTick(
     std.mem.swap(TickData, &self.current_tick_data, &self.previous_tick_data);
     self.current_tick_data.reset();
 
-    try self.thread_pool.dispatchIgnoreErrors(
-        recomputeFlowFieldThread,
-        .{ self, performance_measurements },
-    );
+    try self.thread_pool.dispatchIgnoreErrors(recomputeFlowField, .{.{
+        .in = .{
+            .map = self.map,
+            .main_character = self.main_character,
+            .enemy_grid = self.previous_tick_data.enemy_grid,
+        },
+        .out = .{
+            .performance_measurements = performance_measurements,
+            .flow_field = &self.main_character_flow_field,
+        },
+    }});
     try self.thread_pool.dispatchIgnoreErrors(
         preallocateCurrentTickData,
         .{ self, performance_measurements },
@@ -442,27 +449,33 @@ fn updateSpatialGrids(self: *Context, performance_measurements: *PerformanceMeas
     }
 }
 
-fn recomputeFlowFieldThread(
-    self: *Context,
-    performance_measurements: *PerformanceMeasurements,
-) !void {
-    performance_measurements.begin(.flow_field);
-    defer performance_measurements.end(.flow_field);
+const FlowFieldThreadData = struct {
+    in: struct {
+        map: Map,
+        main_character: game_unit.Player,
+        enemy_grid: enemy_grid.Grid,
+    },
+    out: struct {
+        performance_measurements: *PerformanceMeasurements,
+        flow_field: *FlowField,
+    },
+};
 
-    var iterator = self.previous_tick_data.enemy_grid.cellIndexIterator();
+fn recomputeFlowField(data: FlowFieldThreadData) !void {
+    data.out.performance_measurements.begin(.flow_field);
+    defer data.out.performance_measurements.end(.flow_field);
+
+    var iterator = data.in.enemy_grid.cellIndexIterator();
     while (iterator.next()) |cell_index| {
-        var enemy_iterator = self.previous_tick_data.enemy_grid
-            .constCellIterator(cell_index);
+        var enemy_iterator = data.in.enemy_grid.constCellIterator(cell_index);
         while (enemy_iterator.next()) |enemy_ptr| {
-            self.main_character_flow_field.sampleCrowd(
-                enemy_ptr.character.moving_circle.getPosition(),
-            );
+            data.out.flow_field.sampleCrowd(enemy_ptr.character.moving_circle.getPosition());
         }
     }
 
-    try self.main_character_flow_field.recompute(
-        self.main_character.character.moving_circle.getPosition(),
-        self.map,
+    try data.out.flow_field.recompute(
+        data.in.main_character.character.moving_circle.getPosition(),
+        data.in.map,
     );
 }
 
