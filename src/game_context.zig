@@ -199,6 +199,7 @@ pub fn processElapsedTick(
     self.main_character.applyCurrentInput();
     self.map.processElapsedTick();
     self.main_character.processElapsedTick(self.map);
+    self.dialog_controller.processElapsedTick();
 
     for (self.thread_contexts, 0..) |*thread_context, thread_id| {
         const stride = self.thread_contexts.len - 1;
@@ -232,16 +233,32 @@ pub fn processElapsedTick(
         try self.thread_pool.dispatchIgnoreErrors(processGemThread, .{ self, thread_id });
     }
     self.thread_pool.wait();
+
     self.mergeMeasurementsFromThreads(.enemy_logic, performance_measurements);
     self.mergeMeasurementsFromThreads(.gem_logic, performance_measurements);
+    var enemy_insertion_queue =
+        try self.mergeThreadResults("enemies", "insertion_queue", Enemy);
+    defer enemy_insertion_queue.destroy();
+    var enemy_peer_insertion_queue = try self
+        .mergeThreadResults("enemies", "peer_insertion_queue", Enemy.PeerInfo);
+    defer enemy_peer_insertion_queue.destroy();
 
-    self.dialog_controller.processElapsedTick();
-    try self.updateSpatialGrids(performance_measurements);
+    try self.updateSpatialGrids(enemy_insertion_queue);
     try self.current_tick_data.recomputeEnemyGridCellIndices();
 
     std.mem.swap(TickData, &self.current_tick_data, &self.previous_tick_data);
     self.current_tick_data.reset();
 
+    try self.thread_pool.dispatchIgnoreErrors(updateEnemyPeerGrid, .{.{
+        .in = .{
+            .enemy_peer_insertion_queue = enemy_peer_insertion_queue,
+        },
+        .out = .{
+            .performance_measurements = performance_measurements,
+            // `Previous` is incomplete at this point, but not needed by other threads.
+            .enemy_peer_grid = &self.previous_tick_data.enemy_peer_grid,
+        },
+    }});
     try self.thread_pool.dispatchIgnoreErrors(recomputeFlowField, .{.{
         .in = .{
             .map = self.map,
@@ -452,32 +469,40 @@ fn mergeMeasurementsFromThreads(
     out.copySingleMetric(longest, metric_type);
 }
 
-fn updateSpatialGrids(self: *Context, performance_measurements: *PerformanceMeasurements) !void {
-    performance_measurements.begin(.spatial_grids);
-    defer performance_measurements.end(.spatial_grids);
-
-    var merged_insertion_queue = try self.mergeThreadResults("enemies", "insertion_queue", Enemy);
-    defer merged_insertion_queue.destroy();
-    var insertion_iterator = merged_insertion_queue.constIterator();
+fn updateSpatialGrids(self: *Context, enemy_insertion_queue: MergedThreadResults(Enemy)) !void {
+    var insertion_iterator = enemy_insertion_queue.constIterator();
     while (insertion_iterator.next()) |enemy| {
         const enemy_position = enemy.character.moving_circle.getPosition();
         _ = try self.current_tick_data.enemy_grid.insert(
             enemy,
             enemy_position,
         );
+
         const peer_info = enemy.getPeerInfo();
         try self.current_tick_data.enemy_peer_grid.insertIntoArea(
             peer_info,
             peer_info.getSpacingBoundaries().getOuterBoundingBoxInGameCoordinates(),
         );
     }
+}
 
-    var merged_peer_insertion_queue =
-        try self.mergeThreadResults("enemies", "peer_insertion_queue", Enemy.PeerInfo);
-    defer merged_peer_insertion_queue.destroy();
-    var peer_insertion_iterator = merged_peer_insertion_queue.constIterator();
+const UpdateEnemyPeerGridThreadData = struct {
+    in: struct {
+        enemy_peer_insertion_queue: MergedThreadResults(Enemy.PeerInfo),
+    },
+    out: struct {
+        performance_measurements: *PerformanceMeasurements,
+        enemy_peer_grid: *enemy_grid.PeerGrid,
+    },
+};
+
+fn updateEnemyPeerGrid(data: UpdateEnemyPeerGridThreadData) !void {
+    data.out.performance_measurements.begin(.update_enemy_peer_grid);
+    defer data.out.performance_measurements.end(.update_enemy_peer_grid);
+
+    var peer_insertion_iterator = data.in.enemy_peer_insertion_queue.constIterator();
     while (peer_insertion_iterator.next()) |peer_info| {
-        try self.current_tick_data.enemy_peer_grid.insertIntoArea(
+        try data.out.enemy_peer_grid.insertIntoArea(
             peer_info,
             peer_info.getSpacingBoundaries().getOuterBoundingBoxInGameCoordinates(),
         );
