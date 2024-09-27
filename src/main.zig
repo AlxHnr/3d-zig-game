@@ -162,7 +162,7 @@ const ProgramContext = struct {
                     if (!try self.processInputs()) {
                         break :main_loop;
                     }
-                    try self.game_context.handleElapsedTick(&performance_measurements);
+                    try self.game_context.processElapsedTick(&performance_measurements);
                 }
 
                 if (measurements_timer.read() > 5 * std.time.ns_per_s) {

@@ -1,8 +1,5 @@
-const AttackingEnemyPosition = @import("enemy.zig").AttackingEnemyPosition;
 const CellIndex = @import("spatial_partitioning/cell_index.zig").Index;
-const Enemy = @import("enemy.zig").Enemy;
-const EnemyObjectHandle = SharedContext.EnemyCollection.ObjectHandle;
-const EnemyPositionGrid = @import("enemy.zig").EnemyPositionGrid;
+const Enemy = @import("enemy.zig");
 const FlowField = @import("flow_field.zig");
 const Gem = @import("gem.zig");
 const GemObjectHandle = SharedContext.GemCollection.ObjectHandle;
@@ -11,15 +8,14 @@ const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
 const RenderLoop = @import("render_loop.zig");
 const SharedContext = @import("shared_context.zig").SharedContext;
-const ThirdPersonCamera = @import("third_person_camera.zig");
 const ThreadPool = @import("thread_pool.zig").Pool;
 const UnorderedCollection = @import("unordered_collection.zig").UnorderedCollection;
 const animation = @import("animation.zig");
 const collision = @import("collision.zig");
 const dialog = @import("dialog.zig");
+const enemy_grid = @import("enemy_grid.zig");
 const enemy_presets = @import("enemy_presets.zig");
 const fp = math.Fix32.fp;
-const fp64 = math.Fix64.fp;
 const game_unit = @import("game_unit.zig");
 const math = @import("math.zig");
 const rendering = @import("rendering.zig");
@@ -40,10 +36,9 @@ shared_context: SharedContext,
 spritesheet: textures.SpriteSheetTexture,
 billboard_animations: animation.BillboardAnimationCollection,
 
-/// For objects which die at the end of each tick.
-tick_lifetime_allocator: std.heap.ArenaAllocator,
-/// Allocated with `tick_lifetime_allocator`.
-attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
+previous_tick_data: TickData,
+current_tick_data: TickData,
+
 thread_pool: ThreadPool,
 thread_contexts: []ThreadContext,
 
@@ -83,19 +78,21 @@ pub fn create(
     );
     errdefer map.destroy();
 
-    for (0..2000) |_| {
+    var previous_tick_data = try TickData.create(allocator);
+    errdefer previous_tick_data.destroy(allocator);
+    var current_tick_data = try TickData.create(allocator);
+    errdefer current_tick_data.destroy(allocator);
+
+    for (0..500000) |_| {
         const position = math.FlatVector{
-            .x = fp(shared_context.rng.random().float(f32)).mul(fp(100)).neg().sub(fp(50)),
-            .z = fp(shared_context.rng.random().float(f32)).mul(fp(500)),
+            .x = fp(shared_context.rng.random().float(f32)).mul(fp(1000)).neg().sub(fp(50)),
+            .z = fp(shared_context.rng.random().float(f32)).mul(fp(1000)),
         };
-        _ = try shared_context.enemy_collection.insert(
+        _ = try previous_tick_data.enemy_grid.insert(
             Enemy.create(position, &enemy_presets.floating_eye, spritesheet),
             position,
         );
     }
-
-    var tick_lifetime_allocator = std.heap.ArenaAllocator.init(allocator);
-    errdefer tick_lifetime_allocator.deinit();
 
     var thread_pool = try ThreadPool.create(allocator);
     errdefer thread_pool.destroy(allocator);
@@ -112,7 +109,8 @@ pub fn create(
         contexts_initialized += 1;
     }
 
-    return .{
+    var throwaway = try PerformanceMeasurements.create();
+    var result = Context{
         .allocator = allocator,
 
         .tick_counter = 0,
@@ -129,17 +127,19 @@ pub fn create(
         .spritesheet = spritesheet,
         .billboard_animations = billboard_animations,
 
-        .tick_lifetime_allocator = tick_lifetime_allocator,
+        .previous_tick_data = previous_tick_data,
+        .current_tick_data = current_tick_data,
         .thread_pool = thread_pool,
-        .attacking_enemy_positions_at_previous_tick = EnemyPositionGrid.create(
-            tick_lifetime_allocator.allocator(),
-        ),
         .thread_contexts = thread_contexts,
 
         .render_loop = render_loop,
         .render_snapshot = render_loop.makeRenderSnapshot(),
         .dialog_controller = dialog_controller,
     };
+    try result.previous_tick_data.recomputeEnemyGridCellIndices();
+    try result.preallocateCurrentTickData(&throwaway);
+    try result.preallocateBillboardData();
+    return result;
 }
 
 pub fn destroy(self: *Context) void {
@@ -149,7 +149,8 @@ pub fn destroy(self: *Context) void {
     }
     self.allocator.free(self.thread_contexts);
     self.thread_pool.destroy(self.allocator);
-    self.tick_lifetime_allocator.deinit();
+    self.current_tick_data.destroy(self.allocator);
+    self.previous_tick_data.destroy(self.allocator);
     self.billboard_animations.destroy(self.allocator);
     self.spritesheet.destroy();
     self.shared_context.destroy();
@@ -174,7 +175,7 @@ pub fn markButtonAsReleased(self: *Context, button: game_unit.InputButton) void 
     self.main_character.markButtonAsReleased(button);
 }
 
-pub fn handleElapsedTick(
+pub fn processElapsedTick(
     self: *Context,
     performance_measurements: *PerformanceMeasurements,
 ) !void {
@@ -182,16 +183,11 @@ pub fn handleElapsedTick(
         self.main_character.markAllButtonsAsReleased();
     }
     self.main_character.applyCurrentInput();
-
     self.map.processElapsedTick();
     self.main_character.processElapsedTick(self.map);
 
-    try self.setupBillboardBufferSlices();
     for (0..self.thread_contexts.len) |thread_id| {
-        try self.thread_pool.dispatchIgnoreErrors(
-            processEnemyThread,
-            .{ self, thread_id, self.attacking_enemy_positions_at_previous_tick },
-        );
+        try self.thread_pool.dispatchIgnoreErrors(processEnemyThread, .{ self, thread_id });
     }
     for (0..self.thread_contexts.len) |thread_id| {
         try self.thread_pool.dispatchIgnoreErrors(processGemThread, .{ self, thread_id });
@@ -201,17 +197,18 @@ pub fn handleElapsedTick(
     self.mergeMeasurementsFromThreads(.gem_logic, performance_measurements);
 
     self.dialog_controller.processElapsedTick();
+    try self.updateSpatialGrids(performance_measurements);
+    try self.current_tick_data.recomputeEnemyGridCellIndices();
 
-    _ = self.tick_lifetime_allocator.reset(.retain_capacity);
-    self.attacking_enemy_positions_at_previous_tick = EnemyPositionGrid.create(
-        self.tick_lifetime_allocator.allocator(),
-    );
-    try self.thread_pool.dispatchIgnoreErrors(
-        updateSpatialGridsThread,
-        .{ self, &self.attacking_enemy_positions_at_previous_tick, performance_measurements },
-    );
+    std.mem.swap(TickData, &self.current_tick_data, &self.previous_tick_data);
+    self.current_tick_data.reset();
+
     try self.thread_pool.dispatchIgnoreErrors(
         recomputeFlowFieldThread,
+        .{ self, performance_measurements },
+    );
+    try self.thread_pool.dispatchIgnoreErrors(
+        preallocateCurrentTickData,
         .{ self, performance_measurements },
     );
     self.thread_pool.wait();
@@ -225,6 +222,7 @@ pub fn handleElapsedTick(
     self.render_snapshot.main_character = self.main_character;
     try self.map.geometry.populateRenderSnapshot(&self.render_snapshot.geometry);
     self.render_loop.swapRenderSnapshot(&self.render_snapshot);
+    try self.preallocateBillboardData();
 
     self.tick_counter += 1;
 }
@@ -315,24 +313,48 @@ fn loadMap(
     );
 }
 
-pub fn setupBillboardBufferSlices(self: *Context) !void {
+pub fn preallocateCurrentTickData(
+    self: *Context,
+    performance_measurements: *PerformanceMeasurements,
+) !void {
+    performance_measurements.begin(.preallocate_tick_buffers);
+    defer performance_measurements.end(.preallocate_tick_buffers);
+
+    for (0..self.thread_contexts.len) |thread_id| {
+        const stride = self.thread_contexts.len - 1;
+        var cell_index_iterator =
+            self.previous_tick_data.enemyGridCellIndexIterator(thread_id, stride);
+        while (cell_index_iterator.next()) |cell_index| {
+            const enemy_count = self.previous_tick_data.enemy_grid.countItemsInCell(cell_index);
+            if (enemy_count == 0) {
+                continue;
+            }
+            try self.current_tick_data.enemy_grid
+                .ensureUnusedCapacityInCell(enemy_count, cell_index);
+            try self.current_tick_data.enemy_peer_grid
+                .ensureUnusedCapacityInEachCellNonInclusive(
+                enemy_grid.estimated_enemies_per_cell,
+                self.current_tick_data.enemy_grid.getAreaOfCell(cell_index),
+            );
+        }
+    }
+}
+
+pub fn preallocateBillboardData(self: *Context) !void {
     var billboard_buffer_size: usize = 0;
     for (self.thread_contexts, 0..) |*context, thread_id| {
         const stride = self.thread_contexts.len - 1;
-        var enemy_iterator = self.shared_context.enemy_collection.cellGroupIteratorAdvanced(
-            thread_id,
-            stride,
-        );
-        while (enemy_iterator.next()) |cell_group| {
+        var cell_index_iterator = self.previous_tick_data
+            .enemyGridCellIndexIterator(thread_id, stride);
+        while (cell_index_iterator.next()) |cell_index| {
+            const enemy_count = self.previous_tick_data.enemy_grid.countItemsInCell(cell_index);
             context.enemies.required_billboard_buffer_size +=
-                cell_group.cell.count() * Enemy.rendered_billboard_count;
+                enemy_count * Enemy.required_billboard_count;
         }
         billboard_buffer_size += context.enemies.required_billboard_buffer_size;
 
-        var gem_iterator = self.shared_context.gem_collection.cellGroupIteratorAdvanced(
-            thread_id,
-            stride,
-        );
+        var gem_iterator = self.shared_context.gem_collection
+            .cellGroupIteratorAdvanced(thread_id, stride);
         while (gem_iterator.next()) |cell_group| {
             context.gems.required_billboard_buffer_size += cell_group.cell.count();
         }
@@ -365,50 +387,35 @@ fn mergeMeasurementsFromThreads(
     out.copySingleMetric(longest, metric_type);
 }
 
-fn updateSpatialGridsThread(
-    self: *Context,
-    attacking_enemy_positions_at_previous_tick: *EnemyPositionGrid,
-    performance_measurements: *PerformanceMeasurements,
-) !void {
+fn updateSpatialGrids(self: *Context, performance_measurements: *PerformanceMeasurements) !void {
     performance_measurements.begin(.spatial_grids);
     defer performance_measurements.end(.spatial_grids);
-
-    var merged_removal_queue =
-        try self.mergeThreadResults("enemies", "removal_queue", *EnemyObjectHandle);
-    defer merged_removal_queue.destroy();
-    var removal_iterator = merged_removal_queue.constIterator();
-    while (removal_iterator.next()) |object_handle| {
-        self.shared_context.enemy_collection.remove(object_handle);
-    }
 
     var merged_insertion_queue = try self.mergeThreadResults("enemies", "insertion_queue", Enemy);
     defer merged_insertion_queue.destroy();
     var insertion_iterator = merged_insertion_queue.constIterator();
     while (insertion_iterator.next()) |enemy| {
-        _ = try self.shared_context.enemy_collection.insert(
+        const enemy_position = enemy.character.moving_circle.getPosition();
+        _ = try self.current_tick_data.enemy_grid.insert(
             enemy,
-            enemy.character.moving_circle.getPosition(),
+            enemy_position,
+        );
+        const peer_info = enemy.getPeerInfo();
+        try self.current_tick_data.enemy_peer_grid.insertIntoArea(
+            peer_info,
+            peer_info.getSpacingBoundaries().getOuterBoundingBoxInGameCoordinates(),
         );
     }
 
-    var merged_attacking_positions =
-        try self.mergeThreadResults("enemies", "attacking_positions", AttackingEnemyPosition);
-    defer merged_attacking_positions.destroy();
-    var attacking_positions = merged_attacking_positions.constIterator();
-    while (attacking_positions.next()) |attacking_enemy| {
-        try attacking_enemy_positions_at_previous_tick.insertIntoArea(
-            attacking_enemy,
-            Enemy.makeSpacingBoundaries(attacking_enemy.position)
-                .getOuterBoundingBoxInGameCoordinates(),
+    var merged_peer_insertion_queue =
+        try self.mergeThreadResults("enemies", "peer_insertion_queue", Enemy.PeerInfo);
+    defer merged_peer_insertion_queue.destroy();
+    var peer_insertion_iterator = merged_peer_insertion_queue.constIterator();
+    while (peer_insertion_iterator.next()) |peer_info| {
+        try self.current_tick_data.enemy_peer_grid.insertIntoArea(
+            peer_info,
+            peer_info.getSpacingBoundaries().getOuterBoundingBoxInGameCoordinates(),
         );
-    }
-
-    var merged_gem_removal_queue =
-        try self.mergeThreadResults("gems", "removal_queue", *GemObjectHandle);
-    defer merged_gem_removal_queue.destroy();
-    var gem_removal_iterator = merged_gem_removal_queue.constIterator();
-    while (gem_removal_iterator.next()) |object_handle| {
-        self.shared_context.gem_collection.remove(object_handle);
     }
 }
 
@@ -419,12 +426,15 @@ fn recomputeFlowFieldThread(
     performance_measurements.begin(.flow_field);
     defer performance_measurements.end(.flow_field);
 
-    var merged_attacking_positions =
-        try self.mergeThreadResults("enemies", "attacking_positions", AttackingEnemyPosition);
-    defer merged_attacking_positions.destroy();
-    var attacking_positionstor = merged_attacking_positions.constIterator();
-    while (attacking_positionstor.next()) |attacking_enemy| {
-        self.main_character_flow_field.sampleCrowd(attacking_enemy.position);
+    var iterator = self.previous_tick_data.enemy_grid.cellIndexIterator();
+    while (iterator.next()) |cell_index| {
+        var enemy_iterator = self.previous_tick_data.enemy_grid
+            .constCellIterator(cell_index);
+        while (enemy_iterator.next()) |enemy_ptr| {
+            self.main_character_flow_field.sampleCrowd(
+                enemy_ptr.character.moving_circle.getPosition(),
+            );
+        }
     }
 
     try self.main_character_flow_field.recompute(
@@ -433,38 +443,29 @@ fn recomputeFlowFieldThread(
     );
 }
 
-fn processEnemyThread(
-    self: *Context,
-    thread_id: usize,
-    attacking_enemy_positions_at_previous_tick: EnemyPositionGrid,
-) !void {
+fn processEnemyThread(self: *Context, thread_id: usize) !void {
     const thread_context = &self.thread_contexts[thread_id];
     thread_context.performance_measurements.begin(.enemy_logic);
     defer thread_context.performance_measurements.end(.enemy_logic);
 
-    var iterator = self.shared_context.enemy_collection
-        .cellGroupIteratorAdvanced(thread_id, self.thread_contexts.len - 1);
-    while (iterator.next()) |cell_group| {
-        try self.processEnemyCellGroup(
-            cell_group,
-            thread_context,
-            attacking_enemy_positions_at_previous_tick,
-        );
+    const stride = self.thread_contexts.len - 1;
+    var iterator = self.previous_tick_data.enemyGridCellIndexIterator(thread_id, stride);
+    while (iterator.next()) |cell_index| {
+        try self.processEnemyCell(cell_index, thread_context);
     }
 }
 
-fn processEnemyCellGroup(
-    self: Context,
-    cell_group: SharedContext.EnemyCollection.CellGroupIterator.CellGroup,
+fn processEnemyCell(
+    self: *Context,
+    cell_index: enemy_grid.CellIndex,
     thread_context: *ThreadContext,
-    enemy_position_grid: EnemyPositionGrid,
 ) !void {
     var rng = blk: {
         // Deterministic and portably reproducible seed which is oblivious to core count
         // and thread execution order.
         var seed = std.hash.Wyhash.init(self.tick_counter);
-        seed.update(std.mem.asBytes(&std.mem.nativeToLittle(i16, cell_group.cell_index.x)));
-        seed.update(std.mem.asBytes(&std.mem.nativeToLittle(i16, cell_group.cell_index.z)));
+        seed.update(std.mem.asBytes(&std.mem.nativeToLittle(i16, cell_index.x)));
+        seed.update(std.mem.asBytes(&std.mem.nativeToLittle(i16, cell_index.z)));
         break :blk std.rand.Xoroshiro128.init(seed.final());
     };
     const tick_context = .{
@@ -472,62 +473,60 @@ fn processEnemyCellGroup(
         .map = &self.map,
         .main_character = &self.main_character.character,
         .main_character_flow_field = &self.main_character_flow_field,
-        .attacking_enemy_positions_at_previous_tick = &enemy_position_grid,
+        .peer_grid = &self.previous_tick_data.enemy_peer_grid,
     };
 
-    var enemy_iterator = cell_group.cell.iterator();
+    var enemy_iterator = self.previous_tick_data.enemy_grid.constCellIterator(cell_index);
     const arena_allocator = thread_context.enemies.arena_allocator.allocator();
     var cell_insertion_list = UnorderedCollection(Enemy).create(arena_allocator);
-    var cell_removal_list = UnorderedCollection(*EnemyObjectHandle).create(arena_allocator);
-    var cell_attacking_list = UnorderedCollection(AttackingEnemyPosition).create(arena_allocator);
+    var extra_cell_insertion_list = UnorderedCollection(Enemy.PeerInfo)
+        .create(arena_allocator);
     while (enemy_iterator.next()) |enemy_ptr| {
-        const old_cell_index = self.shared_context.enemy_collection.getCellIndex(
-            enemy_ptr.character.moving_circle.getPosition(),
-        );
-        enemy_ptr.processElapsedTick(tick_context);
-        const new_cell_index = self.shared_context.enemy_collection.getCellIndex(
-            enemy_ptr.character.moving_circle.getPosition(),
-        );
+        var enemy = enemy_ptr.*;
+        enemy.processElapsedTick(tick_context);
+        const new_cell_index = enemy_grid.CellIndex
+            .fromPosition(enemy.character.moving_circle.getPosition());
+        const enemy_outer_boundaries =
+            enemy.getPeerInfo().getSpacingBoundaries().getOuterBoundingBoxInGameCoordinates();
 
-        if (enemy_ptr.state == .dead) {
-            try cell_removal_list.append(
-                self.shared_context.enemy_collection.getObjectHandle(enemy_ptr),
-            );
-        } else if (new_cell_index.compare(old_cell_index) != .eq) {
-            try cell_removal_list.append(
-                self.shared_context.enemy_collection.getObjectHandle(enemy_ptr),
-            );
-            try cell_insertion_list.append(enemy_ptr.*);
+        if (enemy.state == .dead) {
+            // Do nothing.
+        } else if (new_cell_index.compare(cell_index) != .eq) {
+            try cell_insertion_list.append(enemy);
+        } else {
+            self.current_tick_data.enemy_grid.insertIntoCellAssumeCapacity(enemy, cell_index);
+            const bordering_with_other_thread_cells = enemy_grid.CellRange
+                .fromAABB(enemy_outer_boundaries)
+                .countCoveredCells() > 1;
+            if (!bordering_with_other_thread_cells) {
+                self.current_tick_data.enemy_peer_grid.insertIntoAreaAssumeCapacity(
+                    enemy.getPeerInfo(),
+                    enemy_outer_boundaries,
+                );
+            } else {
+                try extra_cell_insertion_list.append(enemy.getPeerInfo());
+            }
         }
-        if (enemy_ptr.state == .attacking) {
-            try cell_attacking_list.append(enemy_ptr.makeAttackingEnemyPosition());
-        }
-        enemy_ptr.populateBillboardData(
+        enemy.populateBillboardData(
             self.spritesheet,
             self.tick_counter,
             thread_context.enemies.billboard_buffer,
         );
         thread_context.enemies.billboard_buffer =
-            thread_context.enemies.billboard_buffer[Enemy.rendered_billboard_count..];
+            thread_context.enemies.billboard_buffer[Enemy.required_billboard_count..];
     }
 
-    try appendUnorderedResultsIfNeeded(
-        *EnemyObjectHandle,
-        cell_removal_list,
-        &thread_context.enemies.removal_queue,
-        cell_group,
-    );
     try appendUnorderedResultsIfNeeded(
         Enemy,
         cell_insertion_list,
         &thread_context.enemies.insertion_queue,
-        cell_group,
+        cell_index,
     );
     try appendUnorderedResultsIfNeeded(
-        AttackingEnemyPosition,
-        cell_attacking_list,
-        &thread_context.enemies.attacking_positions,
-        cell_group,
+        Enemy.PeerInfo,
+        extra_cell_insertion_list,
+        &thread_context.enemies.peer_insertion_queue,
+        cell_index,
     );
 }
 
@@ -569,19 +568,97 @@ fn processGemThread(self: *Context, thread_id: usize) !void {
             *GemObjectHandle,
             removal_list,
             &thread_context.gems.removal_queue,
-            cell_group,
+            cell_group.cell_index,
         );
     }
     thread_context.gems.amount_collected = gems_collected;
 }
+
+/// Contains short-lived objects.
+const TickData = struct {
+    arena_allocator: *std.heap.ArenaAllocator,
+    enemy_grid: enemy_grid.Grid,
+    enemy_grid_cell_indices: std.ArrayList(enemy_grid.CellIndex),
+    enemy_peer_grid: enemy_grid.PeerGrid,
+
+    fn create(allocator: std.mem.Allocator) !TickData {
+        const arena_allocator = try createArenaAllocatorOnHeap(allocator);
+        errdefer destroyArenaAlocatorOnHeap(arena_allocator);
+
+        return .{
+            .arena_allocator = arena_allocator,
+            .enemy_grid = enemy_grid.Grid.create(arena_allocator.allocator()),
+            .enemy_grid_cell_indices = std.ArrayList(enemy_grid.CellIndex)
+                .init(arena_allocator.allocator()),
+            .enemy_peer_grid = enemy_grid.PeerGrid.create(arena_allocator.allocator()),
+        };
+    }
+
+    fn destroy(self: *TickData, allocator: std.mem.Allocator) void {
+        destroyArenaAlocatorOnHeap(allocator, self.arena_allocator);
+    }
+
+    fn reset(self: *TickData) void {
+        _ = self.arena_allocator.reset(.retain_capacity);
+        self.enemy_grid = enemy_grid.Grid.create(self.arena_allocator.allocator());
+        self.enemy_grid_cell_indices = std.ArrayList(enemy_grid.CellIndex)
+            .init(self.arena_allocator.allocator());
+        self.enemy_peer_grid = enemy_grid.PeerGrid.create(self.arena_allocator.allocator());
+    }
+
+    /// Invalidates all iterators of type `EnemyGridCellIndexIterator`.
+    fn recomputeEnemyGridCellIndices(self: *TickData) !void {
+        self.enemy_grid_cell_indices.clearRetainingCapacity();
+        try self.enemy_grid_cell_indices.ensureUnusedCapacity(self.enemy_grid.countCells());
+
+        var iterator = self.enemy_grid.cellIndexIterator();
+        while (iterator.next()) |cell_index| {
+            self.enemy_grid_cell_indices.appendAssumeCapacity(cell_index);
+        }
+        std.mem.sort(enemy_grid.CellIndex, self.enemy_grid_cell_indices.items, {}, lessThan);
+    }
+
+    /// To be called after `recomputeEnemyGridCellIndices()`.
+    fn enemyGridCellIndexIterator(
+        self: *const TickData,
+        /// Cells to skip from the first cell in this collection.
+        offset_from_start: usize,
+        /// Number cells to skip before advancing to the next cell.
+        stride: usize,
+    ) EnemyGridCellIndexIterator {
+        return .{
+            .ordered_indices = self.enemy_grid_cell_indices.items,
+            .index = offset_from_start,
+            .step = stride + 1,
+        };
+    }
+
+    fn lessThan(_: void, a: enemy_grid.CellIndex, b: enemy_grid.CellIndex) bool {
+        return a.compare(b) == .lt;
+    }
+
+    const EnemyGridCellIndexIterator = struct {
+        ordered_indices: []enemy_grid.CellIndex,
+        index: usize,
+        step: usize,
+
+        pub fn next(self: *EnemyGridCellIndexIterator) ?enemy_grid.CellIndex {
+            if (self.index < self.ordered_indices.len) {
+                const cell_index = self.ordered_indices[self.index];
+                self.index += self.step;
+                return cell_index;
+            }
+            return null;
+        }
+    };
+};
 
 const ThreadContext = struct {
     performance_measurements: PerformanceMeasurements,
     enemies: struct {
         arena_allocator: *std.heap.ArenaAllocator,
         insertion_queue: UnorderedCollection(CellItems(Enemy)),
-        removal_queue: UnorderedCollection(CellItems(*EnemyObjectHandle)),
-        attacking_positions: UnorderedCollection(CellItems(AttackingEnemyPosition)),
+        peer_insertion_queue: UnorderedCollection(CellItems(Enemy.PeerInfo)),
         required_billboard_buffer_size: usize,
         billboard_buffer: []rendering.SpriteData,
     } align(std.atomic.cache_line),
@@ -612,9 +689,7 @@ const ThreadContext = struct {
                 .arena_allocator = enemy_allocator,
                 .insertion_queue = UnorderedCollection(CellItems(Enemy))
                     .create(enemy_allocator.allocator()),
-                .removal_queue = UnorderedCollection(CellItems(*EnemyObjectHandle))
-                    .create(enemy_allocator.allocator()),
-                .attacking_positions = UnorderedCollection(CellItems(AttackingEnemyPosition))
+                .peer_insertion_queue = UnorderedCollection(CellItems(Enemy.PeerInfo))
                     .create(enemy_allocator.allocator()),
                 .required_billboard_buffer_size = 0,
                 .billboard_buffer = &.{},
@@ -642,9 +717,7 @@ const ThreadContext = struct {
         _ = self.enemies.arena_allocator.reset(.retain_capacity);
         self.enemies.insertion_queue = UnorderedCollection(CellItems(Enemy))
             .create(self.enemies.arena_allocator.allocator());
-        self.enemies.removal_queue = UnorderedCollection(CellItems(*EnemyObjectHandle))
-            .create(self.enemies.arena_allocator.allocator());
-        self.enemies.attacking_positions = UnorderedCollection(CellItems(AttackingEnemyPosition))
+        self.enemies.peer_insertion_queue = UnorderedCollection(CellItems(Enemy.PeerInfo))
             .create(self.enemies.arena_allocator.allocator());
         self.enemies.required_billboard_buffer_size = 0;
         self.enemies.billboard_buffer = &.{};
@@ -772,10 +845,28 @@ fn appendUnorderedResultsIfNeeded(
     comptime Item: type,
     cell_list: anytype,
     target_list: anytype,
-    cell_group: anytype,
+    cell_index: anytype,
 ) !void {
     if (cell_list.count() > 0) {
-        const cell_items = ThreadContext.CellItems(Item).create(cell_group.cell_index, cell_list);
+        const cell_items = ThreadContext.CellItems(Item).create(cell_index, cell_list);
         try target_list.append(cell_items);
     }
+}
+
+fn createArenaAllocatorOnHeap(allocator: std.mem.Allocator) !*std.heap.ArenaAllocator {
+    const result = try allocator.create(std.heap.ArenaAllocator);
+    errdefer allocator.destroy(result);
+
+    result.* = std.heap.ArenaAllocator.init(allocator);
+    errdefer result.deinit();
+
+    return result;
+}
+
+fn destroyArenaAlocatorOnHeap(
+    allocator: std.mem.Allocator,
+    arena_allocator: *std.heap.ArenaAllocator,
+) void {
+    arena_allocator.deinit();
+    allocator.destroy(arena_allocator);
 }

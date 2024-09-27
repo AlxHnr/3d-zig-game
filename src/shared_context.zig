@@ -14,23 +14,19 @@ pub const SharedContext = struct {
     /// just by storing user inputs. This is greatly simplifies netcode.
     rng: std.rand.Xoroshiro128,
 
-    enemy_collection: EnemyCollection,
     gem_collection: GemCollection,
 
-    pub const EnemyCollection = SpatialCollection(Enemy, 25);
     pub const GemCollection = SpatialCollection(Gem, 100);
 
     pub fn create(allocator: std.mem.Allocator) SharedContext {
         return .{
             .object_id_generator = ObjectIdGenerator.create(),
             .rng = std.rand.Xoroshiro128.init(0),
-            .enemy_collection = EnemyCollection.create(allocator),
             .gem_collection = GemCollection.create(allocator),
         };
     }
 
     pub fn destroy(self: *SharedContext) void {
         self.gem_collection.destroy();
-        self.enemy_collection.destroy();
     }
 };

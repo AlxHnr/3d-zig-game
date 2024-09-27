@@ -3,7 +3,7 @@ const FlowField = @import("flow_field.zig");
 const GameCharacter = @import("game_unit.zig").GameCharacter;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
-const SpatialGrid = @import("spatial_partitioning/grid.zig").Grid;
+const PeerGrid = @import("enemy_grid.zig").PeerGrid;
 const SpriteSheetTexture = @import("textures.zig").SpriteSheetTexture;
 const ThirdPersonCamera = @import("third_person_camera.zig");
 const collision = @import("collision.zig");
@@ -16,7 +16,13 @@ const simulation = @import("simulation.zig");
 const std = @import("std");
 const text_rendering = @import("text_rendering.zig");
 
-/// Used for initializing enemies.
+const Self = @This();
+
+config: *const Config,
+character: GameCharacter,
+state: State,
+previous_tick_data: TickData,
+
 pub const Config = struct {
     /// Non-owning slice. Will be referenced by all enemies created with this configuration.
     name: []const u8,
@@ -29,160 +35,154 @@ pub const Config = struct {
     const IdleAndAttackingValues = struct { idle: math.Fix32, attacking: math.Fix32 };
 };
 
+pub fn create(
+    position: math.FlatVector,
+    /// Returned object will keep a reference to this config.
+    config: *const Config,
+    spritesheet: SpriteSheetTexture,
+) Self {
+    const character = GameCharacter.create(
+        position,
+        config.height.div(spritesheet.getSpriteAspectRatio(config.sprite)),
+        config.height,
+        fp(0),
+        config.max_health,
+    );
+    return .{
+        .config = config,
+        .character = character,
+        .state = .{ .spawning = undefined },
+        .previous_tick_data = TickData.create(character),
+    };
+}
+
 pub const TickContext = struct {
     rng: std.rand.Random,
     map: *const Map,
     main_character: *const GameCharacter,
     main_character_flow_field: *const FlowField,
-    attacking_enemy_positions_at_previous_tick: *const EnemyPositionGrid,
+    peer_grid: *const PeerGrid,
 };
 
-pub const EnemyPositionGrid = SpatialGrid(AttackingEnemyPosition, position_grid_cell_size, .insert_only);
-pub const AttackingEnemyPosition = struct {
+pub fn processElapsedTick(self: *Self, context: TickContext) void {
+    self.previous_tick_data = TickData.create(self.character);
+    switch (self.state) {
+        .spawning => self.state = .{ .idle = IdleState.create(context) },
+        .idle => |*state| state.processElapsedTick(self, context),
+        .attacking => |*state| state.processElapsedTick(self, context),
+        else => {},
+    }
+    self.character.processElapsedTick(context.map.*);
+}
+
+pub const required_billboard_count = 3;
+
+pub fn populateBillboardData(
+    self: Self,
+    spritesheet: SpriteSheetTexture,
+    previous_tick: u32,
+    /// Must be at least as large as `required_billboard_count`.
+    out: []rendering.SpriteData,
+) void {
+    const y_offset = self.character.height.div(fp(2));
+    out[0] = rendering.SpriteData.create(
+        self.previous_tick_data.position.addY(y_offset),
+        spritesheet.getSpriteSourceRectangle(self.config.sprite),
+        self.character.moving_circle.radius.mul(fp(2)),
+        self.config.height,
+    ).withAnimationStartTick(previous_tick).withAnimationTargetPosition(
+        self.character.moving_circle.getPosition().addY(y_offset),
+    );
+    self.populateHealthbarBillboardData(spritesheet, previous_tick, out[1..]);
+}
+
+pub const PeerInfo = struct {
     position: math.FlatVector,
     acceleration_direction: math.FlatVector,
-};
-const position_grid_cell_size = 3;
 
-pub const Enemy = struct {
-    config: *const Config,
-    character: GameCharacter,
-    state: State,
-    /// For interpolating between two ticks.
-    previous_tick_data: TickData,
-
-    const State = union(enum) {
-        spawning: void,
-        idle: IdleState,
-        attacking: AttackingState,
-        dead: void,
-    };
-
-    const peer_flock_radius = fp(position_grid_cell_size).div(fp(10)).mul(fp(4));
-
-    pub fn create(
-        position: math.FlatVector,
-        /// Returned object will keep a reference to this config.
-        config: *const Config,
-        spritesheet: SpriteSheetTexture,
-    ) Enemy {
-        const character = GameCharacter.create(
-            position,
-            config.height.div(spritesheet.getSpriteAspectRatio(config.sprite)),
-            config.height,
-            fp(0),
-            config.max_health,
-        );
-        return .{
-            .config = config,
-            .character = character,
-            .state = .{ .spawning = undefined },
-            .previous_tick_data = TickData.create(character),
-        };
-    }
-
-    pub fn processElapsedTick(self: *Enemy, context: TickContext) void {
-        self.previous_tick_data = TickData.create(self.character);
-        switch (self.state) {
-            .spawning => self.state = .{ .idle = IdleState.create(context) },
-            .idle => |*state| state.handleElapsedTick(self, context),
-            .attacking => |*state| state.handleElapsedTick(self, context),
-            else => {},
-        }
-        self.character.processElapsedTick(context.map.*);
-    }
-
-    pub const rendered_billboard_count = 3;
-
-    pub fn populateBillboardData(
-        self: Enemy,
-        spritesheet: SpriteSheetTexture,
-        previous_tick: u32,
-        /// Must be at least as large as `rendered_billboard_count`.
-        out: []rendering.SpriteData,
-    ) void {
-        const y_offset = self.character.height.div(fp(2));
-        out[0] = rendering.SpriteData.create(
-            self.previous_tick_data.position.addY(y_offset),
-            spritesheet.getSpriteSourceRectangle(self.config.sprite),
-            self.character.moving_circle.radius.mul(fp(2)),
-            self.config.height,
-        ).withAnimationStartTick(previous_tick).withAnimationTargetPosition(
-            self.character.moving_circle.getPosition().addY(y_offset),
-        );
-        self.populateHealthbarBillboardData(spritesheet, previous_tick, out[1..]);
-    }
-
-    pub fn makeSpacingBoundaries(position: math.FlatVector) collision.Circle {
-        return .{ .position = position, .radius = peer_flock_radius };
-    }
-
-    pub fn makeAttackingEnemyPosition(self: Enemy) AttackingEnemyPosition {
-        return .{
-            .position = self.character.moving_circle.getPosition(),
-            .acceleration_direction = self.character.acceleration_direction,
-        };
-    }
-
-    const TickData = struct {
-        position: math.FlatVector,
-        health: GameCharacter.Health,
-
-        fn create(character: GameCharacter) TickData {
-            return .{
-                .position = character.moving_circle.getPosition(),
-                .health = character.health,
-            };
-        }
-    };
-
-    fn populateHealthbarBillboardData(
-        self: Enemy,
-        spritesheet: SpriteSheetTexture,
-        previous_tick: u32,
-        out: []rendering.SpriteData,
-    ) void {
-        const offset_to_player_height_factor = fp(1.2);
-        const health_color = Color.create(21, 213, 21, 255);
-        const background_color = Color.create(213, 21, 21, 255);
-        const source = spritesheet.getSpriteSourceRectangle(.white_block);
-        const health_percent = fp64(self.character.health.current)
-            .div(fp64(self.character.health.max))
-            .convertTo(math.Fix32);
-
-        // This factor has been determined by trial and error.
-        const health_bar_factor =
-            fp(std.math.log1p(@as(f32, @floatFromInt(self.character.health.max))) * 8);
-        const y_offset = self.character.height.mul(offset_to_player_height_factor);
-        const previous_position = self.previous_tick_data.position.addY(y_offset);
-        const current_position = self.character.moving_circle.getPosition().addY(y_offset);
-        const health_bar_scale = self.character.height.mul(fp(0.0075));
-        const health_bar_w = health_bar_scale.mul(health_bar_factor);
-        const health_bar_h = health_bar_scale.mul(fp(8));
-
-        const left_half = &out[0];
-        const left_health_bar_w = health_bar_w.mul(health_percent);
-        left_half.* = rendering.SpriteData.create(
-            previous_position,
-            source,
-            left_health_bar_w,
-            health_bar_h,
-        ).withOffsetFromOrigin(health_bar_w.sub(left_health_bar_w).neg().div(fp(2)), fp(0))
-            .withTint(health_color)
-            .withAnimationStartTick(previous_tick).withAnimationTargetPosition(current_position);
-
-        const right_half = &out[1];
-        const right_health_bar_w = health_bar_w.mul(fp(1).sub(health_percent));
-        right_half.* = rendering.SpriteData.create(
-            previous_position,
-            source,
-            right_health_bar_w,
-            health_bar_h,
-        ).withOffsetFromOrigin(health_bar_w.sub(right_health_bar_w).div(fp(2)), fp(0))
-            .withTint(background_color)
-            .withAnimationStartTick(previous_tick).withAnimationTargetPosition(current_position);
+    pub fn getSpacingBoundaries(self: PeerInfo) collision.Circle {
+        return .{ .position = self.position, .radius = peer_flock_radius };
     }
 };
+
+pub fn getPeerInfo(self: Self) PeerInfo {
+    return .{
+        .position = self.character.moving_circle.getPosition(),
+        .acceleration_direction = self.character.acceleration_direction,
+    };
+}
+
+pub const peer_overlap_radius =
+    peer_flock_distance.div(fp(simulation.enemy_peer_overlap_radius_factor));
+
+const peer_flock_distance = fp(3);
+const peer_flock_radius = peer_flock_distance.div(fp(10)).mul(fp(4));
+
+const State = union(enum) {
+    spawning: void,
+    idle: IdleState,
+    attacking: AttackingState,
+    dead: void,
+};
+
+const TickData = struct {
+    position: math.FlatVector,
+    health: GameCharacter.Health,
+
+    fn create(character: GameCharacter) TickData {
+        return .{
+            .position = character.moving_circle.getPosition(),
+            .health = character.health,
+        };
+    }
+};
+
+fn populateHealthbarBillboardData(
+    self: Self,
+    spritesheet: SpriteSheetTexture,
+    previous_tick: u32,
+    out: []rendering.SpriteData,
+) void {
+    const offset_to_player_height_factor = fp(1.2);
+    const health_color = Color.create(21, 213, 21, 255);
+    const background_color = Color.create(213, 21, 21, 255);
+    const source = spritesheet.getSpriteSourceRectangle(.white_block);
+    const health_percent = fp64(self.character.health.current)
+        .div(fp64(self.character.health.max))
+        .convertTo(math.Fix32);
+
+    // This factor has been determined by trial and error.
+    const health_bar_factor =
+        fp(std.math.log1p(@as(f32, @floatFromInt(self.character.health.max))) * 8);
+    const y_offset = self.character.height.mul(offset_to_player_height_factor);
+    const previous_position = self.previous_tick_data.position.addY(y_offset);
+    const current_position = self.character.moving_circle.getPosition().addY(y_offset);
+    const health_bar_scale = self.character.height.mul(fp(0.0075));
+    const health_bar_w = health_bar_scale.mul(health_bar_factor);
+    const health_bar_h = health_bar_scale.mul(fp(8));
+
+    const left_half = &out[0];
+    const left_health_bar_w = health_bar_w.mul(health_percent);
+    left_half.* = rendering.SpriteData.create(
+        previous_position,
+        source,
+        left_health_bar_w,
+        health_bar_h,
+    ).withOffsetFromOrigin(health_bar_w.sub(left_health_bar_w).neg().div(fp(2)), fp(0))
+        .withTint(health_color)
+        .withAnimationStartTick(previous_tick).withAnimationTargetPosition(current_position);
+
+    const right_half = &out[1];
+    const right_health_bar_w = health_bar_w.mul(fp(1).sub(health_percent));
+    right_half.* = rendering.SpriteData.create(
+        previous_position,
+        source,
+        right_health_bar_w,
+        health_bar_h,
+    ).withOffsetFromOrigin(health_bar_w.sub(right_health_bar_w).div(fp(2)), fp(0))
+        .withTint(background_color)
+        .withAnimationStartTick(previous_tick).withAnimationTargetPosition(current_position);
+}
 
 const IdleState = struct {
     ticks_until_movement: u32,
@@ -201,7 +201,7 @@ const IdleState = struct {
         return .{ .ticks_until_movement = 0, .visibility_checker = visibility_checker };
     }
 
-    fn handleElapsedTick(self: *IdleState, enemy: *Enemy, context: TickContext) void {
+    fn processElapsedTick(self: *IdleState, enemy: *Self, context: TickContext) void {
         const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
             context,
             enemy.*,
@@ -241,7 +241,7 @@ const AttackingState = struct {
         };
     }
 
-    fn handleElapsedTick(self: *AttackingState, enemy: *Enemy, context: TickContext) void {
+    fn processElapsedTick(self: *AttackingState, enemy: *Self, context: TickContext) void {
         enemy.character.movement_speed = enemy.config.movement_speed.attacking;
 
         const position = enemy.character.moving_circle.getPosition();
@@ -260,14 +260,12 @@ const AttackingState = struct {
             return;
         }
 
-        const peer_overlap_radius =
-            fp(position_grid_cell_size).div(fp(simulation.enemy_peer_overlap_radius_factor));
         const circle = collision.Circle{
             .position = position,
             .radius = peer_overlap_radius,
         };
         const direction = enemy.character.moving_circle.velocity.normalize();
-        var iterator = context.attacking_enemy_positions_at_previous_tick.areaIterator(
+        var iterator = context.peer_grid.areaIterator(
             circle.getOuterBoundingBoxInGameCoordinates(),
         );
         var combined_displacement_vector = math.FlatVector.zero;
@@ -279,6 +277,11 @@ const AttackingState = struct {
         while (iterator.next()) |peer| {
             // Ignore self.
             if (peer.position.equal(enemy.previous_tick_data.position)) {
+                continue;
+            }
+            const flock_distance_squared = Self.peer_flock_distance.convertTo(math.Fix64)
+                .mul(Self.peer_flock_distance.convertTo(math.Fix64));
+            if (position.subtract(peer.position).lengthSquared().gt(flock_distance_squared)) {
                 continue;
             }
 
@@ -297,7 +300,7 @@ const AttackingState = struct {
                 const direction_to_peer = offset_to_peer.normalizeApproximate();
                 const distance_factor = fp(1).min(
                     offset_to_peer.lengthApproximate()
-                        .convertTo(math.Fix32).div(Enemy.peer_flock_radius),
+                        .convertTo(math.Fix32).div(Self.peer_flock_radius),
                 );
                 average_velocity.add(
                     direction_to_peer.multiplyScalar(enemy.character.movement_speed).lerp(
@@ -362,16 +365,16 @@ fn VisibilityChecker(comptime tick_interval: u32) type {
         ticks_remaining: u32,
         is_seeing: bool,
 
-        const Self = @This();
+        const Checker = @This();
 
-        fn create(initial_value: bool) Self {
+        fn create(initial_value: bool) Checker {
             return .{ .ticks_remaining = tick_interval, .is_seeing = initial_value };
         }
 
         fn isSeeingMainCharacter(
-            self: *Self,
+            self: *Checker,
             context: TickContext,
-            enemy: Enemy,
+            enemy: Self,
             aggro_radius: math.Fix32,
         ) bool {
             if (consumeTick(&self.ticks_remaining)) {
