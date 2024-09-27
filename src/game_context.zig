@@ -511,10 +511,12 @@ fn processEnemies(data: EnemyThreadData) !void {
             .peer_grid = &data.in.enemy_peer_grid,
         };
 
+        // Must be recreated for each cell group because these lists will stay referenced by
+        // data.out.insertion_queue.
+        var enemy_insertion_list = UnorderedCollection(Enemy).create(data.out.allocator);
+        var peer_insertion_list = UnorderedCollection(Enemy.PeerInfo).create(data.out.allocator);
+
         var enemy_iterator = data.in.enemy_grid.constCellIterator(cell_index);
-        var cell_insertion_list = UnorderedCollection(Enemy).create(data.out.allocator);
-        var extra_cell_insertion_list =
-            UnorderedCollection(Enemy.PeerInfo).create(data.out.allocator);
         while (enemy_iterator.next()) |enemy_ptr| {
             var enemy = enemy_ptr.*;
             enemy.processElapsedTick(tick_context);
@@ -526,7 +528,7 @@ fn processEnemies(data: EnemyThreadData) !void {
             if (enemy.state == .dead) {
                 // Do nothing.
             } else if (new_cell_index.compare(cell_index) != .eq) {
-                try cell_insertion_list.append(enemy);
+                try enemy_insertion_list.append(enemy);
             } else {
                 data.out.enemy_grid.insertIntoCellAssumeCapacity(enemy, cell_index);
                 const bordering_with_other_thread_cells = enemy_grid.CellRange
@@ -538,7 +540,7 @@ fn processEnemies(data: EnemyThreadData) !void {
                         enemy_outer_boundaries,
                     );
                 } else {
-                    try extra_cell_insertion_list.append(enemy.getPeerInfo());
+                    try peer_insertion_list.append(enemy.getPeerInfo());
                 }
             }
             enemy.populateBillboardData(
@@ -552,13 +554,13 @@ fn processEnemies(data: EnemyThreadData) !void {
 
         try appendUnorderedResultsIfNeeded(
             Enemy,
-            cell_insertion_list,
+            enemy_insertion_list,
             data.out.insertion_queue,
             cell_index,
         );
         try appendUnorderedResultsIfNeeded(
             Enemy.PeerInfo,
-            extra_cell_insertion_list,
+            peer_insertion_list,
             data.out.peer_insertion_queue,
             cell_index,
         );
@@ -876,6 +878,8 @@ fn MergedThreadResults(comptime Item: type) type {
     };
 }
 
+// Appends a shallow copy into the given target list, which will keep references to the given cell
+// lists content.
 fn appendUnorderedResultsIfNeeded(
     comptime Item: type,
     cell_list: anytype,
