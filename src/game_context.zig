@@ -137,7 +137,7 @@ pub fn create(
         .dialog_controller = dialog_controller,
     };
     try result.previous_tick_data.recomputeEnemyGridCellIndices();
-    try result.preallocateCurrentTickData(&throwaway);
+    try result.preallocateTickData(&throwaway);
     return result;
 }
 
@@ -241,7 +241,7 @@ pub fn processElapsedTick(
         },
     }});
     try self.thread_pool.dispatchIgnoreErrors(
-        preallocateCurrentTickData,
+        preallocateTickData,
         .{ self, performance_measurements },
     );
     self.thread_pool.wait();
@@ -343,7 +343,7 @@ fn loadMap(
     );
 }
 
-pub fn preallocateCurrentTickData(
+fn preallocateTickData(
     self: *Context,
     performance_measurements: *PerformanceMeasurements,
 ) !void {
@@ -370,7 +370,7 @@ pub fn preallocateCurrentTickData(
     }
 }
 
-pub fn preallocateBillboardData(self: *Context) !void {
+fn preallocateBillboardData(self: *Context) !void {
     var billboard_buffer_size: usize = 0;
     for (self.thread_contexts, 0..) |*context, thread_id| {
         const stride = self.thread_contexts.len - 1;
