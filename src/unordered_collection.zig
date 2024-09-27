@@ -22,13 +22,29 @@ pub fn UnorderedCollection(comptime T: type) type {
             try self.segments.append(self.allocator, value);
         }
 
+        /// The appended item will be be visited by existing iterators.
+        pub fn appendAssumeCapacity(self: *Self, value: T) void {
+            self.appendUninitializedAssumeCapacity().* = value;
+        }
+
         /// Append a new, uninitialized object to this collection and return its address. This
         /// address will be valid until it gets swap-removed or the collection dies. The created
         /// item will be be visited by existing iterators.
         pub fn appendUninitialized(self: *Self) !*T {
-            const item = try self.segments.addOne(self.allocator);
+            try self.ensureUnusedCapacity(1);
+            return self.appendUninitializedAssumeCapacity();
+        }
+
+        // Like `appendUninitialized()` but without allocating.
+        pub fn appendUninitializedAssumeCapacity(self: *Self) *T {
+            const item = self.segments.uncheckedAt(self.segments.len);
             item.* = undefined;
+            self.segments.len += 1;
             return item;
+        }
+
+        pub fn ensureUnusedCapacity(self: *Self, object_count: usize) !void {
+            try self.segments.growCapacity(self.allocator, self.segments.count() + object_count);
         }
 
         /// Empty this collection and invalidate all pointers into it. Existing iterators will
