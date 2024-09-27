@@ -83,10 +83,10 @@ pub fn create(
     var current_tick_data = try TickData.create(allocator);
     errdefer current_tick_data.destroy(allocator);
 
-    for (0..500000) |_| {
+    for (0..10000) |_| {
         const position = math.FlatVector{
-            .x = fp(shared_context.rng.random().float(f32)).mul(fp(1000)).neg().sub(fp(50)),
-            .z = fp(shared_context.rng.random().float(f32)).mul(fp(1000)),
+            .x = fp(shared_context.rng.random().float(f32)).mul(fp(400)).neg().sub(fp(50)),
+            .z = fp(shared_context.rng.random().float(f32)).mul(fp(400)),
         };
         _ = try previous_tick_data.enemy_grid.insert(
             Enemy.create(position, &enemy_presets.floating_eye, spritesheet),
