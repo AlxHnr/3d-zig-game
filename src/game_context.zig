@@ -138,7 +138,6 @@ pub fn create(
     };
     try result.previous_tick_data.recomputeEnemyGridCellIndices();
     try result.preallocateCurrentTickData(&throwaway);
-    try result.preallocateBillboardData();
     return result;
 }
 
@@ -179,6 +178,11 @@ pub fn processElapsedTick(
     self: *Context,
     performance_measurements: *PerformanceMeasurements,
 ) !void {
+    for (self.thread_contexts) |*context| {
+        context.reset();
+    }
+    try self.preallocateBillboardData();
+
     if (self.dialog_controller.hasOpenDialogs()) {
         self.main_character.markAllButtonsAsReleased();
     }
@@ -215,14 +219,11 @@ pub fn processElapsedTick(
 
     for (self.thread_contexts) |*context| {
         self.main_character.gem_count += context.gems.amount_collected;
-        context.reset();
     }
-
     self.render_snapshot.previous_tick = self.tick_counter;
     self.render_snapshot.main_character = self.main_character;
     try self.map.geometry.populateRenderSnapshot(&self.render_snapshot.geometry);
     self.render_loop.swapRenderSnapshot(&self.render_snapshot);
-    try self.preallocateBillboardData();
 
     self.tick_counter += 1;
 }
