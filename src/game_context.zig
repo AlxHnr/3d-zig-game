@@ -197,8 +197,8 @@ pub fn handleElapsedTick(
         try self.thread_pool.dispatchIgnoreErrors(processGemThread, .{ self, thread_id });
     }
     self.thread_pool.wait();
-    self.mergeMeasurementsFromSlowestThread(.enemy_logic, performance_measurements);
-    self.mergeMeasurementsFromSlowestThread(.gem_logic, performance_measurements);
+    self.mergeMeasurementsFromThreads(.enemy_logic, performance_measurements);
+    self.mergeMeasurementsFromThreads(.gem_logic, performance_measurements);
 
     self.dialog_controller.processElapsedTick();
 
@@ -353,14 +353,14 @@ pub fn setupBillboardBufferSlices(self: *Context) !void {
     std.debug.assert(billboard_slice.len == 0);
 }
 
-fn mergeMeasurementsFromSlowestThread(
+fn mergeMeasurementsFromThreads(
     self: *Context,
     metric_type: PerformanceMeasurements.MetricType,
     out: *PerformanceMeasurements,
 ) void {
     var longest = self.thread_contexts[0].performance_measurements;
     for (self.thread_contexts[1..]) |context| {
-        longest = longest.getLongest(context.performance_measurements, metric_type);
+        longest = longest.merge(context.performance_measurements, metric_type);
     }
     out.copySingleMetric(longest, metric_type);
 }

@@ -73,14 +73,12 @@ pub const Measurements = struct {
         }
     }
 
-    pub fn getLongest(self: Measurements, other: Measurements, metric_type: MetricType) Measurements {
+    pub fn merge(self: Measurements, other: Measurements, metric_type: MetricType) Measurements {
         var result = self;
         const result_metric = result.metrics.getPtr(metric_type);
         const other_metric = other.metrics.get(metric_type);
-        if (result_metric.accumulated_time < other_metric.accumulated_time) {
-            result_metric.accumulated_time = other_metric.accumulated_time;
-            result_metric.accumulated_time_count = other_metric.accumulated_time_count;
-        }
+        result_metric.accumulated_time += other_metric.accumulated_time;
+        result_metric.accumulated_time_count += other_metric.accumulated_time_count;
         result_metric.accumulated_worst_time =
             @max(result_metric.accumulated_worst_time, other_metric.accumulated_worst_time);
         return result;
