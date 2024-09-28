@@ -96,7 +96,7 @@ pub const Measurements = struct {
     pub fn printTickInfo(self: Measurements) void {
         for (summary_types) |summary| {
             std.log.info(
-                "{s} Tick: {d:.2}ms: 🧵⟨👾{d:.2}ms then ♦️ {d:.2}ms⟩ 🧵⟨🌐{d:.2}ms 🗒️{d:.2}ms & 🔼{d:.2}ms⟩",
+                "{s} Tick: {d:.2}ms: 🧵⟨👾{d:.2}ms then ♦️ {d:.2}ms⟩ 🧵⟨🌐{d:.2}ms 🗒️{d:.2}ms 🔼{d:.2}ms⟩",
                 .{
                     summary.name,
                     summary.get_function(self, .tick_total),
