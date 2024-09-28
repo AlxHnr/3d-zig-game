@@ -692,7 +692,7 @@ const TickData = struct {
 
     fn create(allocator: std.mem.Allocator) !TickData {
         const arena_allocator = try createArenaAllocatorOnHeap(allocator);
-        errdefer destroyArenaAlocatorOnHeap(arena_allocator);
+        errdefer destroyArenaAllocatorOnHeap(arena_allocator);
 
         return .{
             .arena_allocator = arena_allocator,
@@ -704,7 +704,7 @@ const TickData = struct {
     }
 
     fn destroy(self: *TickData, allocator: std.mem.Allocator) void {
-        destroyArenaAlocatorOnHeap(allocator, self.arena_allocator);
+        destroyArenaAllocatorOnHeap(allocator, self.arena_allocator);
     }
 
     fn reset(self: *TickData) void {
@@ -974,7 +974,7 @@ fn createArenaAllocatorOnHeap(allocator: std.mem.Allocator) !*std.heap.ArenaAllo
     return result;
 }
 
-fn destroyArenaAlocatorOnHeap(
+fn destroyArenaAllocatorOnHeap(
     allocator: std.mem.Allocator,
     arena_allocator: *std.heap.ArenaAllocator,
 ) void {
