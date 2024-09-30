@@ -14,7 +14,7 @@ state_at_previous_tick: State,
 
 const Gem = @This();
 
-pub const gem_jump_height = fp(1.5);
+pub const gem_jump_height = fp(1);
 pub const gem_jump_duration_in_ticks = simulation.secondsToTicks(0.6).convertTo(math.Fix32);
 
 pub fn create(position: math.FlatVector, originates_from: math.FlatVector) Gem {
@@ -70,8 +70,8 @@ pub fn makeBillboardData(
 ) SpriteData {
     const source = spritesheet.getSpriteSourceRectangle(.gem);
     const sprite_aspect_ratio = spritesheet.getSpriteAspectRatio(.gem);
-    const height = fp(1.5);
-    const half_height = fp(1.5).div(fp(2));
+    const height = fp(1);
+    const half_height = height.div(fp(2));
     return switch (self.state) {
         .spawning => |spawning| SpriteData.create(
             spawning.source_position.addY(half_height),
