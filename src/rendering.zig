@@ -670,6 +670,11 @@ pub const SpriteData = extern struct {
 
 pub const SpriteAnimationCollection = struct {
     animations: std.ArrayList(PackedAnimation),
+    /// Duration in ticks, which the animation takes to go from the first keyframe to the last.
+    animation_durations: std.ArrayList(math.Fix32),
+    /// The duration in ticks, which the animation takes to loop from its first keyframe back to the
+    /// first.
+    animation_durations_full_loop: std.ArrayList(math.Fix32),
     keyframes: std.ArrayList(PackedKeyframe),
 
     /// Creates a collection with a predefined default animation, which is used by sprites which
@@ -683,6 +688,8 @@ pub const SpriteAnimationCollection = struct {
     ) !SpriteAnimationCollection {
         var collection = SpriteAnimationCollection{
             .animations = std.ArrayList(PackedAnimation).init(allocator),
+            .animation_durations = std.ArrayList(math.Fix32).init(allocator),
+            .animation_durations_full_loop = std.ArrayList(math.Fix32).init(allocator),
             .keyframes = std.ArrayList(PackedKeyframe).init(allocator),
         };
         errdefer collection.destroy();
@@ -697,6 +704,8 @@ pub const SpriteAnimationCollection = struct {
 
     pub fn destroy(self: *SpriteAnimationCollection) void {
         self.keyframes.deinit();
+        self.animation_durations_full_loop.deinit();
+        self.animation_durations.deinit();
         self.animations.deinit();
     }
 
@@ -710,6 +719,8 @@ pub const SpriteAnimationCollection = struct {
     ) !u8 {
         std.debug.assert(keyframes.len > 0);
         try self.animations.ensureUnusedCapacity(1);
+        try self.animation_durations.ensureUnusedCapacity(1);
+        try self.animation_durations_full_loop.ensureUnusedCapacity(1);
         try self.keyframes.ensureUnusedCapacity(keyframes.len);
         const new_animation_index = self.animations.items.len;
 
@@ -718,6 +729,12 @@ pub const SpriteAnimationCollection = struct {
             .offset_to_first_keyframe = @intCast(self.keyframes.items.len),
             .keyframe_count = @intCast(keyframes.len),
         });
+        self.animation_durations.appendAssumeCapacity(
+            keyframe_duration.mul(fp(@max(2, keyframes.len) - 1)),
+        );
+        self.animation_durations_full_loop.appendAssumeCapacity(
+            keyframe_duration.mul(fp(keyframes.len)),
+        );
         for (keyframes) |keyframe| {
             self.keyframes.appendAssumeCapacity(.{
                 .position_offset = .{
@@ -748,6 +765,23 @@ pub const SpriteAnimationCollection = struct {
         z_rotation: math.Fix32 = fp(0),
         scaling_factor: math.Fix32 = fp(1),
     };
+
+    /// Returns the duration in ticks, which the specified animation takes to go from its first
+    /// keyframe to its last. Given animation index is assumed to be a value returned by
+    /// `addAnimation()`.
+    pub fn getAnimationDuration(self: SpriteAnimationCollection, animation_index: u8) math.Fix32 {
+        return self.animation_durations.items[animation_index];
+    }
+
+    /// Returns the duration in ticks, which the specified animation takes to loop from its first
+    /// keyframe back to the first keyframe. Given animation index is assumed to be a value returned
+    /// by `addAnimation()`.
+    pub fn getAnimationDurationFullLoop(
+        self: SpriteAnimationCollection,
+        animation_index: u8,
+    ) math.Fix32 {
+        return self.animation_durations_full_loop.items[animation_index];
+    }
 
     const PackedAnimation = extern struct {
         /// Amount of in-game ticks which every keyframe of this animation lasts. E.g. `1.25`.
