@@ -2,7 +2,6 @@ const CellIndex = @import("spatial_partitioning/cell_index.zig").Index;
 const Enemy = @import("enemy.zig");
 const FlowField = @import("flow_field.zig");
 const Gem = @import("gem.zig");
-const GemObjectHandle = SharedContext.GemCollection.ObjectHandle;
 const Map = @import("map/map.zig").Map;
 const ObjectIdGenerator = @import("util.zig").ObjectIdGenerator;
 const PerformanceMeasurements = @import("performance_measurements.zig").Measurements;
@@ -68,9 +67,7 @@ pub fn create(
     var billboard_animations = try animation.BillboardAnimationCollection.create(allocator);
     errdefer billboard_animations.destroy(allocator);
 
-    var shared_context = SharedContext.create(allocator);
-    errdefer shared_context.destroy();
-
+    var shared_context = SharedContext.create();
     var map = try loadMap(
         allocator,
         &shared_context.object_id_generator,
@@ -110,6 +107,19 @@ pub fn create(
         );
     }
     try previous_tick_data.recomputeEnemyGridCellIndices();
+
+    {
+        var gem_collections = previous_tick_data.gem_collections.getLockedSlice();
+        defer previous_tick_data.gem_collections.reclaimLockedSlice();
+        for (0..10000) |counter| {
+            const position = math.FlatVector{
+                .x = fp(shared_context.rng.random().float(f32)).mul(fp(200)).add(fp(20)),
+                .z = fp(shared_context.rng.random().float(f32)).mul(fp(-300)).sub(fp(100)),
+            };
+            try gem_collections[@mod(counter, gem_collections.len)]
+                .append(Gem.create(position, position));
+        }
+    }
 
     var throwaway = try PerformanceMeasurements.create();
     try preallocateEnemyGrids(.{
@@ -164,7 +174,6 @@ pub fn destroy(self: *Context) void {
     self.previous_tick_data.destroy(self.allocator);
     self.billboard_animations.destroy(self.allocator);
     self.spritesheet.destroy();
-    self.shared_context.destroy();
     self.map.destroy();
     self.allocator.free(self.map_file_path);
     self.main_character_flow_field.destroy(self.allocator);
@@ -231,18 +240,37 @@ pub fn processElapsedTick(
             },
         }});
     }
-    for (0..self.thread_contexts.len) |thread_id| {
-        try self.thread_pool.dispatchIgnoreErrors(processGemThread, .{ self, thread_id });
-    }
-
     {
-        const collections = self.previous_tick_data.particle_sprite_collections.getLockedSlice();
+        const gem_collections = self.previous_tick_data.gem_collections.getLockedSlice();
+        defer self.previous_tick_data.gem_collections.reclaimLockedSlice();
+        for (self.thread_contexts, 0..) |*thread_context, thread_id| {
+            try self.thread_pool.dispatchIgnoreErrors(processGems, .{.{
+                .in = .{
+                    .current_tick = self.tick_counter,
+                    .spritesheet = self.spritesheet,
+                    .map = self.map,
+                    .main_character = self.main_character,
+                    .billboard_animations = self.billboard_animations,
+                    .gems = gem_collections[thread_id].items,
+                },
+                .out = .{
+                    .performance_measurements = &thread_context.performance_measurements,
+                    .allocator = thread_context.gems.arena_allocator.allocator(),
+                    .billboard_buffer = thread_context.gems.billboard_buffer,
+                    .queue = &self.current_tick_data.gem_collections,
+                    .gems_collected = &thread_context.gems.amount_collected,
+                },
+            }});
+        }
+
+        const sprite_collections =
+            self.previous_tick_data.particle_sprite_collections.getLockedSlice();
         defer self.previous_tick_data.particle_sprite_collections.reclaimLockedSlice();
         for (self.thread_contexts, 0..) |*thread_context, thread_id| {
             try self.thread_pool.dispatchIgnoreErrors(processParticleSprites, .{.{
                 .in = .{
                     .current_tick = self.tick_counter,
-                    .sprites = collections[thread_id].sprites.items,
+                    .sprites = sprite_collections[thread_id].sprites.items,
                 },
                 .out = .{
                     .performance_measurements = &thread_context.performance_measurements,
@@ -454,11 +482,9 @@ fn preallocateBillboardData(self: *Context) !void {
         }
         billboard_buffer_size += context.enemies.required_billboard_buffer_size;
 
-        var gem_iterator = self.shared_context.gem_collection
-            .cellGroupIteratorAdvanced(thread_id, stride);
-        while (gem_iterator.next()) |cell_group| {
-            context.gems.required_billboard_buffer_size += cell_group.cell.count();
-        }
+        context.gems.required_billboard_buffer_size +=
+            self.previous_tick_data.gem_collections.getLockedSlice()[thread_id].items.len;
+        self.previous_tick_data.gem_collections.reclaimLockedSlice();
         billboard_buffer_size += context.gems.required_billboard_buffer_size;
 
         context.particle_sprite_collection.required_billboard_buffer_size +=
@@ -670,48 +696,54 @@ fn processEnemies(data: EnemyThreadData) !void {
     }
 }
 
-fn processGemThread(self: *Context, thread_id: usize) !void {
-    const thread_context = &self.thread_contexts[thread_id];
-    thread_context.performance_measurements.begin(.gem_logic);
-    defer thread_context.performance_measurements.end(.gem_logic);
+const GemThreadData = struct {
+    in: struct {
+        current_tick: u32,
+        spritesheet: textures.SpriteSheetTexture,
+        map: Map,
+        main_character: game_unit.Player,
+        billboard_animations: animation.BillboardAnimationCollection,
+        gems: []const Gem,
+    },
+    out: struct {
+        performance_measurements: *PerformanceMeasurements,
+        allocator: std.mem.Allocator,
+        billboard_buffer: []rendering.SpriteData,
+        queue: *ThreadSafeFixedQueue(std.ArrayList(Gem)),
+        gems_collected: *u64,
+    },
+};
 
-    const tick_context = .{
-        .map = &self.map,
-        .main_character = &self.main_character.character,
-    };
-    const arena_allocator = thread_context.gems.arena_allocator.allocator();
+fn processGems(data: GemThreadData) !void {
+    data.out.performance_measurements.begin(.gem_logic);
+    defer data.out.performance_measurements.end(.gem_logic);
+
+    var collection = data.out.queue.pop();
+    defer data.out.queue.pushAssumeCapacity(collection);
 
     var gems_collected: u64 = 0;
-    var iterator = self.shared_context.gem_collection.cellGroupIteratorAdvanced(
-        thread_id,
-        self.thread_contexts.len - 1,
-    );
-    while (iterator.next()) |cell_group| {
-        var gem_iterator = cell_group.cell.iterator();
-        var removal_list = UnorderedCollection(*GemObjectHandle).create(arena_allocator);
-        while (gem_iterator.next()) |gem_ptr| {
-            switch (gem_ptr.processElapsedTick(tick_context)) {
-                .none => {},
-                .picked_up_by_player => gems_collected += 1,
-                .disappeared => try removal_list.append(
-                    self.shared_context.gem_collection.getObjectHandle(gem_ptr),
-                ),
-            }
-            thread_context.gems.billboard_buffer[0] = gem_ptr.makeBillboardData(
-                self.spritesheet,
-                self.billboard_animations,
-                self.tick_counter,
-            );
-            thread_context.gems.billboard_buffer = thread_context.gems.billboard_buffer[1..];
+    var billboard_buffer = data.out.billboard_buffer;
+    const tick_context = .{
+        .map = &data.in.map,
+        .main_character = &data.in.main_character.character,
+    };
+
+    for (data.in.gems) |input_gem| {
+        var gem = input_gem;
+        switch (gem.processElapsedTick(tick_context)) {
+            .none => {},
+            .picked_up_by_player => gems_collected += 1,
+            .disappeared => continue,
         }
-        try appendUnorderedResultsIfNeeded(
-            *GemObjectHandle,
-            removal_list,
-            &thread_context.gems.removal_queue,
-            cell_group.cell_index,
+        try collection.append(gem);
+        billboard_buffer[0] = gem.makeBillboardData(
+            data.in.spritesheet,
+            data.in.billboard_animations,
+            data.in.current_tick,
         );
+        billboard_buffer = billboard_buffer[1..];
     }
-    thread_context.gems.amount_collected = gems_collected;
+    data.out.gems_collected.* = gems_collected;
 }
 
 const ParticleSpriteThreadData = struct {
@@ -756,6 +788,9 @@ const TickData = struct {
     /// Each thread can pop a collection from the queue to emit particle sprites. Thread execution
     /// order is not relevant.
     particle_sprite_collections: ThreadSafeFixedQueue(ParticleSpriteCollection),
+    /// Each thread can pop a collection from the queue to emit gems. Thread execution order is not
+    /// relevant.
+    gem_collections: ThreadSafeFixedQueue(std.ArrayList(Gem)),
 
     fn create(allocator: std.mem.Allocator, thread_count: usize) !TickData {
         const arena_allocator = try createArenaAllocatorOnHeap(allocator);
@@ -776,6 +811,19 @@ const TickData = struct {
             );
         }
 
+        var gem_collections =
+            try ThreadSafeFixedQueue(std.ArrayList(Gem)).create(allocator, thread_count);
+        errdefer gem_collections.destroy();
+        errdefer {
+            for (gem_collections.getLockedSlice()) |*collection| {
+                collection.deinit();
+            }
+            gem_collections.reclaimLockedSlice();
+        }
+        for (0..thread_count) |_| {
+            gem_collections.pushAssumeCapacity(std.ArrayList(Gem).init(allocator));
+        }
+
         return .{
             .arena_allocator = arena_allocator,
             .enemy_grid = enemy_grid.Grid.create(arena_allocator.allocator()),
@@ -784,10 +832,17 @@ const TickData = struct {
             .enemy_peer_grid = enemy_grid.PeerGrid.create(arena_allocator.allocator()),
 
             .particle_sprite_collections = particle_sprite_collections,
+            .gem_collections = gem_collections,
         };
     }
 
     fn destroy(self: *TickData, allocator: std.mem.Allocator) void {
+        for (self.gem_collections.getLockedSlice()) |*collection| {
+            collection.deinit();
+        }
+        self.gem_collections.reclaimLockedSlice();
+        self.gem_collections.destroy();
+
         for (self.particle_sprite_collections.getLockedSlice()) |*collection| {
             collection.destroy();
         }
@@ -808,6 +863,11 @@ const TickData = struct {
             collection.reset();
         }
         self.particle_sprite_collections.reclaimLockedSlice();
+
+        for (self.gem_collections.getLockedSlice()) |*collection| {
+            collection.clearRetainingCapacity();
+        }
+        self.gem_collections.reclaimLockedSlice();
     }
 
     fn recomputeEnemyGridCellIndices(self: *TickData) !void {
@@ -870,7 +930,6 @@ const ThreadContext = struct {
     gems: struct {
         arena_allocator: *std.heap.ArenaAllocator,
         amount_collected: u64,
-        removal_queue: UnorderedCollection(CellItems(*GemObjectHandle)),
         required_billboard_buffer_size: usize,
         billboard_buffer: []rendering.SpriteData,
     } align(std.atomic.cache_line),
@@ -906,8 +965,6 @@ const ThreadContext = struct {
             .gems = .{
                 .arena_allocator = gem_allocator,
                 .amount_collected = 0,
-                .removal_queue = UnorderedCollection(CellItems(*GemObjectHandle))
-                    .create(gem_allocator.allocator()),
                 .required_billboard_buffer_size = 0,
                 .billboard_buffer = &.{},
             },
@@ -935,8 +992,6 @@ const ThreadContext = struct {
         self.enemies.required_billboard_buffer_size = 0;
         self.enemies.billboard_buffer = &.{};
         self.gems.amount_collected = 0;
-        self.gems.removal_queue = UnorderedCollection(CellItems(*GemObjectHandle))
-            .create(self.gems.arena_allocator.allocator());
         self.gems.required_billboard_buffer_size = 0;
         self.gems.billboard_buffer = &.{};
         self.particle_sprite_collection.required_billboard_buffer_size = 0;
