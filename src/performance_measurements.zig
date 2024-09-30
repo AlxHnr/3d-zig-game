@@ -8,6 +8,7 @@ pub const Measurements = struct {
         preallocate_tick_buffers,
         enemy_logic,
         gem_logic,
+        particle_sprite_logic,
         update_enemy_peer_grid,
         flow_field,
 
@@ -96,12 +97,13 @@ pub const Measurements = struct {
     pub fn printTickInfo(self: Measurements) void {
         for (summary_types) |summary| {
             std.log.info(
-                "{s} Tick: {d:.2}ms: 🧵⟨👾{d:.2}ms then ♦️ {d:.2}ms⟩ 🧵⟨🌐{d:.2}ms 🗒️{d:.2}ms 🔼{d:.2}ms⟩",
+                "{s} Tick: {d:.2}ms: 🧵⟨👾{d:.2}ms then ♦️ {d:.2}ms then ✨{d:.2}ms⟩ 🧵⟨🌐{d:.2}ms 🗒️{d:.2}ms 🔼{d:.2}ms⟩",
                 .{
                     summary.name,
                     summary.get_function(self, .tick_total),
                     summary.get_function(self, .enemy_logic),
                     summary.get_function(self, .gem_logic),
+                    summary.get_function(self, .particle_sprite_logic),
                     summary.get_function(self, .update_enemy_peer_grid),
                     summary.get_function(self, .flow_field),
                     summary.get_function(self, .preallocate_tick_buffers),
