@@ -38,9 +38,10 @@ billboard_animations: animation.BillboardAnimationCollection,
 
 previous_tick_data: TickData,
 current_tick_data: TickData,
+/// Other short-lived data which does not belong to TickData.
+tick_arena_allocator: ThreadSafeArenaAllocator,
 
 thread_pool: ThreadPool,
-thread_contexts: []ThreadContext,
 
 /// Non-owning pointer.
 render_loop: *RenderLoop,
@@ -79,22 +80,12 @@ pub fn create(
     var thread_pool = try ThreadPool.create(allocator);
     errdefer thread_pool.destroy(allocator);
 
-    const thread_contexts = try allocator.alloc(ThreadContext, thread_pool.countThreads());
-    errdefer allocator.free(thread_contexts);
-
-    var contexts_initialized: usize = 0;
-    errdefer for (thread_contexts[0..contexts_initialized]) |*context| {
-        context.destroy(allocator);
-    };
-    for (thread_contexts) |*context| {
-        context.* = try ThreadContext.create(allocator);
-        contexts_initialized += 1;
-    }
-
-    var previous_tick_data = try TickData.create(allocator, thread_contexts.len);
+    var previous_tick_data = try TickData.create(allocator, thread_pool.countThreads());
     errdefer previous_tick_data.destroy(allocator);
-    var current_tick_data = try TickData.create(allocator, thread_contexts.len);
+    var current_tick_data = try TickData.create(allocator, thread_pool.countThreads());
     errdefer current_tick_data.destroy(allocator);
+    var tick_arena_allocator = try ThreadSafeArenaAllocator.create(allocator);
+    errdefer tick_arena_allocator.destroy(allocator);
 
     for (0..10000) |_| {
         const position = math.FlatVector{
@@ -124,7 +115,7 @@ pub fn create(
     var throwaway = try PerformanceMeasurements.create();
     try preallocateEnemyGrids(.{
         .in = .{
-            .thread_count = thread_contexts.len,
+            .thread_count = thread_pool.countThreads(),
             .enemy_grid = previous_tick_data.enemy_grid,
             .enemy_grid_cell_indices = previous_tick_data.enemy_grid_cell_indices.items,
         },
@@ -153,9 +144,9 @@ pub fn create(
 
         .previous_tick_data = previous_tick_data,
         .current_tick_data = current_tick_data,
-        .thread_pool = thread_pool,
-        .thread_contexts = thread_contexts,
+        .tick_arena_allocator = tick_arena_allocator,
 
+        .thread_pool = thread_pool,
         .render_loop = render_loop,
         .render_snapshot = render_loop.makeRenderSnapshot(),
         .dialog_controller = dialog_controller,
@@ -165,11 +156,8 @@ pub fn create(
 pub fn destroy(self: *Context) void {
     self.render_snapshot.destroy();
 
-    for (self.thread_contexts) |*context| {
-        context.destroy(self.allocator);
-    }
-    self.allocator.free(self.thread_contexts);
     self.thread_pool.destroy(self.allocator);
+    self.tick_arena_allocator.destroy(self.allocator);
     self.current_tick_data.destroy(self.allocator);
     self.previous_tick_data.destroy(self.allocator);
     self.billboard_animations.destroy(self.allocator);
@@ -199,10 +187,13 @@ pub fn processElapsedTick(
     self: *Context,
     performance_measurements: *PerformanceMeasurements,
 ) !void {
-    for (self.thread_contexts) |*context| {
-        context.reset();
+    self.tick_arena_allocator.reset();
+    const thread_contexts = try self.tick_arena_allocator.allocator
+        .alloc(ThreadContext, self.thread_pool.countThreads());
+    for (thread_contexts) |*context| {
+        context.* = try ThreadContext.create(self.tick_arena_allocator.allocator);
     }
-    try self.preallocateBillboardData();
+    try self.preallocateBillboardData(thread_contexts);
 
     if (self.dialog_controller.hasOpenDialogs()) {
         self.main_character.markAllButtonsAsReleased();
@@ -212,7 +203,7 @@ pub fn processElapsedTick(
     self.main_character.processElapsedTick(self.map);
     self.dialog_controller.processElapsedTick();
 
-    for (self.thread_contexts, 0..) |*thread_context, thread_id| {
+    for (thread_contexts, 0..) |*thread_context, thread_id| {
         try self.thread_pool.dispatchIgnoreErrors(processEnemies, .{.{
             .in = .{
                 .current_tick = self.tick_counter,
@@ -224,17 +215,17 @@ pub fn processElapsedTick(
                 .enemy_grid_cell_index_iterator = EnemyGridCellIndexIterator.create(
                     self.previous_tick_data.enemy_grid_cell_indices.items,
                     thread_id,
-                    self.thread_contexts.len - 1,
+                    thread_contexts.len - 1,
                 ),
                 .enemy_peer_grid = self.previous_tick_data.enemy_peer_grid,
             },
             .out = .{
                 .performance_measurements = &thread_context.performance_measurements,
-                .allocator = thread_context.enemies.arena_allocator.allocator(),
                 .enemy_grid = &self.current_tick_data.enemy_grid,
                 .enemy_peer_grid = &self.current_tick_data.enemy_peer_grid,
                 .insertion_queue = &thread_context.enemies.insertion_queue,
                 .peer_insertion_queue = &thread_context.enemies.peer_insertion_queue,
+                .queue_allocator = self.tick_arena_allocator.allocator,
                 .billboard_buffer = thread_context.enemies.billboard_buffer,
                 .particle_sprite_collections = &self.current_tick_data.particle_sprite_collections,
             },
@@ -243,7 +234,7 @@ pub fn processElapsedTick(
     {
         const gem_collections = self.previous_tick_data.gem_collections.getLockedSlice();
         defer self.previous_tick_data.gem_collections.reclaimLockedSlice();
-        for (self.thread_contexts, 0..) |*thread_context, thread_id| {
+        for (thread_contexts, 0..) |*thread_context, thread_id| {
             try self.thread_pool.dispatchIgnoreErrors(processGems, .{.{
                 .in = .{
                     .current_tick = self.tick_counter,
@@ -255,7 +246,6 @@ pub fn processElapsedTick(
                 },
                 .out = .{
                     .performance_measurements = &thread_context.performance_measurements,
-                    .allocator = thread_context.gems.arena_allocator.allocator(),
                     .billboard_buffer = thread_context.gems.billboard_buffer,
                     .queue = &self.current_tick_data.gem_collections,
                     .gems_collected = &thread_context.gems.amount_collected,
@@ -266,7 +256,7 @@ pub fn processElapsedTick(
         const sprite_collections =
             self.previous_tick_data.particle_sprite_collections.getLockedSlice();
         defer self.previous_tick_data.particle_sprite_collections.reclaimLockedSlice();
-        for (self.thread_contexts, 0..) |*thread_context, thread_id| {
+        for (thread_contexts, 0..) |*thread_context, thread_id| {
             try self.thread_pool.dispatchIgnoreErrors(processParticleSprites, .{.{
                 .in = .{
                     .current_tick = self.tick_counter,
@@ -283,7 +273,7 @@ pub fn processElapsedTick(
         self.thread_pool.wait();
     }
 
-    for (self.thread_contexts) |*context| {
+    for (thread_contexts) |*context| {
         self.main_character.gem_count += context.gems.amount_collected;
     }
     self.render_snapshot.previous_tick = self.tick_counter;
@@ -291,19 +281,19 @@ pub fn processElapsedTick(
     try self.map.geometry.populateRenderSnapshot(&self.render_snapshot.geometry);
     self.render_loop.swapRenderSnapshot(&self.render_snapshot);
 
-    self.mergeMeasurementsFromThreads(.enemy_logic, performance_measurements);
-    self.mergeMeasurementsFromThreads(.gem_logic, performance_measurements);
+    mergeMeasurementsFromThreads(thread_contexts, .enemy_logic, performance_measurements);
+    mergeMeasurementsFromThreads(thread_contexts, .gem_logic, performance_measurements);
     var enemy_insertion_queue =
-        try self.mergeThreadResults("enemies", "insertion_queue", Enemy);
+        try self.mergeThreadResults(thread_contexts, "enemies", "insertion_queue", Enemy);
     defer enemy_insertion_queue.destroy();
     var enemy_peer_insertion_queue = try self
-        .mergeThreadResults("enemies", "peer_insertion_queue", Enemy.PeerInfo);
+        .mergeThreadResults(thread_contexts, "enemies", "peer_insertion_queue", Enemy.PeerInfo);
     defer enemy_peer_insertion_queue.destroy();
 
     try self.updateSpatialGrids(enemy_insertion_queue);
     try self.current_tick_data.recomputeEnemyGridCellIndices();
     std.mem.swap(TickData, &self.current_tick_data, &self.previous_tick_data);
-    self.current_tick_data.reset();
+    try self.current_tick_data.reset(thread_contexts.len);
 
     try self.thread_pool.dispatchIgnoreErrors(updateEnemyPeerGrid, .{.{
         .in = .{
@@ -328,7 +318,7 @@ pub fn processElapsedTick(
     }});
     try self.thread_pool.dispatchIgnoreErrors(preallocateEnemyGrids, .{.{
         .in = .{
-            .thread_count = self.thread_contexts.len,
+            .thread_count = thread_contexts.len,
             .enemy_grid = self.previous_tick_data.enemy_grid,
             .enemy_grid_cell_indices = self.previous_tick_data.enemy_grid_cell_indices.items,
         },
@@ -466,10 +456,10 @@ fn preallocateEnemyGrids(data: PreallocateTickDataThreadData) !void {
     }
 }
 
-fn preallocateBillboardData(self: *Context) !void {
+fn preallocateBillboardData(self: *Context, thread_contexts: []ThreadContext) !void {
     var billboard_buffer_size: usize = 0;
-    for (self.thread_contexts, 0..) |*context, thread_id| {
-        const stride = self.thread_contexts.len - 1;
+    for (thread_contexts, 0..) |*context, thread_id| {
+        const stride = thread_contexts.len - 1;
         var cell_index_iterator = EnemyGridCellIndexIterator.create(
             self.previous_tick_data.enemy_grid_cell_indices.items,
             thread_id,
@@ -496,7 +486,7 @@ fn preallocateBillboardData(self: *Context) !void {
 
     try self.render_snapshot.billboard_buffer.resize(billboard_buffer_size);
     var billboard_slice = self.render_snapshot.billboard_buffer.items;
-    for (self.thread_contexts) |*context| {
+    for (thread_contexts) |*context| {
         context.enemies.billboard_buffer =
             billboard_slice[0..context.enemies.required_billboard_buffer_size];
         billboard_slice = billboard_slice[context.enemies.required_billboard_buffer_size..];
@@ -514,12 +504,12 @@ fn preallocateBillboardData(self: *Context) !void {
 }
 
 fn mergeMeasurementsFromThreads(
-    self: *Context,
+    thread_contexts: []const ThreadContext,
     metric_type: PerformanceMeasurements.MetricType,
     out: *PerformanceMeasurements,
 ) void {
-    var longest = self.thread_contexts[0].performance_measurements;
-    for (self.thread_contexts[1..]) |context| {
+    var longest = thread_contexts[0].performance_measurements;
+    for (thread_contexts[1..]) |context| {
         longest = longest.merge(context.performance_measurements, metric_type);
     }
     out.copySingleMetric(longest, metric_type);
@@ -608,9 +598,9 @@ const EnemyThreadData = struct {
     },
     out: struct {
         performance_measurements: *PerformanceMeasurements,
-        allocator: std.mem.Allocator,
         enemy_grid: *enemy_grid.Grid,
         enemy_peer_grid: *enemy_grid.PeerGrid,
+        queue_allocator: std.mem.Allocator,
         insertion_queue: *UnorderedCollection(CellItems(Enemy)),
         peer_insertion_queue: *UnorderedCollection(CellItems(Enemy.PeerInfo)),
         billboard_buffer: []rendering.SpriteData,
@@ -643,8 +633,9 @@ fn processEnemies(data: EnemyThreadData) !void {
 
         // Must be recreated for each cell group because these lists will stay referenced by
         // data.out.insertion_queue.
-        var enemy_insertion_list = UnorderedCollection(Enemy).create(data.out.allocator);
-        var peer_insertion_list = UnorderedCollection(Enemy.PeerInfo).create(data.out.allocator);
+        var enemy_insertion_list = UnorderedCollection(Enemy).create(data.out.queue_allocator);
+        var peer_insertion_list = UnorderedCollection(Enemy.PeerInfo)
+            .create(data.out.queue_allocator);
 
         var enemy_iterator = data.in.enemy_grid.constCellIterator(cell_index);
         while (enemy_iterator.next()) |enemy_ptr| {
@@ -707,7 +698,6 @@ const GemThreadData = struct {
     },
     out: struct {
         performance_measurements: *PerformanceMeasurements,
-        allocator: std.mem.Allocator,
         billboard_buffer: []rendering.SpriteData,
         queue: *ThreadSafeFixedQueue(UnorderedCollection(Gem)),
         gems_collected: *u64,
@@ -781,8 +771,7 @@ fn processParticleSprites(data: ParticleSpriteThreadData) !void {
 
 /// Contains short-lived objects.
 const TickData = struct {
-    /// For preallocating enemy grids at the start of each tick.
-    arena_allocator: *std.heap.ArenaAllocator,
+    arena_allocator: ThreadSafeArenaAllocator,
     enemy_grid: enemy_grid.Grid,
     enemy_grid_cell_indices: std.ArrayList(enemy_grid.CellIndex),
     enemy_peer_grid: enemy_grid.PeerGrid,
@@ -795,43 +784,21 @@ const TickData = struct {
     gem_collections: ThreadSafeFixedQueue(UnorderedCollection(Gem)),
 
     fn create(allocator: std.mem.Allocator, thread_count: usize) !TickData {
-        const arena_allocator = try createArenaAllocatorOnHeap(allocator);
-        errdefer destroyArenaAllocatorOnHeap(allocator, arena_allocator);
+        var arena_allocator = try ThreadSafeArenaAllocator.create(allocator);
+        errdefer arena_allocator.destroy(allocator);
 
-        var particle_sprite_collections =
-            try ThreadSafeFixedQueue(ParticleSpriteCollection).create(allocator, thread_count);
-        errdefer particle_sprite_collections.destroy();
-        errdefer {
-            for (particle_sprite_collections.getLockedSlice()) |*collection| {
-                collection.destroy();
-            }
-            particle_sprite_collections.reclaimLockedSlice();
-        }
-        for (0..thread_count) |_| {
-            particle_sprite_collections.pushAssumeCapacity(
-                ParticleSpriteCollection.create(allocator),
-            );
-        }
-
-        var gem_collections =
-            try ThreadSafeFixedQueue(UnorderedCollection(Gem)).create(allocator, thread_count);
-        errdefer gem_collections.destroy();
-        errdefer {
-            for (gem_collections.getLockedSlice()) |*collection| {
-                collection.destroy();
-            }
-            gem_collections.reclaimLockedSlice();
-        }
-        for (0..thread_count) |_| {
-            gem_collections.pushAssumeCapacity(UnorderedCollection(Gem).create(allocator));
-        }
+        const particle_sprite_collections = try createParticleSpriteCollections(
+            arena_allocator.allocator,
+            thread_count,
+        );
+        const gem_collections = try createGemCollections(arena_allocator.allocator, thread_count);
 
         return .{
             .arena_allocator = arena_allocator,
-            .enemy_grid = enemy_grid.Grid.create(arena_allocator.allocator()),
+            .enemy_grid = enemy_grid.Grid.create(arena_allocator.allocator),
             .enemy_grid_cell_indices = std.ArrayList(enemy_grid.CellIndex)
-                .init(arena_allocator.allocator()),
-            .enemy_peer_grid = enemy_grid.PeerGrid.create(arena_allocator.allocator()),
+                .init(arena_allocator.allocator),
+            .enemy_peer_grid = enemy_grid.PeerGrid.create(arena_allocator.allocator),
 
             .particle_sprite_collections = particle_sprite_collections,
             .gem_collections = gem_collections,
@@ -839,37 +806,22 @@ const TickData = struct {
     }
 
     fn destroy(self: *TickData, allocator: std.mem.Allocator) void {
-        for (self.gem_collections.getLockedSlice()) |*collection| {
-            collection.destroy();
-        }
-        self.gem_collections.reclaimLockedSlice();
-        self.gem_collections.destroy();
-
-        for (self.particle_sprite_collections.getLockedSlice()) |*collection| {
-            collection.destroy();
-        }
-        self.particle_sprite_collections.reclaimLockedSlice();
-        self.particle_sprite_collections.destroy();
-
-        destroyArenaAllocatorOnHeap(allocator, self.arena_allocator);
+        self.arena_allocator.destroy(allocator);
     }
 
-    fn reset(self: *TickData) void {
-        _ = self.arena_allocator.reset(.retain_capacity);
-        self.enemy_grid = enemy_grid.Grid.create(self.arena_allocator.allocator());
-        self.enemy_grid_cell_indices = std.ArrayList(enemy_grid.CellIndex)
-            .init(self.arena_allocator.allocator());
-        self.enemy_peer_grid = enemy_grid.PeerGrid.create(self.arena_allocator.allocator());
+    fn reset(self: *TickData, thread_count: usize) !void {
+        self.arena_allocator.reset();
+        const allocator = self.arena_allocator.allocator;
 
-        for (self.particle_sprite_collections.getLockedSlice()) |*collection| {
-            collection.reset();
-        }
-        self.particle_sprite_collections.reclaimLockedSlice();
+        self.enemy_grid = enemy_grid.Grid.create(allocator);
+        self.enemy_grid_cell_indices = std.ArrayList(enemy_grid.CellIndex).init(allocator);
+        self.enemy_peer_grid = enemy_grid.PeerGrid.create(allocator);
 
-        for (self.gem_collections.getLockedSlice()) |*collection| {
-            collection.resetPreservingCapacity();
-        }
-        self.gem_collections.reclaimLockedSlice();
+        self.particle_sprite_collections = try createParticleSpriteCollections(
+            allocator,
+            thread_count,
+        );
+        self.gem_collections = try createGemCollections(allocator, thread_count);
     }
 
     fn recomputeEnemyGridCellIndices(self: *TickData) !void {
@@ -881,6 +833,30 @@ const TickData = struct {
             self.enemy_grid_cell_indices.appendAssumeCapacity(cell_index);
         }
         std.mem.sort(enemy_grid.CellIndex, self.enemy_grid_cell_indices.items, {}, lessThan);
+    }
+
+    fn createParticleSpriteCollections(
+        allocator: std.mem.Allocator,
+        thread_count: usize,
+    ) !ThreadSafeFixedQueue(ParticleSpriteCollection) {
+        var result = try ThreadSafeFixedQueue(ParticleSpriteCollection)
+            .create(allocator, thread_count);
+        for (0..thread_count) |_| {
+            result.pushAssumeCapacity(ParticleSpriteCollection.create(allocator));
+        }
+        return result;
+    }
+
+    fn createGemCollections(
+        allocator: std.mem.Allocator,
+        thread_count: usize,
+    ) !ThreadSafeFixedQueue(UnorderedCollection(Gem)) {
+        var result =
+            try ThreadSafeFixedQueue(UnorderedCollection(Gem)).create(allocator, thread_count);
+        for (0..thread_count) |_| {
+            result.pushAssumeCapacity(UnorderedCollection(Gem).create(allocator));
+        }
+        return result;
     }
 
     fn lessThan(_: void, a: enemy_grid.CellIndex, b: enemy_grid.CellIndex) bool {
@@ -923,14 +899,12 @@ const EnemyGridCellIndexIterator = struct {
 const ThreadContext = struct {
     performance_measurements: PerformanceMeasurements,
     enemies: struct {
-        arena_allocator: *std.heap.ArenaAllocator,
         insertion_queue: UnorderedCollection(CellItems(Enemy)),
         peer_insertion_queue: UnorderedCollection(CellItems(Enemy.PeerInfo)),
         required_billboard_buffer_size: usize,
         billboard_buffer: []rendering.SpriteData,
     } align(std.atomic.cache_line),
     gems: struct {
-        arena_allocator: *std.heap.ArenaAllocator,
         amount_collected: u64,
         required_billboard_buffer_size: usize,
         billboard_buffer: []rendering.SpriteData,
@@ -943,29 +917,16 @@ const ThreadContext = struct {
     fn create(allocator: std.mem.Allocator) !ThreadContext {
         const measurements = try PerformanceMeasurements.create();
 
-        var enemy_allocator = try allocator.create(std.heap.ArenaAllocator);
-        errdefer allocator.destroy(enemy_allocator);
-        enemy_allocator.* = std.heap.ArenaAllocator.init(allocator);
-        errdefer enemy_allocator.deinit();
-
-        var gem_allocator = try allocator.create(std.heap.ArenaAllocator);
-        errdefer allocator.destroy(gem_allocator);
-        gem_allocator.* = std.heap.ArenaAllocator.init(allocator);
-        errdefer gem_allocator.deinit();
-
         return .{
             .performance_measurements = measurements,
             .enemies = .{
-                .arena_allocator = enemy_allocator,
-                .insertion_queue = UnorderedCollection(CellItems(Enemy))
-                    .create(enemy_allocator.allocator()),
+                .insertion_queue = UnorderedCollection(CellItems(Enemy)).create(allocator),
                 .peer_insertion_queue = UnorderedCollection(CellItems(Enemy.PeerInfo))
-                    .create(enemy_allocator.allocator()),
+                    .create(allocator),
                 .required_billboard_buffer_size = 0,
                 .billboard_buffer = &.{},
             },
             .gems = .{
-                .arena_allocator = gem_allocator,
                 .amount_collected = 0,
                 .required_billboard_buffer_size = 0,
                 .billboard_buffer = &.{},
@@ -975,29 +936,6 @@ const ThreadContext = struct {
                 .billboard_buffer = &.{},
             },
         };
-    }
-
-    fn destroy(self: *ThreadContext, allocator: std.mem.Allocator) void {
-        self.gems.arena_allocator.deinit();
-        allocator.destroy(self.gems.arena_allocator);
-        self.enemies.arena_allocator.deinit();
-        allocator.destroy(self.enemies.arena_allocator);
-    }
-
-    fn reset(self: *ThreadContext) void {
-        self.performance_measurements.updateAverageAndReset();
-        _ = self.enemies.arena_allocator.reset(.retain_capacity);
-        self.enemies.insertion_queue = UnorderedCollection(CellItems(Enemy))
-            .create(self.enemies.arena_allocator.allocator());
-        self.enemies.peer_insertion_queue = UnorderedCollection(CellItems(Enemy.PeerInfo))
-            .create(self.enemies.arena_allocator.allocator());
-        self.enemies.required_billboard_buffer_size = 0;
-        self.enemies.billboard_buffer = &.{};
-        self.gems.amount_collected = 0;
-        self.gems.required_billboard_buffer_size = 0;
-        self.gems.billboard_buffer = &.{};
-        self.particle_sprite_collection.required_billboard_buffer_size = 0;
-        self.particle_sprite_collection.billboard_buffer = &.{};
     }
 };
 
@@ -1026,13 +964,14 @@ fn CellItems(comptime T: type) type {
 /// fields/collections.
 fn mergeThreadResults(
     self: Context,
+    thread_contexts: []const ThreadContext,
     comptime toplevel_field: []const u8,
     comptime collection_field: []const u8,
     comptime Item: type,
 ) !MergedThreadResults(Item) {
     return MergedThreadResults(Item).create(
         self.allocator,
-        self.thread_contexts,
+        thread_contexts,
         toplevel_field,
         collection_field,
     );
@@ -1127,23 +1066,38 @@ fn appendUnorderedResultsIfNeeded(
     }
 }
 
-fn createArenaAllocatorOnHeap(allocator: std.mem.Allocator) !*std.heap.ArenaAllocator {
-    const result = try allocator.create(std.heap.ArenaAllocator);
-    errdefer allocator.destroy(result);
-
-    result.* = std.heap.ArenaAllocator.init(allocator);
-    errdefer result.deinit();
-
-    return result;
-}
-
-fn destroyArenaAllocatorOnHeap(
+const ThreadSafeArenaAllocator = struct {
+    raw_arena: *std.heap.ArenaAllocator,
+    safe_arena: *std.heap.ThreadSafeAllocator,
     allocator: std.mem.Allocator,
-    arena_allocator: *std.heap.ArenaAllocator,
-) void {
-    arena_allocator.deinit();
-    allocator.destroy(arena_allocator);
-}
+
+    fn create(allocator: std.mem.Allocator) !ThreadSafeArenaAllocator {
+        const raw_arena = try allocator.create(std.heap.ArenaAllocator);
+        errdefer allocator.destroy(raw_arena);
+        raw_arena.* = std.heap.ArenaAllocator.init(allocator);
+        errdefer raw_arena.deinit();
+
+        const safe_arena = try allocator.create(std.heap.ThreadSafeAllocator);
+        errdefer allocator.destroy(safe_arena);
+        safe_arena.* = .{ .child_allocator = raw_arena.allocator() };
+
+        return .{
+            .raw_arena = raw_arena,
+            .safe_arena = safe_arena,
+            .allocator = safe_arena.allocator(),
+        };
+    }
+
+    fn destroy(self: *ThreadSafeArenaAllocator, allocator: std.mem.Allocator) void {
+        allocator.destroy(self.safe_arena);
+        self.raw_arena.deinit();
+        allocator.destroy(self.raw_arena);
+    }
+
+    fn reset(self: *ThreadSafeArenaAllocator) void {
+        _ = self.raw_arena.reset(.retain_capacity);
+    }
+};
 
 const ParticleSpriteCollection = struct {
     sprites: UnorderedCollection(Sprite),
