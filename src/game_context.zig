@@ -270,7 +270,7 @@ pub fn processElapsedTick(
             try self.thread_pool.dispatchIgnoreErrors(processParticleSprites, .{.{
                 .in = .{
                     .current_tick = self.tick_counter,
-                    .sprites = sprite_collections[thread_id].sprites.items,
+                    .sprites = sprite_collections[thread_id].sprites,
                 },
                 .out = .{
                     .performance_measurements = &thread_context.performance_measurements,
@@ -749,7 +749,7 @@ fn processGems(data: GemThreadData) !void {
 const ParticleSpriteThreadData = struct {
     in: struct {
         current_tick: u32,
-        sprites: []const ParticleSpriteCollection.Sprite,
+        sprites: UnorderedCollection(ParticleSpriteCollection.Sprite),
     },
     out: struct {
         performance_measurements: *PerformanceMeasurements,
@@ -766,13 +766,14 @@ fn processParticleSprites(data: ParticleSpriteThreadData) !void {
     defer data.out.queue.pushAssumeCapacity(collection);
 
     var billboard_buffer = data.out.billboard_buffer;
-    for (data.in.sprites) |sprite| {
+    var iterator = data.in.sprites.constIterator();
+    while (iterator.next()) |sprite| {
         if (sprite.sprite_data.animation_start_tick < data.in.current_tick) {
             billboard_buffer[0] = sprite.sprite_data;
             billboard_buffer = billboard_buffer[1..];
         }
         if (data.in.current_tick < sprite.last_tick) {
-            try collection.insertSprite(sprite, data.in.current_tick);
+            try collection.insertSprite(sprite.*, data.in.current_tick);
         }
     }
 }
@@ -1144,7 +1145,7 @@ fn destroyArenaAllocatorOnHeap(
 }
 
 const ParticleSpriteCollection = struct {
-    sprites: std.ArrayList(Sprite),
+    sprites: UnorderedCollection(Sprite),
     /// Amount of sprites, which animations have already started.
     active_sprite_count: usize,
 
@@ -1155,13 +1156,13 @@ const ParticleSpriteCollection = struct {
 
     fn create(allocator: std.mem.Allocator) ParticleSpriteCollection {
         return .{
-            .sprites = std.ArrayList(Sprite).init(allocator),
+            .sprites = UnorderedCollection(Sprite).create(allocator),
             .active_sprite_count = 0,
         };
     }
 
     fn destroy(self: *ParticleSpriteCollection) void {
-        self.sprites.deinit();
+        self.sprites.destroy();
     }
 
     fn insert(
@@ -1184,7 +1185,7 @@ const ParticleSpriteCollection = struct {
     }
 
     fn reset(self: *ParticleSpriteCollection) void {
-        self.sprites.clearRetainingCapacity();
+        self.sprites.resetPreservingCapacity();
         self.active_sprite_count = 0;
     }
 };
