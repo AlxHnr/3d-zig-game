@@ -251,7 +251,7 @@ pub fn processElapsedTick(
                     .map = self.map,
                     .main_character = self.main_character,
                     .billboard_animations = self.billboard_animations,
-                    .gems = gem_collections[thread_id].items,
+                    .gems = gem_collections[thread_id],
                 },
                 .out = .{
                     .performance_measurements = &thread_context.performance_measurements,
@@ -483,7 +483,7 @@ fn preallocateBillboardData(self: *Context) !void {
         billboard_buffer_size += context.enemies.required_billboard_buffer_size;
 
         context.gems.required_billboard_buffer_size +=
-            self.previous_tick_data.gem_collections.getLockedSlice()[thread_id].items.len;
+            self.previous_tick_data.gem_collections.getLockedSlice()[thread_id].count();
         self.previous_tick_data.gem_collections.reclaimLockedSlice();
         billboard_buffer_size += context.gems.required_billboard_buffer_size;
 
@@ -703,13 +703,13 @@ const GemThreadData = struct {
         map: Map,
         main_character: game_unit.Player,
         billboard_animations: animation.BillboardAnimationCollection,
-        gems: []const Gem,
+        gems: UnorderedCollection(Gem),
     },
     out: struct {
         performance_measurements: *PerformanceMeasurements,
         allocator: std.mem.Allocator,
         billboard_buffer: []rendering.SpriteData,
-        queue: *ThreadSafeFixedQueue(std.ArrayList(Gem)),
+        queue: *ThreadSafeFixedQueue(UnorderedCollection(Gem)),
         gems_collected: *u64,
     },
 };
@@ -728,8 +728,9 @@ fn processGems(data: GemThreadData) !void {
         .main_character = &data.in.main_character.character,
     };
 
-    for (data.in.gems) |input_gem| {
-        var gem = input_gem;
+    var iterator = data.in.gems.constIterator();
+    while (iterator.next()) |input_gem| {
+        var gem = input_gem.*;
         switch (gem.processElapsedTick(tick_context)) {
             .none => {},
             .picked_up_by_player => gems_collected += 1,
@@ -791,7 +792,7 @@ const TickData = struct {
     particle_sprite_collections: ThreadSafeFixedQueue(ParticleSpriteCollection),
     /// Each thread can pop a collection from the queue to emit gems. Thread execution order is not
     /// relevant.
-    gem_collections: ThreadSafeFixedQueue(std.ArrayList(Gem)),
+    gem_collections: ThreadSafeFixedQueue(UnorderedCollection(Gem)),
 
     fn create(allocator: std.mem.Allocator, thread_count: usize) !TickData {
         const arena_allocator = try createArenaAllocatorOnHeap(allocator);
@@ -813,16 +814,16 @@ const TickData = struct {
         }
 
         var gem_collections =
-            try ThreadSafeFixedQueue(std.ArrayList(Gem)).create(allocator, thread_count);
+            try ThreadSafeFixedQueue(UnorderedCollection(Gem)).create(allocator, thread_count);
         errdefer gem_collections.destroy();
         errdefer {
             for (gem_collections.getLockedSlice()) |*collection| {
-                collection.deinit();
+                collection.destroy();
             }
             gem_collections.reclaimLockedSlice();
         }
         for (0..thread_count) |_| {
-            gem_collections.pushAssumeCapacity(std.ArrayList(Gem).init(allocator));
+            gem_collections.pushAssumeCapacity(UnorderedCollection(Gem).create(allocator));
         }
 
         return .{
@@ -839,7 +840,7 @@ const TickData = struct {
 
     fn destroy(self: *TickData, allocator: std.mem.Allocator) void {
         for (self.gem_collections.getLockedSlice()) |*collection| {
-            collection.deinit();
+            collection.destroy();
         }
         self.gem_collections.reclaimLockedSlice();
         self.gem_collections.destroy();
@@ -866,7 +867,7 @@ const TickData = struct {
         self.particle_sprite_collections.reclaimLockedSlice();
 
         for (self.gem_collections.getLockedSlice()) |*collection| {
-            collection.clearRetainingCapacity();
+            collection.resetPreservingCapacity();
         }
         self.gem_collections.reclaimLockedSlice();
     }
