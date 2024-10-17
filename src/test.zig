@@ -1501,11 +1501,11 @@ test "SpatialGrid: preallocating memory" {
     var grid = GrowingSpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    try grid.ensureUnusedCapacityInEachCellNonInclusive(3, .{
+    try grid.ensureCellsExistNonInclusive(.{
         .min = .{ .x = fp(-30), .z = fp(-30) },
         .max = .{ .x = fp(-grid_cell_side_length), .z = fp(-grid_cell_side_length) },
     });
-    try grid.ensureUnusedCapacityInEachCellNonInclusive(4, .{
+    try grid.ensureCellsExistNonInclusive(.{
         .min = .{ .x = fp(-20), .z = fp(-20) },
         .max = .{ .x = fp(-20), .z = fp(-20) },
     });
@@ -1513,25 +1513,25 @@ test "SpatialGrid: preallocating memory" {
         .x = @divTrunc(-30, grid_cell_side_length),
         .z = @divTrunc(-30, grid_cell_side_length),
     };
-    try grid.ensureUnusedCapacityInCell(30, cell_with_30_items);
-    try grid.ensureUnusedCapacityInCell(5, .{ .x = 4, .z = 4 });
+    try grid.ensureCellExists(cell_with_30_items);
+    try grid.ensureCellExists(.{ .x = 4, .z = 4 });
 
     const insertion_range = .{
         .min = .{ .x = fp(-30), .z = fp(-30) },
         .max = .{ .x = fp(-2 * grid_cell_side_length), .z = fp(-2 * grid_cell_side_length) },
     };
-    grid.insertIntoAreaAssumeCapacity(20, insertion_range);
-    grid.insertIntoAreaAssumeCapacity(21, insertion_range);
-    grid.insertIntoAreaAssumeCapacity(22, insertion_range);
-    grid.insertIntoAreaAssumeCapacity(23, .{
+    try grid.insertIntoAreaAssumeCellsExist(20, insertion_range);
+    try grid.insertIntoAreaAssumeCellsExist(21, insertion_range);
+    try grid.insertIntoAreaAssumeCellsExist(22, insertion_range);
+    try grid.insertIntoAreaAssumeCellsExist(23, .{
         .min = .{ .x = fp(-20), .z = fp(-20) },
         .max = .{ .x = fp(-20), .z = fp(-20) },
     });
     for (0..27) |_| {
-        grid.insertIntoCellAssumeCapacity(0, cell_with_30_items);
+        try grid.insertIntoCellAssumeCellExists(0, cell_with_30_items);
     }
     for (0..5) |_| {
-        grid.insertIntoCellAssumeCapacity(0, .{ .x = 4, .z = 4 });
+        try grid.insertIntoCellAssumeCellExists(0, .{ .x = 4, .z = 4 });
     }
 
     try expect(grid.countCells() == 10);

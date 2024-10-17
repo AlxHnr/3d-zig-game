@@ -113,7 +113,7 @@ pub fn create(
     }
 
     var throwaway = try PerformanceMeasurements.create();
-    try preallocateEnemyGrids(.{
+    try initializeEnemyGrids(.{
         .in = .{
             .thread_count = thread_pool.countThreads(),
             .enemy_grid = previous_tick_data.enemy_grid,
@@ -316,7 +316,7 @@ pub fn processElapsedTick(
             .flow_field = &self.main_character_flow_field,
         },
     }});
-    try self.thread_pool.dispatchIgnoreErrors(preallocateEnemyGrids, .{.{
+    try self.thread_pool.dispatchIgnoreErrors(initializeEnemyGrids, .{.{
         .in = .{
             .thread_count = thread_contexts.len,
             .enemy_grid = self.previous_tick_data.enemy_grid,
@@ -432,7 +432,7 @@ const PreallocateTickDataThreadData = struct {
     },
 };
 
-fn preallocateEnemyGrids(data: PreallocateTickDataThreadData) !void {
+fn initializeEnemyGrids(data: PreallocateTickDataThreadData) !void {
     data.out.performance_measurements.begin(.preallocate_tick_buffers);
     defer data.out.performance_measurements.end(.preallocate_tick_buffers);
 
@@ -443,13 +443,11 @@ fn preallocateEnemyGrids(data: PreallocateTickDataThreadData) !void {
             data.in.thread_count - 1,
         );
         while (cell_index_iterator.next()) |cell_index| {
-            const enemy_count = data.in.enemy_grid.countItemsInCell(cell_index);
-            if (enemy_count == 0) {
+            if (data.in.enemy_grid.countItemsInCell(cell_index) == 0) {
                 continue;
             }
-            try data.out.enemy_grid.ensureUnusedCapacityInCell(enemy_count, cell_index);
-            try data.out.enemy_peer_grid.ensureUnusedCapacityInEachCellNonInclusive(
-                enemy_grid.estimated_enemies_per_cell,
+            try data.out.enemy_grid.ensureCellExists(cell_index);
+            try data.out.enemy_peer_grid.ensureCellsExistNonInclusive(
                 data.out.enemy_grid.getAreaOfCell(cell_index),
             );
         }
@@ -651,12 +649,12 @@ fn processEnemies(data: EnemyThreadData) !void {
             } else if (new_cell_index.compare(cell_index) != .eq) {
                 try enemy_insertion_list.append(enemy);
             } else {
-                data.out.enemy_grid.insertIntoCellAssumeCapacity(enemy, cell_index);
+                try data.out.enemy_grid.insertIntoCellAssumeCellExists(enemy, cell_index);
                 const bordering_with_other_thread_cells = enemy_grid.CellRange
                     .fromAABB(enemy_outer_boundaries)
                     .countCoveredCells() > 1;
                 if (!bordering_with_other_thread_cells) {
-                    data.out.enemy_peer_grid.insertIntoAreaAssumeCapacity(
+                    try data.out.enemy_peer_grid.insertIntoAreaAssumeCellsExist(
                         enemy.getPeerInfo(),
                         enemy_outer_boundaries,
                     );

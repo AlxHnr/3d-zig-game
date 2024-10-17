@@ -78,25 +78,27 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
             }
 
             /// Can be called from different threads if each thread inserts into different cells.
-            pub fn insertIntoAreaAssumeCapacity(
+            pub fn insertIntoAreaAssumeCellsExist(
                 self: *Self,
                 object: T,
+                /// Must specify existing cells in the grid.
                 area: AxisAlignedBoundingBox,
-            ) void {
+            ) !void {
                 const cell_range = CellRange.fromAABB(area);
                 var iterator = cell_range.iterator();
                 while (iterator.next()) |cell_index| {
-                    self.insertIntoCellAssumeCapacity(object, cell_index);
+                    try self.insertIntoCellAssumeCellExists(object, cell_index);
                 }
             }
 
             /// Can be called from different threads if each thread inserts into different cells.
-            pub fn insertIntoCellAssumeCapacity(
+            pub fn insertIntoCellAssumeCellExists(
                 self: *Self,
                 object: T,
+                /// Must refer to an existing cell in the grid.
                 cell_index: CellIndex,
-            ) void {
-                self.cells.getPtr(cell_index).?.appendAssumeCapacity(object);
+            ) !void {
+                try self.cells.getPtr(cell_index).?.append(object);
             }
 
             /// Insert copies of the given object into every cell which intersects with the
@@ -114,20 +116,14 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
                 try self.insertRaw(object, &iterator);
             }
 
-            pub fn ensureUnusedCapacityInCell(
-                self: *Self,
-                object_count_per_cell: usize,
-                cell_index: CellIndex,
-            ) !void {
+            pub fn ensureCellExists(self: *Self, cell_index: CellIndex) !void {
                 const cell = try self.getOrPutCell(cell_index);
                 errdefer self.cleanupNewCellIfNeeded(cell, cell_index);
-                try cell.value_ptr.ensureUnusedCapacity(object_count_per_cell);
             }
 
             /// Cells starting at `area.max` will not be visited.
-            pub fn ensureUnusedCapacityInEachCellNonInclusive(
+            pub fn ensureCellsExistNonInclusive(
                 self: *Self,
-                object_count_per_cell: usize,
                 area: AxisAlignedBoundingBox,
             ) !void {
                 const raw_cell_range = CellRange.fromAABB(area);
@@ -141,7 +137,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
 
                 var iterator = cell_range.iterator();
                 while (iterator.next()) |cell_index| {
-                    try self.ensureUnusedCapacityInCell(object_count_per_cell, cell_index);
+                    try self.ensureCellExists(cell_index);
                 }
             }
 

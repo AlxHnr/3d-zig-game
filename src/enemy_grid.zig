@@ -19,11 +19,3 @@ comptime {
     // Ensure that enemy threads don't interfere with each other.
     assert(@mod(cell_size, peer_grid_cell_size) == 0);
 }
-
-pub const estimated_enemies_per_cell = blk: {
-    const estimated_enemies_per_side =
-        fp(peer_grid_cell_size).div(Enemy.peer_overlap_radius).ceil();
-    break :blk estimated_enemies_per_side.mul(estimated_enemies_per_side).ceil()
-        .mul(fp(2)) // Safety margin.
-        .convertTo(usize);
-};
