@@ -272,6 +272,15 @@ pub const Capsule = struct {
         return null;
     }
 
+    /// Returns the point on the capsules line segment closest to the circle.
+    pub fn CollidesWithCircle(self: Capsule, other: Circle) ?math.FlatVector {
+        const closest_point = getClosestPointOnLineClamped(other.position, self.start, self.end);
+        const circles_collide = other.collidesWithCircle(
+            .{ .position = closest_point, .radius = self.radius },
+        );
+        return if (circles_collide) closest_point else null;
+    }
+
     fn getClosestPointOnLineClamped(
         point: math.FlatVector,
         line_start: math.FlatVector,
