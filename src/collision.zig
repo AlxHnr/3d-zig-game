@@ -234,6 +234,55 @@ pub const Circle = struct {
     }
 };
 
+pub const Capsule = struct {
+    start: math.FlatVector,
+    end: math.FlatVector,
+    radius: math.Fix32,
+
+    pub fn collidesWithCapsule(self: Capsule, other: Capsule) bool {
+        const distance_self_start_other_start = other.start.subtract(self.start).lengthSquared();
+        const distance_self_start_other_end = other.end.subtract(self.start).lengthSquared();
+        const distance_self_end_other_start = other.start.subtract(self.end).lengthSquared();
+        const distance_self_end_other_end = other.end.subtract(self.end).lengthSquared();
+        const distance_self_start_other =
+            distance_self_start_other_start.min(distance_self_start_other_end);
+        const distance_self_end_other =
+            distance_self_end_other_start.min(distance_self_end_other_end);
+        const closest_self_to_other = if (distance_self_start_other.lt(distance_self_end_other))
+            self.start
+        else
+            self.end;
+        const closest_point_on_other =
+            getClosestPointOnLineClamped(closest_self_to_other, other.start, other.end);
+        const closest_point_on_self =
+            getClosestPointOnLineClamped(closest_point_on_other, self.start, self.end);
+        return Circle.collidesWithCircle(
+            .{ .position = closest_point_on_self, .radius = self.radius },
+            .{ .position = closest_point_on_other, .radius = other.radius },
+        ) or lineCollidesWithLine(self.start, self.end, other.start, other.end) != null;
+    }
+
+    fn getClosestPointOnLineClamped(
+        point: math.FlatVector,
+        line_start: math.FlatVector,
+        line_end: math.FlatVector,
+    ) math.FlatVector {
+        const line_offset = line_end.subtract(line_start);
+        const line_length_squared = line_offset.lengthSquared();
+        if (line_length_squared.eql(fp64(0))) {
+            return line_start;
+        }
+
+        const point_to_line_start = point.subtract(line_start);
+        const t = point_to_line_start
+            .dotProduct(line_offset)
+            .div(line_length_squared)
+            .clamp(fp64(0), fp64(1))
+            .convertTo(math.Fix32);
+        return line_start.add(line_offset.multiplyScalar(t));
+    }
+};
+
 /// Returns the intersection point.
 pub fn lineCollidesWithLine(
     first_line_start: math.FlatVector,
