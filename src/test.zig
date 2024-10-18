@@ -381,39 +381,42 @@ test "Collision between capsules" {
         .end = .{ .x = fp(10), .z = fp(3) },
         .radius = fp(2),
     };
-    try expect(capsule_a.collidesWithCapsule(capsule_a));
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_a) != null);
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
+    try expect(capsule_a.collidesWithCapsule(capsule_b).?.self.x.eql(fp(4.1999816895)));
+    try expect(capsule_a.collidesWithCapsule(capsule_b).?.self.z.eql(fp(5.5999450684)));
+    try expect(capsule_a.collidesWithCapsule(capsule_b).?.other.equal(capsule_b.start));
 
     std.mem.swap(math.FlatVector, &capsule_a.start, &capsule_a.end);
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
 
     std.mem.swap(math.FlatVector, &capsule_b.start, &capsule_b.end);
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
 
     std.mem.swap(math.FlatVector, &capsule_a.start, &capsule_a.end);
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
 
     capsule_a.radius = fp(0);
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
 
     capsule_b.radius = fp(1);
-    try expect(!capsule_a.collidesWithCapsule(capsule_b));
-    try expect(!capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) == null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) == null);
 
     capsule_a.radius = fp(1000);
     capsule_b.radius = fp(0);
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
 
     capsule_a.radius = fp(0);
     capsule_b.radius = fp(1000);
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
 
     capsule_a = collision.Capsule{
         .start = .{ .x = fp(0), .z = fp(0) },
@@ -425,15 +428,15 @@ test "Collision between capsules" {
         .end = .{ .x = fp(8), .z = fp(0) },
         .radius = fp(0),
     };
-    try expect(!capsule_a.collidesWithCapsule(capsule_b));
-    try expect(!capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) == null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) == null);
 
     capsule_a.radius = fp(1);
-    try expect(!capsule_a.collidesWithCapsule(capsule_b));
-    try expect(!capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) == null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) == null);
     capsule_b.radius = fp(1);
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
 
     capsule_a = collision.Capsule{
         .start = .{ .x = fp(3), .z = fp(1) },
@@ -445,15 +448,15 @@ test "Collision between capsules" {
         .end = .{ .x = fp(9), .z = fp(3) },
         .radius = fp(1),
     };
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
 
     capsule_a.start = capsule_a.end;
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
     capsule_b.end = capsule_b.start;
-    try expect(!capsule_a.collidesWithCapsule(capsule_b));
-    try expect(!capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) == null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) == null);
 
     // Intersection
     capsule_a = collision.Capsule{
@@ -466,8 +469,12 @@ test "Collision between capsules" {
         .end = .{ .x = fp(45), .z = fp(100) },
         .radius = fp(2),
     };
-    try expect(capsule_a.collidesWithCapsule(capsule_b));
-    try expect(capsule_b.collidesWithCapsule(capsule_a));
+    try expect(capsule_a.collidesWithCapsule(capsule_b) != null);
+    try expect(capsule_b.collidesWithCapsule(capsule_a) != null);
+    try expect(capsule_a.collidesWithCapsule(capsule_b).?.self.x.eql(fp(65.15625)));
+    try expect(capsule_a.collidesWithCapsule(capsule_b).?.self.z.eql(fp(52.96875)));
+    try expect(capsule_a.collidesWithCapsule(capsule_b).?.other.x.eql(fp(65.15625)));
+    try expect(capsule_a.collidesWithCapsule(capsule_b).?.other.z.eql(fp(52.96875)));
 }
 
 test "Math: section overlap" {

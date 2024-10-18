@@ -239,7 +239,10 @@ pub const Capsule = struct {
     end: math.FlatVector,
     radius: math.Fix32,
 
-    pub fn collidesWithCapsule(self: Capsule, other: Capsule) bool {
+    /// Contains the points on each capsules line segment that are closest to each other.
+    pub const PointsOnCapsuleLines = struct { self: math.FlatVector, other: math.FlatVector };
+
+    pub fn collidesWithCapsule(self: Capsule, other: Capsule) ?PointsOnCapsuleLines {
         const distance_self_start_other_start = other.start.subtract(self.start).lengthSquared();
         const distance_self_start_other_end = other.end.subtract(self.start).lengthSquared();
         const distance_self_end_other_start = other.start.subtract(self.end).lengthSquared();
@@ -256,10 +259,17 @@ pub const Capsule = struct {
             getClosestPointOnLineClamped(closest_self_to_other, other.start, other.end);
         const closest_point_on_self =
             getClosestPointOnLineClamped(closest_point_on_other, self.start, self.end);
-        return Circle.collidesWithCircle(
+        const circles_collide = Circle.collidesWithCircle(
             .{ .position = closest_point_on_self, .radius = self.radius },
             .{ .position = closest_point_on_other, .radius = other.radius },
-        ) or lineCollidesWithLine(self.start, self.end, other.start, other.end) != null;
+        );
+        if (circles_collide) {
+            return .{ .self = closest_point_on_self, .other = closest_point_on_other };
+        }
+        if (lineCollidesWithLine(self.start, self.end, other.start, other.end)) |intersection| {
+            return .{ .self = intersection, .other = intersection };
+        }
+        return null;
     }
 
     fn getClosestPointOnLineClamped(
