@@ -8,7 +8,6 @@ const std = @import("std");
 pub const MovingCircle = struct {
     radius: math.Fix32,
     velocity: math.FlatVector,
-    pass_trough_fences: bool,
     /// Contains the position of this object during the substeps of the last tick. The values are
     /// ordered from old to new. The last value contains the current position.
     trace: [4]math.FlatVector,
@@ -17,7 +16,6 @@ pub const MovingCircle = struct {
         position: math.FlatVector,
         radius: math.Fix32,
         velocity: math.FlatVector,
-        pass_trough_fences: bool,
     ) MovingCircle {
         var trace: [4]math.FlatVector = undefined;
         for (&trace) |*point| {
@@ -27,7 +25,6 @@ pub const MovingCircle = struct {
             .radius = radius,
             .velocity = velocity,
             .trace = trace,
-            .pass_trough_fences = pass_trough_fences,
         };
     }
 

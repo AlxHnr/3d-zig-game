@@ -43,7 +43,6 @@ pub const GameCharacter = struct {
                 position,
                 width.div(fp(2)),
                 math.FlatVector.zero,
-                false,
             ),
             .acceleration_direction = math.FlatVector.zero,
             .height = height,
