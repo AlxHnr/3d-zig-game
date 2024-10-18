@@ -39,11 +39,7 @@ pub const GameCharacter = struct {
         max_health: u32,
     ) GameCharacter {
         return .{
-            .moving_circle = MovingCircle.create(
-                position,
-                width.div(fp(2)),
-                math.FlatVector.zero,
-            ),
+            .moving_circle = MovingCircle.create(position, width.div(fp(2))),
             .acceleration_direction = math.FlatVector.zero,
             .height = height,
             .movement_speed = movement_speed,
@@ -105,7 +101,7 @@ pub const Player = struct {
         const orientation = fp(0);
         const camera =
             ThirdPersonCamera.create(
-            character.moving_circle.getPosition(),
+            character.moving_circle.position,
             orientation,
         );
         const animation_cycle = animation.FourStepCycle.create();
@@ -117,10 +113,7 @@ pub const Player = struct {
             .animation_cycle = animation_cycle,
             .gem_count = 0,
             .input_state = std.EnumArray(InputButton, bool).initFill(false),
-            .values_from_previous_tick = .{
-                .position = character.moving_circle.getPosition(),
-                .camera = camera,
-            },
+            .values_from_previous_tick = .{ .camera = camera },
         };
     }
 
@@ -176,7 +169,7 @@ pub const Player = struct {
 
         self.orientation = self.orientation.sub(self.turning_direction.mul(rotation_per_tick));
         self.camera.processElapsedTick(
-            self.character.moving_circle.getPosition(),
+            self.character.moving_circle.position,
             self.orientation,
         );
         self.animation_cycle.processElapsedTick(
@@ -202,12 +195,12 @@ pub const Player = struct {
         };
         const height_offset = self.character.height.div(fp(2));
         return SpriteData.create(
-            self.values_from_previous_tick.position.addY(height_offset),
+            self.character.moving_circle.position_at_previous_tick.addY(height_offset),
             spritesheet.getSpriteSourceRectangle(sprite_id),
             self.character.moving_circle.radius.mul(fp(2)),
             self.character.height,
         ).withAnimationStartTick(previous_tick).withAnimationTargetPosition(
-            self.character.moving_circle.getPosition().addY(height_offset),
+            self.character.moving_circle.position.addY(height_offset),
         );
     }
 
@@ -226,14 +219,10 @@ pub const Player = struct {
     }
 
     fn getValuesForRendering(self: Player) ValuesForRendering {
-        return .{
-            .position = self.character.moving_circle.getPosition(),
-            .camera = self.camera,
-        };
+        return .{ .camera = self.camera };
     }
 
     const ValuesForRendering = struct {
-        position: math.FlatVector,
         camera: ThirdPersonCamera,
 
         pub fn lerp(
@@ -241,10 +230,7 @@ pub const Player = struct {
             other: ValuesForRendering,
             t: math.Fix32,
         ) ValuesForRendering {
-            return .{
-                .position = self.position.lerp(other.position, t),
-                .camera = self.camera.lerp(other.camera, t),
-            };
+            return .{ .camera = self.camera.lerp(other.camera, t) };
         }
     };
 };

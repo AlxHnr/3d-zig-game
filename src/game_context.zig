@@ -516,7 +516,7 @@ fn mergeMeasurementsFromThreads(
 fn updateSpatialGrids(self: *Context, enemy_insertion_queue: MergedThreadResults(Enemy)) !void {
     var insertion_iterator = enemy_insertion_queue.constIterator();
     while (insertion_iterator.next()) |enemy| {
-        const enemy_position = enemy.character.moving_circle.getPosition();
+        const enemy_position = enemy.character.moving_circle.position;
         _ = try self.current_tick_data.enemy_grid.insert(
             enemy,
             enemy_position,
@@ -573,12 +573,12 @@ fn recomputeFlowField(data: FlowFieldThreadData) !void {
     while (iterator.next()) |cell_index| {
         var enemy_iterator = data.in.enemy_grid.constCellIterator(cell_index);
         while (enemy_iterator.next()) |enemy_ptr| {
-            data.out.flow_field.sampleCrowd(enemy_ptr.character.moving_circle.getPosition());
+            data.out.flow_field.sampleCrowd(enemy_ptr.character.moving_circle.position);
         }
     }
 
     try data.out.flow_field.recompute(
-        data.in.main_character.character.moving_circle.getPosition(),
+        data.in.main_character.character.moving_circle.position,
         data.in.map,
     );
 }
@@ -640,7 +640,7 @@ fn processEnemies(data: EnemyThreadData) !void {
             var enemy = enemy_ptr.*;
             enemy.processElapsedTick(tick_context);
             const new_cell_index = enemy_grid.CellIndex
-                .fromPosition(enemy.character.moving_circle.getPosition());
+                .fromPosition(enemy.character.moving_circle.position);
             const enemy_outer_boundaries =
                 enemy.getPeerInfo().getSpacingBoundaries().getOuterBoundingBoxInGameCoordinates();
 

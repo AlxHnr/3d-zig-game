@@ -86,12 +86,12 @@ pub fn populateBillboardData(
 ) void {
     const y_offset = self.character.height.div(fp(2));
     out[0] = rendering.SpriteData.create(
-        self.previous_tick_data.position.addY(y_offset),
+        self.character.moving_circle.position_at_previous_tick.addY(y_offset),
         spritesheet.getSpriteSourceRectangle(self.config.sprite),
         self.character.moving_circle.radius.mul(fp(2)),
         self.config.height,
     ).withAnimationStartTick(previous_tick).withAnimationTargetPosition(
-        self.character.moving_circle.getPosition().addY(y_offset),
+        self.character.moving_circle.position.addY(y_offset),
     );
     self.populateHealthbarBillboardData(spritesheet, previous_tick, out[1..]);
 }
@@ -107,7 +107,7 @@ pub const PeerInfo = struct {
 
 pub fn getPeerInfo(self: Self) PeerInfo {
     return .{
-        .position = self.character.moving_circle.getPosition(),
+        .position = self.character.moving_circle.position,
         .acceleration_direction = self.character.acceleration_direction,
     };
 }
@@ -126,12 +126,10 @@ const State = union(enum) {
 };
 
 const TickData = struct {
-    position: math.FlatVector,
     health: GameCharacter.Health,
 
     fn create(character: GameCharacter) TickData {
         return .{
-            .position = character.moving_circle.getPosition(),
             .health = character.health,
         };
     }
@@ -155,8 +153,8 @@ fn populateHealthbarBillboardData(
     const health_bar_factor =
         fp(std.math.log1p(@as(f32, @floatFromInt(self.character.health.max))) * 8);
     const y_offset = self.character.height.mul(offset_to_player_height_factor);
-    const previous_position = self.previous_tick_data.position.addY(y_offset);
-    const current_position = self.character.moving_circle.getPosition().addY(y_offset);
+    const previous_position = self.character.moving_circle.position_at_previous_tick.addY(y_offset);
+    const current_position = self.character.moving_circle.position.addY(y_offset);
     const health_bar_scale = self.character.height.mul(fp(0.0075));
     const health_bar_w = health_bar_scale.mul(health_bar_factor);
     const health_bar_h = health_bar_scale.mul(fp(8));
@@ -244,7 +242,7 @@ const AttackingState = struct {
     fn processElapsedTick(self: *AttackingState, enemy: *Self, context: TickContext) void {
         enemy.character.movement_speed = enemy.config.movement_speed.attacking;
 
-        const position = enemy.character.moving_circle.getPosition();
+        const position = enemy.character.moving_circle.position;
         const is_seeing_main_character = self.visibility_checker.isSeeingMainCharacter(
             context,
             enemy.*,
@@ -252,7 +250,7 @@ const AttackingState = struct {
         );
         if (is_seeing_main_character) {
             enemy.character.acceleration_direction =
-                context.main_character.moving_circle.getPosition().subtract(position).normalize();
+                context.main_character.moving_circle.position.subtract(position).normalize();
         } else if (context.main_character_flow_field.getDirection(position, context.map.*)) |direction| {
             enemy.character.acceleration_direction = direction;
         } else {
@@ -276,7 +274,7 @@ const AttackingState = struct {
             AverageAccumulator.create(enemy.character.acceleration_direction);
         while (iterator.next()) |peer| {
             // Ignore self.
-            if (peer.position.equal(enemy.previous_tick_data.position)) {
+            if (peer.position.equal(enemy.character.moving_circle.position_at_previous_tick)) {
                 continue;
             }
             const flock_distance_squared = Self.peer_flock_distance.convertTo(math.Fix64)

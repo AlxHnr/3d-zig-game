@@ -45,7 +45,7 @@ pub fn processElapsedTick(self: *Gem, context: TickContext) Result {
         },
         .pickup => |*pickup| {
             pickup.tick_counter += 1;
-            pickup.target_position = context.main_character.moving_circle.getPosition();
+            pickup.target_position = context.main_character.moving_circle.position;
             if (fp(pickup.tick_counter).gte(gem_jump_duration_in_ticks)) {
                 self.state = .{ .disappeared = {} };
             }
