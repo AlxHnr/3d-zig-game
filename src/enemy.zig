@@ -103,6 +103,10 @@ pub const PeerInfo = struct {
     pub fn getSpacingBoundaries(self: PeerInfo) collision.Circle {
         return .{ .position = self.position, .radius = peer_flock_radius };
     }
+
+    pub fn getArea(self: PeerInfo) collision.AxisAlignedBoundingBox {
+        return self.getSpacingBoundaries().getOuterBoundingBoxInGameCoordinates();
+    }
 };
 
 pub fn getPeerInfo(self: Self) PeerInfo {
@@ -263,8 +267,9 @@ const AttackingState = struct {
             .radius = peer_overlap_radius,
         };
         const direction = enemy.character.moving_circle.velocity.normalize();
-        var iterator = context.peer_grid.areaIterator(
+        var iterator = context.peer_grid.areaIteratorNoDuplicates(
             circle.getOuterBoundingBoxInGameCoordinates(),
+            PeerInfo.getArea,
         );
         var combined_displacement_vector = math.FlatVector.zero;
         var friction_factor = fp(1);

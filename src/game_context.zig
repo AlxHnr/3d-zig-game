@@ -523,10 +523,7 @@ fn updateSpatialGrids(self: *Context, enemy_insertion_queue: MergedThreadResults
         );
 
         const peer_info = enemy.getPeerInfo();
-        try self.current_tick_data.enemy_peer_grid.insertIntoArea(
-            peer_info,
-            peer_info.getSpacingBoundaries().getOuterBoundingBoxInGameCoordinates(),
-        );
+        try self.current_tick_data.enemy_peer_grid.insertIntoArea(peer_info, peer_info.getArea());
     }
 }
 
@@ -546,10 +543,7 @@ fn updateEnemyPeerGrid(data: UpdateEnemyPeerGridThreadData) !void {
 
     var peer_insertion_iterator = data.in.enemy_peer_insertion_queue.constIterator();
     while (peer_insertion_iterator.next()) |peer_info| {
-        try data.out.enemy_peer_grid.insertIntoArea(
-            peer_info,
-            peer_info.getSpacingBoundaries().getOuterBoundingBoxInGameCoordinates(),
-        );
+        try data.out.enemy_peer_grid.insertIntoArea(peer_info, peer_info.getArea());
     }
 }
 
@@ -641,8 +635,7 @@ fn processEnemies(data: EnemyThreadData) !void {
             enemy.processElapsedTick(tick_context);
             const new_cell_index = enemy_grid.CellIndex
                 .fromPosition(enemy.character.moving_circle.position);
-            const enemy_outer_boundaries =
-                enemy.getPeerInfo().getSpacingBoundaries().getOuterBoundingBoxInGameCoordinates();
+            const enemy_outer_boundaries = enemy.getPeerInfo().getArea();
 
             if (enemy.state == .dead) {
                 // Do nothing.
