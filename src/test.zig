@@ -1285,6 +1285,29 @@ test "SpatialGrid: const iterator: region queries without duplicates" {
     try testAreaIterator(&iterator, &[_]usize{ 6, 3 });
 }
 
+test "SpatialGrid: const iterator: region queries without duplicates: `while` edge case" {
+    const fp = math.Fix32.fp;
+
+    var grid = SpatialGrid.create(std.testing.allocator);
+    defer grid.destroy();
+
+    const getArea = struct {
+        fn getArea(object: u32) collision.AxisAlignedBoundingBox {
+            return switch (object) {
+                1 => .{ .min = .{ .x = fp(-100), .z = fp(-100) }, .max = .{ .x = fp(100), .z = fp(100) } },
+                2 => .{ .min = .{ .x = fp(10), .z = fp(10) }, .max = .{ .x = fp(12), .z = fp(12) } },
+                else => unreachable,
+            };
+        }
+    }.getArea;
+    _ = try grid.insertIntoArea(1, getArea(1));
+    _ = try grid.insertIntoArea(2, getArea(2));
+
+    const range = .{ .min = .{ .x = fp(-70), .z = fp(-30) }, .max = .{ .x = fp(90), .z = fp(90) } };
+    var iterator = grid.areaIteratorNoDuplicates(range, getArea);
+    try testAreaIterator(&iterator, &[_]usize{ 1, 2 });
+}
+
 test "SpatialCollection: iterator" {
     const fp = math.Fix32.fp;
 
