@@ -347,7 +347,26 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
             };
         }
 
-        pub const ConstAreaIterator = ConstBaseIterator(CellRange.Iterator);
+        /// Visit all objects intersecting with the specified area. Objects are guaranteed to be
+        /// only visited once, even if they occupy multiply cells in the grid. This function only
+        /// works for objects inserted via `insertIntoArea*()` and may or may not skip objects
+        /// inserted via other functions. Returned iterator will be invalidated by updates to the
+        /// grid.
+        pub fn areaIteratorNoDuplicates(
+            self: *const Self,
+            area: AxisAlignedBoundingBox,
+            /// Must return the same bounding box passed to `insertIntoArea()` for each object.
+            comptime getArea: fn (object: T) AxisAlignedBoundingBox,
+        ) ConstBaseIterator(CellRange.Iterator, skipIfAlreadyVisited(CellRange.Iterator, getArea)) {
+            return .{
+                .cells = &self.cells,
+                .index_iterator = CellRange.fromAABB(area).iterator(),
+                .cell_iterator = null,
+            };
+        }
+
+        pub const ConstAreaIterator =
+            ConstBaseIterator(CellRange.Iterator, neverSkipObject(CellRange.Iterator));
 
         /// Visit all cells trough which the specified line passes. Objects occupying multiple cells
         /// may be visited multiple times. Will be invalidated by updates to the grid.
@@ -365,6 +384,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
 
         pub const ConstStraightLineIterator = ConstBaseIterator(
             cell_line_iterator.Iterator(CellIndex),
+            neverSkipObject(cell_line_iterator.Iterator(CellIndex)),
         );
 
         /// Iterator returns all cell indices currently used in this grid, including empty cells.
@@ -436,7 +456,10 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
             };
         }
 
-        fn ConstBaseIterator(comptime IndexIterator: type) type {
+        fn ConstBaseIterator(
+            comptime IndexIterator: type,
+            comptime skipObject: fn (object: T, iterator: IndexIterator) bool,
+        ) type {
             return struct {
                 cells: *const std.AutoHashMap(CellIndex, UnorderedCollection(T)),
                 index_iterator: IndexIterator,
@@ -459,7 +482,10 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
 
                 fn nextFromCellIterator(self: *@This()) ?T {
                     if (self.cell_iterator) |*cell_iterator| {
-                        if (cell_iterator.next()) |object| {
+                        while (cell_iterator.next()) |object| {
+                            if (skipObject(object.*, self.index_iterator)) {
+                                continue;
+                            }
                             return object.*;
                         }
                         self.cell_iterator = null;
@@ -467,6 +493,26 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
                     return null;
                 }
             };
+        }
+
+        fn neverSkipObject(comptime IndexIterator: type) fn (T, IndexIterator) bool {
+            return struct {
+                fn skipObject(_: T, _: IndexIterator) bool {
+                    return false;
+                }
+            }.skipObject;
+        }
+
+        fn skipIfAlreadyVisited(
+            comptime IndexIterator: type,
+            comptime getArea: fn (object: T) AxisAlignedBoundingBox,
+        ) fn (T, IndexIterator) bool {
+            return struct {
+                fn skipObject(object: T, iterator: IndexIterator) bool {
+                    const range = CellRange.fromAABB(getArea(object));
+                    return !iterator.isOverlappingWithOnlyOneCell(range);
+                }
+            }.skipObject;
         }
     };
 }

@@ -1153,10 +1153,7 @@ test "SpatialGrid: insert into cell 0" {
     try expect(grid.countCells() == 1);
 }
 
-fn testAreaIterator(
-    iterator: *SpatialGrid.ConstAreaIterator,
-    expected_numbers: []const usize,
-) !void {
+fn testAreaIterator(iterator: anytype, expected_numbers: []const usize) !void {
     var index: usize = 0;
     while (iterator.next()) |value| : (index += 1) {
         try expect(value == expected_numbers[index]);
@@ -1237,6 +1234,55 @@ test "SpatialGrid: const iterator: region queries" {
         6, 6, 6, 6, 6, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
         3, 3, 3, 3,
     });
+}
+
+test "SpatialGrid: const iterator: region queries without duplicates" {
+    const fp = math.Fix32.fp;
+
+    var grid = SpatialGrid.create(std.testing.allocator);
+    defer grid.destroy();
+
+    const getArea = struct {
+        fn getArea(object: u32) collision.AxisAlignedBoundingBox {
+            return switch (object) {
+                1 => .{ .min = .{ .x = fp(-160), .z = fp(-190) }, .max = .{ .x = fp(-70), .z = fp(-30) } },
+                2 => .{ .min = .{ .x = fp(-120), .z = fp(70) }, .max = .{ .x = fp(-10), .z = fp(130) } },
+                3 => .{ .min = .{ .x = fp(20), .z = fp(70) }, .max = .{ .x = fp(80), .z = fp(130) } },
+                4 => .{ .min = .{ .x = fp(70), .z = fp(20) }, .max = .{ .x = fp(130), .z = fp(70) } },
+                5 => .{ .min = .{ .x = fp(80), .z = fp(-130) }, .max = .{ .x = fp(130), .z = fp(-10) } },
+                6 => .{ .min = .{ .x = fp(30), .z = fp(-130) }, .max = .{ .x = fp(130), .z = fp(-10) } },
+                else => unreachable,
+            };
+        }
+    }.getArea;
+    const handles = .{
+        try grid.insertIntoArea(1, getArea(1)),
+        try grid.insertIntoArea(2, getArea(2)),
+        try grid.insertIntoArea(3, getArea(3)),
+        try grid.insertIntoArea(4, getArea(4)),
+        try grid.insertIntoArea(5, getArea(5)),
+        try grid.insertIntoArea(6, getArea(6)),
+    };
+
+    const range = .{ .min = .{ .x = fp(-70), .z = fp(-30) }, .max = .{ .x = fp(90), .z = fp(90) } };
+    var iterator = grid.areaIteratorNoDuplicates(range, getArea);
+    try testAreaIterator(&iterator, &[_]usize{ 1, 6, 5, 4, 2, 3 });
+
+    grid.remove(handles[4]);
+    grid.remove(handles[3]);
+    grid.remove(handles[1]);
+    iterator = grid.areaIteratorNoDuplicates(range, getArea);
+    try testAreaIterator(&iterator, &[_]usize{ 1, 6, 3 });
+
+    iterator = grid.areaIteratorNoDuplicates(
+        .{ .min = .{ .x = fp(0), .z = fp(0) }, .max = .{ .x = fp(0), .z = fp(0) } },
+        getArea,
+    );
+    try expect(iterator.next() == null);
+
+    grid.remove(handles[0]);
+    iterator = grid.areaIteratorNoDuplicates(range, getArea);
+    try testAreaIterator(&iterator, &[_]usize{ 6, 3 });
 }
 
 test "SpatialCollection: iterator" {
