@@ -113,17 +113,28 @@ pub const FlatVector = struct {
     }
 
     pub fn rotate(self: FlatVector, angle: Fix32) FlatVector {
-        const sin = angle.sin();
-        const cos = angle.cos();
-        return .{
-            .x = self.x.mul(cos).add(self.z.mul(sin)),
-            .z = self.x.neg().mul(sin).add(self.z.mul(cos)),
-        };
+        return Rotation.create(angle).rotate(self);
     }
 
     pub fn rotateRightBy90Degrees(self: FlatVector) FlatVector {
         return .{ .x = self.z.neg(), .z = self.x };
     }
+
+    pub const Rotation = struct {
+        sine: Fix32,
+        cosine: Fix32,
+
+        pub fn create(angle: Fix32) Rotation {
+            return .{ .sine = angle.sin(), .cosine = angle.cos() };
+        }
+
+        pub fn rotate(self: Rotation, vector: FlatVector) FlatVector {
+            return .{
+                .x = vector.x.mul(self.cosine).add(vector.z.mul(self.sine)),
+                .z = vector.x.neg().mul(self.sine).add(vector.z.mul(self.cosine)),
+            };
+        }
+    };
 
     fn normalizeInternal(self: FlatVector, own_length: Fix64) FlatVector {
         return if (own_length.eql(fp64(0)))
