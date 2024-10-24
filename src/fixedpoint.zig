@@ -159,6 +159,8 @@ pub fn Fixedpoint(comptime integer_bit_count: u7, comptime fraction_bit_count: u
             ) };
         }
 
+        /// Returns an acceptable approximation, but errors can accumulate when multiplying
+        /// repeatedly with the result of sin().
         pub fn sin(self: Self) Self {
             // Derived from https://github.com/MikeLankamp/fpm
             const pi = fp(std.math.pi);
@@ -182,6 +184,8 @@ pub fn Fixedpoint(comptime integer_bit_count: u7, comptime fraction_bit_count: u
                 .mul(sign_factor);
         }
 
+        /// Returns an acceptable approximation, but errors can accumulate when multiplying
+        /// repeatedly with the result of cos().
         pub fn cos(self: Self) Self {
             return self.add(fp(std.math.pi / 2.0)).sin();
         }
