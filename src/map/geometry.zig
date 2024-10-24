@@ -190,7 +190,7 @@ pub fn populateRenderSnapshot(self: Geometry, snapshot: *RenderSnapshot) !void {
     for (self.walls.solid.items) |wall| {
         try snapshot.wall_data.append(wall.getWallData());
         try snapshot.solid_walls.append(
-            .{ .wall_type = wall.wall_type, .corner_positions = wall.corner_positions },
+            .{ .wall_type = wall.wall_type, .boundaries = wall.boundaries },
         );
     }
     for (self.walls.translucent.items) |wall| {
@@ -255,7 +255,7 @@ pub const RenderSnapshot = struct {
         var ray_collision: ?RayCollision = null;
         for (self.solid_walls.items) |wall| {
             ray_collision = getCloserRayCollision(
-                Wall.collidesWithRay(wall.wall_type, wall.corner_positions, ray),
+                Wall.collidesWithRay(wall.wall_type, wall.boundaries, ray),
                 0, // Not used.
                 ray_collision,
             );
@@ -268,7 +268,7 @@ pub const RenderSnapshot = struct {
 
     const PartialWallData = struct {
         wall_type: WallType,
-        corner_positions: [4]math.FlatVector,
+        boundaries: collision.Rectangle,
     };
 };
 
@@ -539,14 +539,14 @@ pub fn cast3DRayToWalls(self: Geometry, ray: collision.Ray3d) ?RayCollision {
     var result: ?RayCollision = null;
     for (self.walls.solid.items) |wall| {
         result = getCloserRayCollision(
-            Wall.collidesWithRay(wall.wall_type, wall.corner_positions, ray),
+            Wall.collidesWithRay(wall.wall_type, wall.boundaries, ray),
             wall.object_id,
             result,
         );
     }
     for (self.walls.translucent.items) |wall| {
         result = getCloserRayCollision(
-            Wall.collidesWithRay(wall.wall_type, wall.corner_positions, ray),
+            Wall.collidesWithRay(wall.wall_type, wall.boundaries, ray),
             wall.object_id,
             result,
         );
@@ -739,7 +739,7 @@ fn updateCache(self: *Geometry) !void {
 }
 
 fn insertWallIntoSpatialGrid(grid: *SpatialGrid, wall: Wall) !*SpatialGrid.ObjectHandle {
-    return try grid.insertIntoPolygonBorders(wall.boundaries, &wall.corner_positions);
+    return try grid.insertIntoPolygonBorders(wall.boundaries, &wall.boundaries.corners);
 }
 
 fn removeWallFromSpatialGrid(self: *Geometry, wall: *Wall) void {
@@ -874,7 +874,6 @@ const Wall = struct {
     wall_type: WallType,
     model_matrix: math.Matrix,
     boundaries: collision.Rectangle,
-    corner_positions: [4]math.FlatVector,
     tint: rendering.Color,
 
     grid_handles: struct {
@@ -920,12 +919,6 @@ const Wall = struct {
                 .rotate(math.Vector3d.y_axis, rotation_angle)
                 .translate(center.addY(height.div(fp(2)))),
             .boundaries = collision.Rectangle.create(start_corners[0], start_corners[1], length),
-            .corner_positions = .{
-                start_corners[0],
-                start_corners[1],
-                start_corners[1].add(offset),
-                start_corners[0].add(offset),
-            },
             .tint = Wall.getDefaultTint(wall_type),
             .wall_type = wall_type,
             .grid_handles = .{ .all = null, .solid = null },
@@ -936,14 +929,14 @@ const Wall = struct {
 
     fn collidesWithRay(
         wall_type: WallType,
-        corner_positions: [4]math.FlatVector,
+        boundaries: collision.Rectangle,
         ray: collision.Ray3d,
     ) ?collision.Ray3d.ImpactPoint {
         const bottom_corners = [_]math.Vector3d{
-            corner_positions[0].toVector3d(),
-            corner_positions[1].toVector3d(),
-            corner_positions[2].toVector3d(),
-            corner_positions[3].toVector3d(),
+            boundaries.corners[0].toVector3d(),
+            boundaries.corners[1].toVector3d(),
+            boundaries.corners[2].toVector3d(),
+            boundaries.corners[3].toVector3d(),
         };
         const vertical_offset = math.Vector3d.y_axis.multiplyScalar(getWallTypeHeight(wall_type));
         var closest_impact_point: ?collision.Ray3d.ImpactPoint = null;
@@ -1267,7 +1260,7 @@ const ObstacleGrid = struct {
         // Don't assume the map covers (0, 0).
         const any_wall = geometry.walls.solid.getLastOrNull() orelse
             geometry.walls.translucent.getLast();
-        const any_point = any_wall.corner_positions[0];
+        const any_point = any_wall.boundaries.corners[0];
 
         var map_boundaries = collision.AxisAlignedBoundingBox{ .min = any_point, .max = any_point };
         for (geometry.walls.solid.items) |wall| {
@@ -1322,7 +1315,7 @@ const ObstacleGrid = struct {
     }
 
     fn insert(self: *ObstacleGrid, wall: Wall) void {
-        var corners = wall.corner_positions;
+        var corners = wall.boundaries.corners;
         for (&corners) |*corner| {
             // Make game coordinates positive, starting at (0, 0).
             corner.* = corner.subtract(self.map_boundaries.min);
@@ -1386,7 +1379,7 @@ const ObstacleGrid = struct {
     }
 
     fn updateBoundaries(boundaries: *collision.AxisAlignedBoundingBox, wall: Wall) void {
-        for (wall.corner_positions) |corner| {
+        for (wall.boundaries.corners) |corner| {
             boundaries.min.x = boundaries.min.x.min(corner.x);
             boundaries.min.z = boundaries.min.z.min(corner.z);
             boundaries.max.x = boundaries.max.x.max(corner.x);
