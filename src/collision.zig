@@ -67,6 +67,42 @@ pub const Rectangle = struct {
         return self.getRotatedAABB(rotation).collidesWithPoint(rotation.rotate(point));
     }
 
+    pub const ClippedRay = struct {
+        ray_end: math.FlatVector,
+        distance_from_start_squared: math.Fix64,
+
+        pub fn create(ray_start: math.FlatVector, ray_end: math.FlatVector) ClippedRay {
+            return .{
+                .ray_end = ray_end,
+                .distance_from_start_position = ray_end.subtract(ray_start).lengthSquared(),
+            };
+        }
+
+        /// Return the ray closest to its start.
+        pub fn min(self: ClippedRay, other: ClippedRay) ClippedRay {
+            return if (self.distance_from_start_squared.lt(other.distance_from_start_squared))
+                self
+            else
+                other;
+        }
+    };
+
+    pub fn clipRay(
+        self: Rectangle,
+        ray_start: math.FlatVector,
+        ray_end: math.FlatVector,
+    ) ClippedRay {
+        const intersections = .{
+            lineCollidesWithLine(ray_start, ray_end, self.corners[0], self.corners[1]) orelse ray_end,
+            lineCollidesWithLine(ray_start, ray_end, self.corners[1], self.corners[2]) orelse ray_end,
+            lineCollidesWithLine(ray_start, ray_end, self.corners[2], self.corners[3]) orelse ray_end,
+            lineCollidesWithLine(ray_start, ray_end, self.corners[3], self.corners[0]) orelse ray_end,
+        };
+        return ClippedRay.create(ray_start, intersections[0])
+            .min(ClippedRay.create(ray_start, intersections[1]))
+            .min(ClippedRay.create(ray_start, intersections[2]))
+            .min(ClippedRay.create(ray_start, intersections[3]));
+    }
 
     fn getRotatedAABB(self: Rectangle, rotation: math.FlatVector.Rotation) AxisAlignedBoundingBox {
         const first_corner = rotation.rotate(self.corners[0]);
