@@ -239,14 +239,11 @@ test "Create collision rectangle" {
         .{ .x = fp(6.16), .z = fp(27.945) },
         fp(19.18),
     );
-    try expect(fp(11.200668334960938).eql(rectangle.aabb.min.x));
-    try expect(fp(-5.251922607421875).eql(rectangle.aabb.min.z));
-    try expect(fp(30.380661010742188).eql(rectangle.aabb.max.x));
-    try expect(fp(26.337570190429688).eql(rectangle.aabb.max.z));
-    try expect(fp(0.184112548828125).eql(rectangle.rotation.sine));
-    try expect(fp(0.983062744140625).eql(rectangle.rotation.cosine));
-    try expect(fp(-0.184173583984375).eql(rectangle.inverse_rotation.sine));
-    try expect(fp(0.9830474853515625).eql(rectangle.inverse_rotation.cosine));
+    try expect(rectangle.corners[0].equal(.{ .x = fp(12), .z = fp(-3.1) }));
+    try expect(rectangle.corners[1].equal(.{ .x = fp(6.16), .z = fp(27.945) }));
+    try expect(rectangle.corners[2].equal(.{ .x = fp(25.00927734375), .z = fp(31.490615844726563) }));
+    try expect(rectangle.corners[3].equal(.{ .x = fp(30.849288940429688), .z = fp(0.445632934570313) }));
+    try expect(rectangle.rotation_angle_to_align_with_axis.eql(fp(0.1851501465)));
 }
 
 test "Collision between circle and point" {

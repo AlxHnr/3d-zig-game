@@ -23,30 +23,8 @@ pub const AxisAlignedBoundingBox = struct {
 };
 
 pub const Rectangle = struct {
-    /// Game-world coordinates rotated around the worlds origin to axis-align this rectangle.
-    aabb: AxisAlignedBoundingBox,
-    /// Precomputed sine/cosine values for replicating this rectangles rotation around the game
-    /// worlds origin.
-    rotation: Rotation,
-    /// Used for restoring the rectangles original position.
-    inverse_rotation: Rotation,
-
-    /// Contains the sine/cosine of an angle.
-    const Rotation = struct {
-        sine: math.Fix32,
-        cosine: math.Fix32,
-
-        fn create(angle: math.Fix32) Rotation {
-            return .{ .sine = angle.sin(), .cosine = angle.cos() };
-        }
-
-        fn rotate(self: Rotation, vector: math.FlatVector) math.FlatVector {
-            return .{
-                .x = vector.x.mul(self.cosine).add(vector.z.mul(self.sine)),
-                .z = vector.x.neg().mul(self.sine).add(vector.z.mul(self.cosine)),
-            };
-        }
-    };
+    corners: [4]math.FlatVector,
+    rotation_angle_to_align_with_axis: math.Fix32,
 
     /// Takes game-world coordinates. Side a and b can be chosen arbitrarily, but must be adjacent.
     pub fn create(
@@ -54,18 +32,18 @@ pub const Rectangle = struct {
         side_a_end: math.FlatVector,
         side_b_length: math.Fix32,
     ) Rectangle {
-        const side_a_length = side_a_start.subtract(side_a_end).length().convertTo(math.Fix32);
-        const rotation_angle = side_a_start.subtract(side_a_end)
-            .computeRotationToOtherVector(.{ .x = fp(0), .z = fp(-1) });
-        const rotation = Rotation.create(rotation_angle);
-        const first_corner = rotation.rotate(side_a_end);
+        const side_a_offset = side_a_start.subtract(side_a_end);
+        const side_b_offset = side_a_offset
+            .rotateRightBy90Degrees().normalize().multiplyScalar(side_b_length);
         return .{
-            .aabb = .{
-                .min = .{ .x = first_corner.x, .z = first_corner.z.sub(side_a_length) },
-                .max = .{ .x = first_corner.x.add(side_b_length), .z = first_corner.z },
+            .corners = .{
+                side_a_start,
+                side_a_end,
+                side_a_end.add(side_b_offset),
+                side_a_start.add(side_b_offset),
             },
-            .rotation = rotation,
-            .inverse_rotation = Rotation.create(rotation_angle.neg()),
+            .rotation_angle_to_align_with_axis = side_a_offset
+                .computeRotationToOtherVector(.{ .x = fp(0), .z = fp(-1) }),
         };
     }
 
@@ -74,28 +52,35 @@ pub const Rectangle = struct {
         line_start: math.FlatVector,
         line_end: math.FlatVector,
     ) bool {
-        const start = self.rotation.rotate(line_start);
-        const end = self.rotation.rotate(line_end);
-        const corners = .{
-            self.aabb.min,
-            .{ .x = self.aabb.min.x, .z = self.aabb.max.z },
-            self.aabb.max,
-            .{ .x = self.aabb.max.x, .z = self.aabb.min.z },
-        };
-        return self.collidesWithRotatedPoint(start) or
-            self.collidesWithRotatedPoint(end) or
-            lineCollidesWithLine(start, end, corners[0], corners[1]) != null or
-            lineCollidesWithLine(start, end, corners[1], corners[2]) != null or
-            lineCollidesWithLine(start, end, corners[2], corners[3]) != null or
-            lineCollidesWithLine(start, end, corners[3], corners[0]) != null;
+        const rotation = math.FlatVector.Rotation.create(self.rotation_angle_to_align_with_axis);
+        const aabb = self.getRotatedAABB(rotation);
+        return aabb.collidesWithPoint(rotation.rotate(line_start)) or
+            aabb.collidesWithPoint(rotation.rotate(line_end)) or
+            lineCollidesWithLine(line_start, line_end, self.corners[0], self.corners[1]) != null or
+            lineCollidesWithLine(line_start, line_end, self.corners[1], self.corners[2]) != null or
+            lineCollidesWithLine(line_start, line_end, self.corners[2], self.corners[3]) != null or
+            lineCollidesWithLine(line_start, line_end, self.corners[3], self.corners[0]) != null;
     }
 
     pub fn collidesWithPoint(self: Rectangle, point: math.FlatVector) bool {
-        return self.collidesWithRotatedPoint(self.rotation.rotate(point));
+        const rotation = math.FlatVector.Rotation.create(self.rotation_angle_to_align_with_axis);
+        return self.getRotatedAABB(rotation).collidesWithPoint(rotation.rotate(point));
     }
 
-    fn collidesWithRotatedPoint(self: Rectangle, rotated_point: math.FlatVector) bool {
-        return self.aabb.collidesWithPoint(rotated_point);
+
+    fn getRotatedAABB(self: Rectangle, rotation: math.FlatVector.Rotation) AxisAlignedBoundingBox {
+        const first_corner = rotation.rotate(self.corners[0]);
+        const third_corner = rotation.rotate(self.corners[2]);
+        return .{
+            .min = .{
+                .x = first_corner.x.min(third_corner.x),
+                .z = first_corner.z.min(third_corner.z),
+            },
+            .max = .{
+                .x = first_corner.x.max(third_corner.x),
+                .z = first_corner.z.max(third_corner.z),
+            },
+        };
     }
 };
 
@@ -180,10 +165,13 @@ pub const Circle = struct {
     /// If a collision occurs, return a displacement vector for moving self out of other. The
     /// returned displacement vector must be added to self.position to resolve the collision.
     pub fn collidesWithRectangle(self: Circle, rectangle: Rectangle) ?math.FlatVector {
-        const rotated_self_position = rectangle.rotation.rotate(self.position);
+        const rotation =
+            math.FlatVector.Rotation.create(rectangle.rotation_angle_to_align_with_axis);
+        const aabb = rectangle.getRotatedAABB(rotation);
+        const rotated_self_position = rotation.rotate(self.position);
         const reference_point = .{
-            .x = rotated_self_position.x.clamp(rectangle.aabb.min.x, rectangle.aabb.max.x),
-            .z = rotated_self_position.z.clamp(rectangle.aabb.min.z, rectangle.aabb.max.z),
+            .x = rotated_self_position.x.clamp(aabb.min.x, aabb.max.x),
+            .z = rotated_self_position.z.clamp(aabb.min.z, aabb.max.z),
         };
         const offset = rotated_self_position.subtract(reference_point);
         if (offset.lengthSquared().gt(self.getRadiusSquared())) {
@@ -191,12 +179,12 @@ pub const Circle = struct {
         }
 
         const displacement_x = getSmallestValueBasedOnAbsolute(
-            rectangle.aabb.min.x.sub(rotated_self_position.x).sub(self.radius),
-            rectangle.aabb.max.x.sub(rotated_self_position.x).add(self.radius),
+            aabb.min.x.sub(rotated_self_position.x).sub(self.radius),
+            aabb.max.x.sub(rotated_self_position.x).add(self.radius),
         );
         const displacement_z = getSmallestValueBasedOnAbsolute(
-            rectangle.aabb.min.z.sub(rotated_self_position.z).sub(self.radius),
-            rectangle.aabb.max.z.sub(rotated_self_position.z).add(self.radius),
+            aabb.min.z.sub(rotated_self_position.z).sub(self.radius),
+            aabb.max.z.sub(rotated_self_position.z).add(self.radius),
         );
         const displacement_vector =
             if (displacement_x.abs().lt(displacement_z.abs()))
@@ -204,7 +192,8 @@ pub const Circle = struct {
         else
             math.FlatVector{ .x = fp(0), .z = displacement_z };
 
-        const result = rectangle.inverse_rotation.rotate(displacement_vector);
+        const result =
+            displacement_vector.rotate(rectangle.rotation_angle_to_align_with_axis.neg());
         return if (result.equal(math.FlatVector.zero)) null else result;
     }
 
