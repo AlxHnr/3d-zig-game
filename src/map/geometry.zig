@@ -529,6 +529,20 @@ pub fn untintObject(self: *Geometry, object_id: u64) !void {
     try self.updateCache();
 }
 
+/// Clip the given ray against all walls and return the rays new shortened end position.
+pub fn clip2dRay(
+    self: Geometry,
+    ray_start: math.FlatVector,
+    ray_end: math.FlatVector,
+) math.FlatVector {
+    var clipped_ray = collision.Rectangle.ClippedRay.create(ray_start, ray_end);
+    var iterator = self.spatial_wall_index.all.straightLineIterator(ray_start, ray_end);
+    while (iterator.next()) |rectangle| {
+        clipped_ray = clipped_ray.min(rectangle.clipRay(ray_start, ray_end));
+    }
+    return clipped_ray.ray_end;
+}
+
 pub const RayCollision = struct {
     object_id: u64,
     impact_point: collision.Ray3d.ImpactPoint,
