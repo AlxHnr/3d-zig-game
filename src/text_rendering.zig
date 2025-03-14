@@ -134,7 +134,7 @@ pub fn populateSpriteData(
     /// Must have enough capacity to store all sprites. See getSpriteCount().
     out: []SpriteData,
 ) void {
-    const offset_to_top_left_corner = .{ .x = fp(0), .y = fp(0), .z = fp(0) };
+    const offset_to_top_left_corner = math.Vector3d{ .x = fp(0), .y = fp(0), .z = fp(0) };
     populateSpriteDataRaw(
         segments,
         .{ .x = screen_position_x, .y = screen_position_y, .z = fp(0) },

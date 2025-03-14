@@ -17,8 +17,8 @@ pub fn Fixedpoint(comptime integer_bit_count: u7, comptime fraction_bit_count: u
 
         pub fn fp(value: anytype) Self {
             return switch (@typeInfo(@TypeOf(value))) {
-                .Float, .ComptimeFloat => .{ .internal = @intFromFloat(value * scaling_factor) },
-                .Int, .ComptimeInt => .{
+                .float, .comptime_float => .{ .internal = @intFromFloat(value * scaling_factor) },
+                .int, .comptime_int => .{
                     .internal = @as(UnderlyingType, @intCast(value)) * scaling_factor,
                 },
                 else => @compileError("unsupported type: " ++ @typeName(@TypeOf(value))),
@@ -32,8 +32,8 @@ pub fn Fixedpoint(comptime integer_bit_count: u7, comptime fraction_bit_count: u
         /// cutting off precision bits.
         pub fn convertTo(self: Self, comptime T: type) T {
             return switch (@typeInfo(T)) {
-                .Int, .ComptimeInt => @intCast(@divTrunc(self.internal, scaling_factor)),
-                .Float, .ComptimeFloat => @as(T, @floatFromInt(self.internal)) / scaling_factor,
+                .int, .comptime_int => @intCast(@divTrunc(self.internal, scaling_factor)),
+                .float, .comptime_float => @as(T, @floatFromInt(self.internal)) / scaling_factor,
                 else => if (T.fraction_bits == Self.fraction_bits)
                     .{ .internal = @intCast(self.internal) }
                 else if (T.fraction_bits > Self.fraction_bits)
@@ -137,8 +137,8 @@ pub fn Fixedpoint(comptime integer_bit_count: u7, comptime fraction_bit_count: u
             /// Value between 0.0 and 1.0. Will be clamped into this range.
             t: Self,
         ) Self {
-            const zero = .{ .internal = 0 };
-            const one = .{ .internal = scaling_factor };
+            const zero = Self{ .internal = 0 };
+            const one = Self{ .internal = scaling_factor };
             return self.add(other.sub(self).mul(clamp(t, zero, one)));
         }
 
@@ -153,7 +153,7 @@ pub fn Fixedpoint(comptime integer_bit_count: u7, comptime fraction_bit_count: u
         /// Given value must be positive.
         pub fn sqrt(self: Self) Self {
             std.debug.assert(self.internal >= 0);
-            const UnsignedType = std.meta.Int(.unsigned, @typeInfo(IntermediateType).Int.bits);
+            const UnsignedType = std.meta.Int(.unsigned, @typeInfo(IntermediateType).int.bits);
             return .{ .internal = @intCast(
                 std.math.sqrt(@as(UnsignedType, @intCast(self.internal)) * scaling_factor),
             ) };
@@ -241,7 +241,7 @@ pub fn Fixedpoint(comptime integer_bit_count: u7, comptime fraction_bit_count: u
             .signed,
             @as(usize, integer_bits) + @as(usize, fraction_bits),
         );
-        const IntermediateType = std.meta.Int(.signed, @typeInfo(UnderlyingType).Int.bits * 2);
+        const IntermediateType = std.meta.Int(.signed, @typeInfo(UnderlyingType).int.bits * 2);
         const scaling_factor = 1 << fraction_bits;
     };
 }

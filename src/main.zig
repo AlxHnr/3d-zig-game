@@ -82,7 +82,7 @@ const ProgramContext = struct {
         gl.enable(gl.STENCIL_TEST);
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
 
-        const screen_dimensions = .{ .w = screen_width, .h = screen_height };
+        const screen_dimensions = ScreenDimensions{ .w = screen_width, .h = screen_height };
         const edit_mode_state = edit_mode.State.create();
 
         var dialog_controller = try allocator.create(DialogController);

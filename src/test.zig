@@ -356,8 +356,8 @@ test "Collisions between lines" {
 test "Collision between line and point" {
     const fp = math.Fix32.fp;
 
-    const line_start = .{ .x = fp(0), .z = fp(0) };
-    const line_end = .{ .x = fp(10), .z = fp(10) };
+    const line_start = math.FlatVector{ .x = fp(0), .z = fp(0) };
+    const line_end = math.FlatVector{ .x = fp(10), .z = fp(10) };
     try expect(!collision.lineCollidesWithPoint(line_start, line_end, .{ .x = fp(2), .z = fp(3) }));
     try expect(!collision.lineCollidesWithPoint(line_start, line_end, .{ .x = fp(11), .z = fp(11) }));
     try expect(!collision.lineCollidesWithPoint(line_start, line_start, .{ .x = fp(11), .z = fp(11) }));
@@ -1164,7 +1164,10 @@ test "SpatialGrid: const iterator: basic usage" {
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    const range = .{ .min = .{ .x = fp(0), .z = fp(0) }, .max = .{ .x = fp(100), .z = fp(100) } };
+    const range = collision.AxisAlignedBoundingBox{
+        .min = .{ .x = fp(0), .z = fp(0) },
+        .max = .{ .x = fp(100), .z = fp(100) },
+    };
 
     var iterator = grid.areaIterator(range);
     try expect(iterator.next() == null);
@@ -1199,7 +1202,10 @@ test "SpatialGrid: const iterator: region queries" {
         try grid.insertIntoArea(6, .{ .min = .{ .x = fp(30), .z = fp(-130) }, .max = .{ .x = fp(130), .z = fp(-10) } }),
     };
 
-    const range = .{ .min = .{ .x = fp(-70), .z = fp(-30) }, .max = .{ .x = fp(90), .z = fp(90) } };
+    const range = collision.AxisAlignedBoundingBox{
+        .min = .{ .x = fp(-70), .z = fp(-30) },
+        .max = .{ .x = fp(90), .z = fp(90) },
+    };
     var iterator = grid.areaIterator(range);
     try testAreaIterator(&iterator, &[_]usize{
         1, 6, 6, 6, 6, 6, 6, 6, 5, 6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 5, 6, 5, 6, 6, 6, 6, 6, 6, 6, 6, 5,
@@ -1261,7 +1267,10 @@ test "SpatialGrid: const iterator: region queries without duplicates" {
         try grid.insertIntoArea(6, getArea(6)),
     };
 
-    const range = .{ .min = .{ .x = fp(-70), .z = fp(-30) }, .max = .{ .x = fp(90), .z = fp(90) } };
+    const range = collision.AxisAlignedBoundingBox{
+        .min = .{ .x = fp(-70), .z = fp(-30) },
+        .max = .{ .x = fp(90), .z = fp(90) },
+    };
     var iterator = grid.areaIteratorNoDuplicates(range, getArea);
     try testAreaIterator(&iterator, &[_]usize{ 1, 6, 5, 4, 2, 3 });
 
@@ -1300,7 +1309,10 @@ test "SpatialGrid: const iterator: region queries without duplicates: `while` ed
     _ = try grid.insertIntoArea(1, getArea(1));
     _ = try grid.insertIntoArea(2, getArea(2));
 
-    const range = .{ .min = .{ .x = fp(-70), .z = fp(-30) }, .max = .{ .x = fp(90), .z = fp(90) } };
+    const range = collision.AxisAlignedBoundingBox{
+        .min = .{ .x = fp(-70), .z = fp(-30) },
+        .max = .{ .x = fp(90), .z = fp(90) },
+    };
     var iterator = grid.areaIteratorNoDuplicates(range, getArea);
     try testAreaIterator(&iterator, &[_]usize{ 1, 2 });
 }
@@ -1656,13 +1668,13 @@ test "SpatialGrid: compute area function" {
     var grid = SpatialGrid.create(std.testing.allocator);
     defer grid.destroy();
 
-    const cell1 = .{ .x = 20, .z = 20 };
+    const cell1 = CellIndex{ .x = 20, .z = 20 };
     try expect(grid.getAreaOfCell(cell1).min.x.eql(side_length.mul(fp(20))));
     try expect(grid.getAreaOfCell(cell1).min.z.eql(side_length.mul(fp(20))));
     try expect(grid.getAreaOfCell(cell1).max.x.eql(side_length.mul(fp(20)).add(side_length)));
     try expect(grid.getAreaOfCell(cell1).max.z.eql(side_length.mul(fp(20)).add(side_length)));
 
-    const cell2 = .{ .x = 0, .z = 0 };
+    const cell2 = CellIndex{ .x = 0, .z = 0 };
     const cell2_epsilon = fp(0.0001);
     try expect(grid.getAreaOfCell(cell2).min.x.eql(side_length.mul(fp(-1))));
     try expect(grid.getAreaOfCell(cell2).min.z.eql(side_length.mul(fp(-1))));
@@ -1684,14 +1696,14 @@ test "SpatialGrid: preallocating memory" {
         .min = .{ .x = fp(-20), .z = fp(-20) },
         .max = .{ .x = fp(-20), .z = fp(-20) },
     });
-    const cell_with_30_items = .{
+    const cell_with_30_items = CellIndex{
         .x = @divTrunc(-30, grid_cell_side_length),
         .z = @divTrunc(-30, grid_cell_side_length),
     };
     try grid.ensureCellExists(cell_with_30_items);
     try grid.ensureCellExists(.{ .x = 4, .z = 4 });
 
-    const insertion_range = .{
+    const insertion_range = collision.AxisAlignedBoundingBox{
         .min = .{ .x = fp(-30), .z = fp(-30) },
         .max = .{ .x = fp(-2 * grid_cell_side_length), .z = fp(-2 * grid_cell_side_length) },
     };

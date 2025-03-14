@@ -19,7 +19,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
         allocator: std.mem.Allocator,
         cells: std.AutoHashMap(CellIndex, UnorderedCollection(T)),
         /// References all cells containing copies of the same object.
-        back_references: std.TailQueue([]BackReference),
+        back_references: std.DoublyLinkedList([]BackReference),
         /// Allows each individual object copy to be traced back to all cells the object occupies.
         object_ptr_to_back_references: std.AutoHashMap(*const T, *BackReferenceNode),
 
@@ -27,7 +27,7 @@ pub fn Grid(comptime T: type, comptime cell_side_length: u32, comptime grid_mode
         const CellIndex = @import("cell_index.zig").Index(cell_side_length);
         const CellRange = @import("cell_range.zig").Range(cell_side_length);
         const BackReference = struct { cell_index: CellIndex, object_ptr: *T };
-        const BackReferenceNode = std.TailQueue([]BackReference).Node;
+        const BackReferenceNode = std.DoublyLinkedList([]BackReference).Node;
 
         /// Returned to the user of this grid to reference inserted objects. Can be used for
         /// removing objects from the grid.

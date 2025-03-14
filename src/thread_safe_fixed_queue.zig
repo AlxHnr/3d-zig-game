@@ -36,7 +36,7 @@ pub fn Queue(comptime T: type) type {
             while (self.items.items.len == 0) {
                 self.condition.wait(&self.mutex);
             }
-            return self.items.pop();
+            return self.items.pop().?;
         }
 
         /// Must be followed by `reclaimLockedSlice()`.

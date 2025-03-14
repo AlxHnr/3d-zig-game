@@ -12,12 +12,12 @@ pub const SharedContext = struct {
     /// logic only on the inputs specified in `game_unit.InputButton`. The goal here is to make the
     /// entire engine reproducible across different systems and being able to replay entire games
     /// just by storing user inputs. This is greatly simplifies netcode.
-    rng: std.rand.Xoroshiro128,
+    rng: std.Random.Xoroshiro128,
 
     pub fn create() SharedContext {
         return .{
             .object_id_generator = ObjectIdGenerator.create(),
-            .rng = std.rand.Xoroshiro128.init(0),
+            .rng = std.Random.Xoroshiro128.init(0),
         };
     }
 };

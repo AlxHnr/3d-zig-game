@@ -1135,7 +1135,7 @@ const BillboardObject = struct {
             .small_bush => .small_bush,
         };
         const source = spritesheet.getSpriteSourceRectangle(sprite_id);
-        const boundaries = .{
+        const boundaries = collision.Circle{
             .position = position,
             .radius = width.div(fp(2)),
         };
@@ -1285,7 +1285,8 @@ const ObstacleGrid = struct {
         }
 
         const cell_size = fp(obstacle_grid_cell_size);
-        const padding_for_storing_extra_neighbors = .{ .x = cell_size, .z = cell_size };
+        const padding_for_storing_extra_neighbors =
+            math.FlatVector{ .x = cell_size, .z = cell_size };
         map_boundaries.min = map_boundaries.min.subtract(padding_for_storing_extra_neighbors);
         map_boundaries.max = map_boundaries.max.add(padding_for_storing_extra_neighbors);
 

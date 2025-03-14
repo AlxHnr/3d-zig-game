@@ -205,7 +205,7 @@ pub const Circle = struct {
             math.FlatVector.Rotation.create(rectangle.rotation_angle_to_align_with_axis);
         const aabb = rectangle.getRotatedAABB(rotation);
         const rotated_self_position = rotation.rotate(self.position);
-        const reference_point = .{
+        const reference_point = math.FlatVector{
             .x = rotated_self_position.x.clamp(aabb.min.x, aabb.max.x),
             .z = rotated_self_position.z.clamp(aabb.min.z, aabb.max.z),
         };

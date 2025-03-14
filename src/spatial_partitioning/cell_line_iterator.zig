@@ -11,13 +11,13 @@ pub fn iterator(
 ) Iterator(CellIndex) {
     // Adapted from https://lodev.org/cgtutor/raycasting.html
     const direction = line_end.subtract(line_start).normalize();
-    const step_lengths_to_next_axis = .{
+    const step_lengths_to_next_axis = math.FlatVector{
         .x = getStepLengthToNextAxis(direction.x),
         .z = getStepLengthToNextAxis(direction.z),
     };
     const start = line_start.multiplyScalar(fp(1).div(fp(CellIndex.side_length)));
     const wrapped = .{ .x = start.x.mod(fp(1)), .z = start.z.mod(fp(1)) };
-    const distance_to_next_axis = .{
+    const distance_to_next_axis = math.FlatVector{
         .x = getDistanceToNextAxis(step_lengths_to_next_axis.x, direction.x, wrapped.x),
         .z = getDistanceToNextAxis(step_lengths_to_next_axis.z, direction.z, wrapped.z),
     };

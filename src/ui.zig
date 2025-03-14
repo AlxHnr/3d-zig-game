@@ -153,7 +153,7 @@ pub const Sprite = struct {
         /// Must have enough capacity to store all sprites. See getSpriteCount().
         out: []SpriteData,
     ) void {
-        const position = .{
+        const position = math.Vector3d{
             .x = fp(screen_position_x + self.dimensions.w / 2),
             .y = fp(screen_position_y + self.dimensions.h / 2),
             .z = fp(0),
@@ -470,7 +470,7 @@ pub const Box = struct {
             height: math.Fix32,
         ) void {
             const sprite_texcoords = self.spritesheet.getSpriteSourceRectangle(corner);
-            const position = .{
+            const position = math.Vector3d{
                 .x = self.top_left_corner.x.add(offset_from_top_left_x).add(width.div(fp(2))),
                 .y = self.top_left_corner.y.add(offset_from_top_left_y).add(height.div(fp(2))),
                 .z = fp(0),

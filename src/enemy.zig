@@ -57,7 +57,7 @@ pub fn create(
 }
 
 pub const TickContext = struct {
-    rng: std.rand.Random,
+    rng: std.Random,
     map: *const Map,
     main_character: *const GameCharacter,
     main_character_flow_field: *const FlowField,
@@ -288,7 +288,10 @@ const AttackingState = struct {
                 continue;
             }
 
-            const peer_circle = .{ .position = peer.position, .radius = peer_overlap_radius };
+            const peer_circle = collision.Circle{
+                .position = peer.position,
+                .radius = peer_overlap_radius,
+            };
             if (circle.collidesWithCircleDisplacementVector(peer_circle)) |displacement_vector| {
                 collides_with_peer = true;
                 combined_displacement_vector = combined_displacement_vector.add(displacement_vector);

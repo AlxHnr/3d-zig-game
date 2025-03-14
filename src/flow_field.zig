@@ -85,7 +85,7 @@ pub fn recompute(self: *Field, new_center_and_destination: math.FlatVector, map:
     };
 
     @memset(self.integration_field, .{ .has_been_visited = false, .cost = max_cost });
-    const target_tile = .{
+    const target_tile = QueueItem{
         .x = self.grid_cells_per_side / 2,
         .z = self.grid_cells_per_side / 2,
         .cost = 0,
@@ -393,7 +393,7 @@ const GrowingRadiusIterator = struct {
     /// Returns null when there is no nearby geometry.
     fn next(self: *GrowingRadiusIterator) ?math.FlatVector {
         while (self.radius_factor.lt(fp(9))) {
-            const circle = .{
+            const circle = Circle{
                 .position = self.position,
                 .radius = fp(cell_side_length).mul(self.radius_factor),
             };

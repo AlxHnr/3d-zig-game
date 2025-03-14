@@ -91,7 +91,7 @@ pub const TileableArrayTexture = struct {
             gl.RGBA8,
             width,
             height,
-            @typeInfo(LayerId).Enum.fields.len,
+            @typeInfo(LayerId).@"enum".fields.len,
             0,
             gl.RGBA,
             gl.UNSIGNED_BYTE,
@@ -222,7 +222,7 @@ pub const SpriteSheetTexture = struct {
     const sprite_source_pixel_map = std.enums.directEnumArray(
         SpriteId,
         rendering.TextureSourceRectangle,
-        @typeInfo(SpriteId).Enum.fields.len,
+        @typeInfo(SpriteId).@"enum".fields.len,
         .{
             .black_magician_with_book = sourceRectangle(72, 112, 23, 32),
             .blue_frozen_statue = sourceRectangle(0, 168, 32, 31),

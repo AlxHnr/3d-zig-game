@@ -204,7 +204,7 @@ pub fn processElapsedTick(
     self.dialog_controller.processElapsedTick();
 
     for (thread_contexts, 0..) |*thread_context, thread_id| {
-        try self.thread_pool.dispatchIgnoreErrors(processEnemies, .{.{
+        try self.thread_pool.dispatchIgnoreErrors(processEnemies, .{EnemyThreadData{
             .in = .{
                 .current_tick = self.tick_counter,
                 .spritesheet = self.spritesheet,
@@ -235,7 +235,7 @@ pub fn processElapsedTick(
         const gem_collections = self.previous_tick_data.gem_collections.getLockedSlice();
         defer self.previous_tick_data.gem_collections.reclaimLockedSlice();
         for (thread_contexts, 0..) |*thread_context, thread_id| {
-            try self.thread_pool.dispatchIgnoreErrors(processGems, .{.{
+            try self.thread_pool.dispatchIgnoreErrors(processGems, .{GemThreadData{
                 .in = .{
                     .current_tick = self.tick_counter,
                     .spritesheet = self.spritesheet,
@@ -257,7 +257,8 @@ pub fn processElapsedTick(
             self.previous_tick_data.particle_sprite_collections.getLockedSlice();
         defer self.previous_tick_data.particle_sprite_collections.reclaimLockedSlice();
         for (thread_contexts, 0..) |*thread_context, thread_id| {
-            try self.thread_pool.dispatchIgnoreErrors(processParticleSprites, .{.{
+            try self.thread_pool
+                .dispatchIgnoreErrors(processParticleSprites, .{ParticleSpriteThreadData{
                 .in = .{
                     .current_tick = self.tick_counter,
                     .sprites = sprite_collections[thread_id].sprites,
@@ -295,7 +296,7 @@ pub fn processElapsedTick(
     std.mem.swap(TickData, &self.current_tick_data, &self.previous_tick_data);
     try self.current_tick_data.reset(thread_contexts.len);
 
-    try self.thread_pool.dispatchIgnoreErrors(updateEnemyPeerGrid, .{.{
+    try self.thread_pool.dispatchIgnoreErrors(updateEnemyPeerGrid, .{UpdateEnemyPeerGridThreadData{
         .in = .{
             .enemy_peer_insertion_queue = enemy_peer_insertion_queue,
         },
@@ -305,7 +306,7 @@ pub fn processElapsedTick(
             .enemy_peer_grid = &self.previous_tick_data.enemy_peer_grid,
         },
     }});
-    try self.thread_pool.dispatchIgnoreErrors(recomputeFlowField, .{.{
+    try self.thread_pool.dispatchIgnoreErrors(recomputeFlowField, .{FlowFieldThreadData{
         .in = .{
             .map = self.map,
             .main_character = self.main_character,
@@ -316,7 +317,7 @@ pub fn processElapsedTick(
             .flow_field = &self.main_character_flow_field,
         },
     }});
-    try self.thread_pool.dispatchIgnoreErrors(initializeEnemyGrids, .{.{
+    try self.thread_pool.dispatchIgnoreErrors(initializeEnemyGrids, .{PreallocateTickDataThreadData{
         .in = .{
             .thread_count = thread_contexts.len,
             .enemy_grid = self.previous_tick_data.enemy_grid,
@@ -613,9 +614,9 @@ fn processEnemies(data: EnemyThreadData) !void {
             var seed = std.hash.Wyhash.init(data.in.current_tick);
             seed.update(std.mem.asBytes(&std.mem.nativeToLittle(i16, cell_index.x)));
             seed.update(std.mem.asBytes(&std.mem.nativeToLittle(i16, cell_index.z)));
-            break :blk std.rand.Xoroshiro128.init(seed.final());
+            break :blk std.Random.Xoroshiro128.init(seed.final());
         };
-        const tick_context = .{
+        const tick_context = Enemy.TickContext{
             .rng = rng.random(),
             .map = &data.in.map,
             .main_character = &data.in.main_character.character,
@@ -704,7 +705,7 @@ fn processGems(data: GemThreadData) !void {
 
     var gems_collected: u64 = 0;
     var billboard_buffer = data.out.billboard_buffer;
-    const tick_context = .{
+    const tick_context = Gem.TickContext{
         .map = &data.in.map,
         .main_character = &data.in.main_character.character,
     };

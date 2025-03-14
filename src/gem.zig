@@ -1,4 +1,5 @@
 const ArrayList = @import("std").ArrayList;
+const Circle = @import("collision.zig").Circle;
 const GameCharacter = @import("game_unit.zig").GameCharacter;
 const Map = @import("map/map.zig").Map;
 const SpriteData = @import("rendering.zig").SpriteData;
@@ -18,7 +19,7 @@ pub const gem_jump_height = fp(1);
 pub const gem_jump_duration_in_ticks = simulation.secondsToTicks(0.6).convertTo(math.Fix32);
 
 pub fn create(position: math.FlatVector, originates_from: math.FlatVector) Gem {
-    const state = .{ .spawning = .{ .tick_counter = 0, .source_position = originates_from } };
+    const state = State{ .spawning = .{ .tick_counter = 0, .source_position = originates_from } };
     return .{ .position = position, .state = state, .state_at_previous_tick = state };
 }
 
@@ -32,7 +33,7 @@ pub fn processElapsedTick(self: *Gem, context: TickContext) Result {
             }
         },
         .waiting => blk: {
-            const boundaries = .{ .position = self.position, .radius = fp(10) };
+            const boundaries = Circle{ .position = self.position, .radius = fp(10) };
             const character_position = context.main_character.moving_circle.hasCollidedWithCircle(
                 boundaries,
             ) orelse break :blk;

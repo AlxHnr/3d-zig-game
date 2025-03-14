@@ -62,14 +62,14 @@ pub fn Range(comptime cell_side_length: u32) type {
                 var overlapping_cells: usize = 0;
 
                 if (current.z > self.min.z) {
-                    const already_traversed_block = .{
+                    const already_traversed_block = Self{
                         .min = self.min,
                         .max = .{ .x = self.max.x, .z = current.z - 1 },
                     };
                     overlapping_cells += range.countTouchingCells(already_traversed_block);
                 }
 
-                const current_rows_block = .{
+                const current_rows_block = Self{
                     .min = .{ .x = self.min.x, .z = current.z },
                     .max = .{ .x = current.x, .z = current.z },
                 };

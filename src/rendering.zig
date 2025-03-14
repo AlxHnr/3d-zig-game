@@ -328,13 +328,13 @@ pub const SpriteRenderer = struct {
         previous_tick: u32,
         interval_between_previous_and_current_tick: math.Fix32,
     ) void {
-        const screen_to_ndc_matrix = .{ .rows = .{
+        const screen_to_ndc_matrix = math.Matrix{ .rows = .{
             .{ 2 / @as(f32, @floatFromInt(screen_dimensions.w)), 0, 0, -1 },
             .{ 0, -2 / @as(f32, @floatFromInt(screen_dimensions.h)), 0, 1 },
             .{ 0, 0, 0, 0 },
             .{ 0, 0, 0, 1 },
         } };
-        const forward = .{ .x = fp(0), .y = fp(0), .z = fp(-1) };
+        const forward = math.Vector3d{ .x = fp(0), .y = fp(0), .z = fp(-1) };
         self.renderer.render(
             screen_to_ndc_matrix,
             screen_dimensions,
@@ -873,23 +873,23 @@ fn setupVertexAttributeAdvanced(
     stride: usize,
 ) void {
     const component_count = switch (@typeInfo(AttributeType)) {
-        .Array => |Array| Array.len,
-        .Bool, .Float, .Int => 1,
-        .Struct => |Struct| Struct.fields.len,
+        .array => |Array| Array.len,
+        .bool, .float, .int => 1,
+        .@"struct" => |Struct| Struct.fields.len,
         else => @compileError("unsupported type :" ++ @typeName(AttributeType)),
     };
     comptime {
         std.debug.assert(component_count > 0);
     }
     const component_type = switch (@typeInfo(AttributeType)) {
-        .Array => |Array| Array.child,
-        .Struct => |Struct| Struct.fields[0].type,
+        .array => |Array| Array.child,
+        .@"struct" => |Struct| Struct.fields[0].type,
         else => AttributeType,
     };
     const gl_type = switch (@typeInfo(component_type)) {
-        .Bool => gl.UNSIGNED_BYTE,
-        .Float => gl.FLOAT,
-        .Int => |int| switch (int.bits) {
+        .bool => gl.UNSIGNED_BYTE,
+        .float => gl.FLOAT,
+        .int => |int| switch (int.bits) {
             8 => if (int.signedness == .signed) gl.BYTE else gl.UNSIGNED_BYTE,
             16 => if (int.signedness == .signed) gl.SHORT else gl.UNSIGNED_SHORT,
             32 => if (int.signedness == .signed) gl.INT else gl.UNSIGNED_INT,
@@ -900,7 +900,7 @@ fn setupVertexAttributeAdvanced(
         else => @compileError("unsupported type: " ++ @typeName(component_type)),
     };
     const float_conversion_is_optional = switch (@typeInfo(component_type)) {
-        .Bool, .Int => true,
+        .bool, .int => true,
         else => false,
     };
 
@@ -945,7 +945,7 @@ fn setupVertexAttributeBasic(
 /// Configures MapGeometryAttributes as vertex attributes at offset 0.
 fn setupMapGeometryPropertyAttributes(shader: Shader, comptime AttributeType: type) !void {
     const stride = @sizeOf(AttributeType);
-    const PropertiesType = std.meta.FieldType(AttributeType, .properties);
+    const PropertiesType = @FieldType(AttributeType, "properties");
     const loc_model_matrix = try shader.getAttributeLocation("model_matrix");
     const offset_to_matrix =
         @offsetOf(AttributeType, "properties") + @offsetOf(PropertiesType, "model_matrix");
@@ -963,14 +963,14 @@ fn setupMapGeometryPropertyAttributes(shader: Shader, comptime AttributeType: ty
     }
     setupVertexAttributeAdvanced(
         try shader.getAttributeLocation("texture_layer_id"),
-        std.meta.FieldType(PropertiesType, .texture_layer_id),
+        @FieldType(PropertiesType, "texture_layer_id"),
         @offsetOf(AttributeType, "properties") + @offsetOf(PropertiesType, "texture_layer_id"),
         .keep_type,
         stride,
     );
     setupVertexAttributeAdvanced(
         try shader.getAttributeLocation("tint"),
-        std.meta.FieldType(PropertiesType, .tint),
+        @FieldType(PropertiesType, "tint"),
         @offsetOf(AttributeType, "properties") + @offsetOf(PropertiesType, "tint"),
         .convert_to_normalized_float,
         stride,
