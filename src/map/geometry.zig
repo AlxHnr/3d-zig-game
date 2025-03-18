@@ -1128,9 +1128,7 @@ const BillboardObject = struct {
         position: math.FlatVector,
         spritesheet: textures.SpriteSheetTexture,
     ) BillboardObject {
-        const width = fp(switch (object_type) {
-            else => 1,
-        });
+        const width = fp(1); // All object types have the same width right now.
         const sprite_id: textures.SpriteSheetTexture.SpriteId = switch (object_type) {
             .small_bush => .small_bush,
         };
@@ -1179,10 +1177,8 @@ const BillboardObject = struct {
         });
     }
 
-    fn getDefaultTint(object_type: BillboardObjectType) rendering.Color {
-        return switch (object_type) {
-            else => rendering.Color.white,
-        };
+    fn getDefaultTint(_: BillboardObjectType) rendering.Color {
+        return rendering.Color.white;
     }
 };
 
